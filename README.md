@@ -72,35 +72,32 @@ Usage
 Basic Commands
 --------------
 
- - Create a File:
+ - Create a File:<br>
  To create a file, use the standard NFS commands. The filesystem will automatically disassemble the file contents into secret shares.
 
-- Read a File:
+- Read a File:<br>
 To read a file, use the standard NFS commands. The filesystem will reassemble the secret shares to reconstruct the file contents.
-
-- Log Management:
-Logs are automatically pushed to the Kafka broker. Use Kafka tools to manage and analyze logs.
 
 Provenance Tracking
 -------------------
 
- - Event Tracking:  
+ - Event Tracking:<br>
    Disassembly and reassembly events are automatically sent to the Polkadot/Aleph Zero blockchain.
-   Use blockchain explorer tools to view the provenance records.
+    - Use blockchain explorer tools to view the provenance records.
 
 Git Interception
 ----------------
 
  - Fast Cloning:  
-   The filesystem intercepts Git clone operations to disassemble repository data into secret shares, enhancing the cloning speed and security.  
-   Clone a large repository as usual with Git. The filesystem will handle the disassembly and reassembly processes in the background.
+   The filesystem intercepts Git clone operations to disassemble repository data into secret shares, enhancing the cloning speed and security.
+    - Clone a large repository as usual with Git. The filesystem will handle the disassembly and reassembly processes in the background.
 
 Security
 --------
 
- - Data Security:  
+ - Data Security:<br>
    File contents are secured using Shamir Secret Sharing, ensuring that data is split into multiple shares and requires a threshold number of shares to reconstruct.
- - Integrity and Traceability:  
+ - Integrity and Traceability:<br>
    Provenance tracking using blockchain ensures that all file operations are recorded in a tamper-proof manner.
 
 Contact
