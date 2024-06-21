@@ -10,25 +10,18 @@ Features
 ========
 
 1. Shamir Secret Sharing Algorithm:
-   -------------------------------
- - Uses Shamir Secret Sharing to disassemble file contents into secret shares upon creation.
- - Reassembles the secret shares to reconstruct the file contents when the file is read.
- - Enhances security by ensuring that file contents are only accessible when a threshold number of shares are combined.
-   
+    - Uses Shamir Secret Sharing to disassemble file contents into secret shares upon creation.
+    - Reassembles the secret shares to reconstruct the file contents when the file is read.
+    - Enhances security by ensuring that file contents are only accessible when a threshold number of shares are combined.
 2. Provenance Tracking with Blockchain:
-   -----------------------------------
- - Tracks provenance by recording disassembly and reassembly events on Polkadot/Aleph Zero blockchain.
- - Provides tamper-proof records ensuring the integrity and traceability of file operations.
-   
+    - Tracks provenance by recording disassembly and reassembly events on Polkadot/Aleph Zero blockchain.
+    - Provides tamper-proof records ensuring the integrity and traceability of file operations.
 3. Redis Cluster for Persistence:
-   -----------------------------
- - Utilizes Redis Cluster to store files and directories  persistently.
- - Ensures high availability and fault tolerance.
-   
+    - Utilizes Redis Cluster to store files and directories  persistently.
+    - Ensures high availability and fault tolerance.
 4. Git Interception for Fast Cloning:
-   ----------------------------------
- - Enhances the cloning of large Git repositories by utilizing Shamir Secret Sharing.
- - Disassembles repository data into secret shares for faster and secure cloning processes.
+    - Enhances the cloning of large Git repositories by utilizing Shamir Secret Sharing.
+    - Disassembles repository data into secret shares for faster and secure cloning processes.
 
 Installation
 ============
