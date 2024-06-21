@@ -92,23 +92,23 @@ Provenance Tracking
 -------------------
 
  - Event Tracking:
-Disassembly and reassembly events are automatically sent to the Polkadot/Aleph Zero blockchain.
- - Use blockchain explorer tools to view the provenance records.
+   Disassembly and reassembly events are automatically sent to the Polkadot/Aleph Zero blockchain.
+   Use blockchain explorer tools to view the provenance records.
 
 Git Interception
 ----------------
 
  - Fast Cloning:
-The filesystem intercepts Git clone operations to disassemble repository data into secret shares, enhancing the cloning speed and security.
- - Clone a large repository as usual with Git. The filesystem will handle the disassembly and reassembly processes in the background.
+   The filesystem intercepts Git clone operations to disassemble repository data into secret shares, enhancing the cloning speed and security.
+   Clone a large repository as usual with Git. The filesystem will handle the disassembly and reassembly processes in the background.
 
 Security
 --------
 
  - Data Security:
-  - File contents are secured using Shamir Secret Sharing, ensuring that data is split into multiple shares and requires a threshold number of shares to reconstruct.
+   File contents are secured using Shamir Secret Sharing, ensuring that data is split into multiple shares and requires a threshold number of shares to reconstruct.
  - Integrity and Traceability:
-  - Provenance tracking using blockchain ensures that all file operations are recorded in a tamper-proof manner.
+   Provenance tracking using blockchain ensures that all file operations are recorded in a tamper-proof manner.
 
 Contact
 -------
