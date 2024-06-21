@@ -28,10 +28,10 @@ Installation
 
 Prerequisites
 =============
+
  	- Rust (latest stable version)
- 	- Redis Cluster
- 	- Kafka Broker
  	- Polkadot/Aleph Zero node
+  	- Redis Cluster
 
 Steps
 =====
