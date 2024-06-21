@@ -89,8 +89,8 @@ Git Interception
 ----------------
 
  - Fast Cloning:  
-   The filesystem intercepts Git clone operations to disassemble repository data into secret shares, enhancing the cloning speed and security.
-    - Clone a large repository as usual with Git. The filesystem will handle the disassembly and reassembly processes in the background.
+   The filesystem intercepts Git clone operations to disassemble repository data into secret shares, enhancing the cloning speed and security. Despite continuous disassembly and reassembly, the Git interception feature ensures efficient cloning of git repositories.
+    - Clone a repository as usual with Git. The filesystem will handle the disassembly and reassembly processes in the background.
 
 Security
 --------
