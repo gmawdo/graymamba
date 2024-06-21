@@ -4,25 +4,22 @@ Secure Provenance Tracking Filesystem - README
 Overview
 ========
 
-The Secure Provenance Tracking Filesystem is a cutting-edge Network File System (NFS) developed in Rust. This filesystem is designed with unique features that ensure security and provenance tracking. The filesystem leverages modern technologies like Redis Cluster, Kafka, Shamir Secret Sharing Algorithm, and blockchain (Polkadot/Aleph Zero) to provide a secure, reliable, and traceable file storage solution.
+The Secure Provenance Tracking Filesystem is a cutting-edge Network File System (NFS) developed in Rust. The filesystem incorporates advanced features to ensure security and provenance tracking. It employs innovative methods such as the Shamir Secret Sharing Algorithm, blockchain (Polkadot/Aleph Zero), Redis Cluster, and a Git interception feature to deliver a secure, reliable, and traceable file storage solution.
 
 Features
 ========
 
-1. Redis Cluster for Persistence:
- 	- Utilizes Redis Cluster to store files and directories  persistently.
- 	- Ensures high availability and fault tolerance.
-2. Kafka Broker for Logging:
- 	- Pushes logs to Kafka broker for robust and scalable log management.
- 	- Facilitates real-time log processing and analysis.
-3. Shamir Secret Sharing Algorithm:
+1. Shamir Secret Sharing Algorithm:
  	- Uses Shamir Secret Sharing to disassemble file contents into secret shares upon creation.
  	- Reassembles the secret shares to reconstruct the file contents when the file is read.
  	- Enhances security by ensuring that file contents are only accessible when a threshold number of shares are combined.
-4. Provenance Tracking with Blockchain:
+2. Provenance Tracking with Blockchain:
  	- Tracks provenance by recording disassembly and reassembly events on Polkadot/Aleph Zero blockchain.
  	- Provides tamper-proof records ensuring the integrity and traceability of file operations.
-5. Git Interception for Fast Cloning:
+3. Redis Cluster for Persistence:
+ 	- Utilizes Redis Cluster to store files and directories  persistently.
+ 	- Ensures high availability and fault tolerance.
+4. Git Interception for Fast Cloning:
  	- Enhances the cloning of large Git repositories by utilizing Shamir Secret Sharing.
  	- Disassembles repository data into secret shares for faster and secure cloning processes.
 
@@ -40,7 +37,7 @@ Steps
 =====
 1. Clone the Repository:
 
-      `git clone https://github.com/datasignals/secure-provenance-tracking-filesystem.git`
+      `git clone https://github.com/datasignals/secure-provenance-tracking-filesystem.git`<br>
       `cd secure-provenance-tracking-filesystem`
 
 2. Install Dependencies:
@@ -51,26 +48,22 @@ Steps
 
       Set up your Redis Cluster and update the configuration in the filesystem code as required.
 
-4. Configure Kafka Broker:
-
-      Set up your Kafka Broker and update the configuration in the filesystem code as required.
-
-5. Configure Blockchain Node:
+4. Configure Blockchain Node:
 
       Set up your Polkadot/Aleph Zero node and update the configuration in the filesystem code as required.
 
-6. Build the filesystem using:
+5. Build the filesystem using:
 
       `cargo build --bin lockular_nfs --features="demo" --release`
 
-7. Run the FileSystem:
+6. Run the FileSystem:
 
-      `mkdir /mnt/nfs`
+      `mkdir /mnt/nfs`<br>
       `./target/release/lockular_nfs /mnt/nfs`
 
-8. Mount the FileSystem:
+7. Mount the FileSystem:
 
-      `mkdir mount_point`
+      `mkdir mount_point`<br>
       `mount_nfs -o nolocks,vers=3,tcp,rsize=131072,actimeo=120,port=2049,mountport=2049 localhost:/  / mount_point`
 
 Usage
@@ -91,23 +84,23 @@ Logs are automatically pushed to the Kafka broker. Use Kafka tools to manage and
 Provenance Tracking
 -------------------
 
- - Event Tracking:
+ - Event Tracking:  
    Disassembly and reassembly events are automatically sent to the Polkadot/Aleph Zero blockchain.
    Use blockchain explorer tools to view the provenance records.
 
 Git Interception
 ----------------
 
- - Fast Cloning:
-   The filesystem intercepts Git clone operations to disassemble repository data into secret shares, enhancing the cloning speed and security.
+ - Fast Cloning:  
+   The filesystem intercepts Git clone operations to disassemble repository data into secret shares, enhancing the cloning speed and security.  
    Clone a large repository as usual with Git. The filesystem will handle the disassembly and reassembly processes in the background.
 
 Security
 --------
 
- - Data Security:
+ - Data Security:  
    File contents are secured using Shamir Secret Sharing, ensuring that data is split into multiple shares and requires a threshold number of shares to reconstruct.
- - Integrity and Traceability:
+ - Integrity and Traceability:  
    Provenance tracking using blockchain ensures that all file operations are recorded in a tamper-proof manner.
 
 Contact
