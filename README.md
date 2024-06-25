@@ -75,7 +75,7 @@ Docker Commands
 
 2. Run the Docker Image on a docker container:
 
-      `docker run -d --name lockular_nfs_container -p 2049:2049 -v /YOURROOT/mnt/nfs:/ mnt/nfs -v /YOURROOT/mount_point:/mount_point lockular_nfs_image`
+      `sudo docker run -d --name lockular_nfs_container --network host -v /YOURROOT/mnt/nfs:/mnt/nfs lockular_nfs_image`
 
 
 Usage
