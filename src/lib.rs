@@ -280,50 +280,7 @@ pub mod nfs_module {
             }
 
             
-            // // Call the disassembled function
-            // let disassembled_call = pallet_template::tx()
-            //     .template_module()
-            //     .disassembled(creation_time.clone(), file_path.clone(), event_key.clone());
-            
-            // let _disassembled_events = api.clone()
-            //     .tx()
-            //     .sign_and_submit_then_watch_default(&disassembled_call, &signer.clone())
-            //     .await
-            //     .map(|e| {
-            //         println!("Disassembled call submitted, waiting for transaction to be finalized...");
-            //         e
-            //     })?
-            //     .wait_for_finalized_success()
-            //     .await?;
-            // println!("Disassembled event processed.");
-
-            // // Call the reassembled function
-            // let reassembled_call = pallet_template::tx()
-            //     .template_module()
-            //     .reassembled(creation_time.clone(), file_path.clone(), event_key.clone());
-            // let _reassembled_events = api.clone()
-            //     .tx()
-            //     .sign_and_submit_then_watch_default(&reassembled_call, &signer.clone())
-            //     .await
-            //     .map(|e| {
-            //         println!("Reassembled call submitted, waiting for transaction to be finalized...");
-            //         e
-            //     })?
-            //     .wait_for_finalized_success()
-            //     .await?;
-            // println!("Reassembled event processed.");
-
-            // // Check storage to confirm disassembled data
-            // let disassembled_storage_query = pallet_template::storage().template_module().dis_re_assembly(account_id.clone());
-            // let disassembled_storage_details = api.clone()
-            //     .storage()
-            //     .at_latest()
-            //     .await?
-            //     .fetch(&disassembled_storage_query)
-            //     .await?
-            //     .ok_or("The storage should have a value (disassembled event)")?;
-
-            // println!("Storage Item Details: {:?}", disassembled_storage_details);
+           
 
             Ok(())
 
