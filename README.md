@@ -66,6 +66,18 @@ Steps
       `mkdir mount_point`<br>
       `mount_nfs -o nolocks,vers=3,tcp,rsize=131072,actimeo=120,port=2049,mountport=2049 localhost:/  / mount_point`
 
+Docker Commands
+---------------
+
+1. Build the Docker Image:
+
+      `sudo docker build -t lockular_nfs_image .`
+
+2. Run the Docker Image on a docker container:
+
+      `sudo docker run -d --name lockular_nfs_container --privileged --network host lockular_nfs_image`
+
+
 Usage
 =====
 
