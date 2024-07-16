@@ -43,28 +43,82 @@ Steps
 2. Install Dependencies:
 
       Ensure you have the necessary dependencies installed. You can use cargo for Rust dependencies.
+      - $ `cargo build`
 
 3. Configure Redis Cluster:
+      Set up your Redis Cluster with 3 node with ports 6380,6381,6382.
+            - Install Redis : 
+                  https://redis.io/docs/latest/operate/oss_and_stack/install/install-redis/
+		- To create redis cluster somewhere in system
+			- $ `mkdir Redis Cluster`
+			- $ `cd Redis Cluster`
+ 			- create three files with below config: redis-6380.conf, redis-6381.conf, redis-6382.conf
+``` shell
+                        # Change port 
+                        port 6380 
 
-      Set up your Redis Cluster and update the configuration in the filesystem code as required.
+                        #Expose the port
+                        bind 0.0.0.0
+
+                        #Mode
+                        protected-mode no
+
+                        # Data directory location
+                        dir ./Redis_database/redis-6380
+
+                        # Enable clustering  
+                        cluster-enabled yes
+
+                        # Set Password
+                        requirepass 0rangerY
+```
+            - In Redis Cluster folder: 
+                  - $ `mkdir Redis_database`
+                  - $ `cd Redis_database`
+                  - $ `mkdir redis-6380`
+                  - $ `mkdir redis-6381`
+                  - $ `mkdir redis-6382`
+            - To Run Redis Cluster run below commands in 4 different terminals at Redis Cluster folder.
+                  $ `redis-server redis-6380.conf`
+                  $ `redis-server redis-6381.conf`
+                  $ `redis-server redis-6382.conf`
+                  $ `redis-cli --cluster create 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 --cluster-replicas 0 -a 0rangerY --cluster-yes`
+                  
+
 
 4. Configure Blockchain Node:
+      Set up your Polkadot/Aleph Zero node following below steps
+            $ `git clone https://github.com/datasignals/aleph-node-pinkscorpion.git`
+		$ `cd aleph-node-pinkscorpion`
+ 		$ `cargo build —release`
+		$ `scripts/run_nodes.sh`
 
-      Set up your Polkadot/Aleph Zero node and update the configuration in the filesystem code as required.
+5. Configure Kafka and Zookeeper:
+      - $ `brew install kafka`
+      - $ `brew services start kafka`
+      - $ `brew services start zookeeper`
 
-5. Build the filesystem using:
+5. Now to Build the filesystem open terminal at secure-provenance-filesystem folder and run:
 
-      `cargo build --bin lockular_nfs --features="demo" --release`
+       `cargo build --bin lockular_nfs --features="demo" --release`
 
 6. Run the FileSystem:
-
-      `mkdir /mnt/nfs`<br>
-      `./target/release/lockular_nfs /mnt/nfs`
+      - Create below folder somewhere in System: 
+            $ `mkdir mnt`
+            $ `cd mnt`
+            $ `mkdir nfs`
+      - Now run below comand in terminal at secure-provenance-filesystem folder giving nfs absolute path
+            `./target/release/lockular_nfs /mnt/nfs`
 
 7. Mount the FileSystem:
+      - Create below folder somewhere in System:
+            $ `mkdir mount_point`
+            $ `sudo mount_nfs -o nolocks,vers=3,tcp,rsize=131072,actimeo=120,port=2049,mountport=2049 localhost:/  ./mount_point`
 
-      `mkdir mount_point`<br>
-      `mount_nfs -o nolocks,vers=3,tcp,rsize=131072,actimeo=120,port=2049,mountport=2049 localhost:/  / mount_point`
+8. To run File Sytem Commands
+      - $ `cd mount_point`
+      - Follow below Basic Commands
+
 
 Docker Commands
 ---------------
