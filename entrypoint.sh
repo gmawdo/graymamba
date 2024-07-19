@@ -1,16 +1,16 @@
 #!/bin/sh
 
 # Start Redis servers
-redis-server /app/redis/redis-6380.conf &
-redis-server /app/redis/redis-6381.conf &
-redis-server /app/redis/redis-6382.conf &
+# redis-server /app/redis/redis-6380.conf &
+# redis-server /app/redis/redis-6381.conf &
+# redis-server /app/redis/redis-6382.conf &
 
 # Wait for Redis servers to start
-sleep 5
+# sleep 5
 
 # Create the Redis cluster
 #yes | redis-cli --cluster create 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 --cluster-replicas 0 --cluster-yes
-yes | redis-cli --cluster create 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 --cluster-replicas 0 -a 0rangerY --cluster-yes
+# yes | redis-cli --cluster create 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 --cluster-replicas 0 -a 0rangerY --cluster-yes
 
 # Start the NFS server
 /usr/local/bin/lockular_nfs /mnt/nfs &
