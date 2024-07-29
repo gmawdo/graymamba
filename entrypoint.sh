@@ -16,7 +16,6 @@
 # Edit the /etc/exports file to configure the NFS exports and add an entry to allow access from the client IP or all IPs
 echo "/mnt/nfs *(rw,sync,no_subtree_check)" >> /etc/exports
 
-
 # Start the NFS server
 /usr/local/bin/lockular_nfs /mnt/nfs &
 
