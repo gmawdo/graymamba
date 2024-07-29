@@ -508,3 +508,13 @@ pub fn make_success_reply(xid: u32) -> rpc_msg {
         body: rpc_body::REPLY(reply),
     }
 }
+
+
+
+pub fn make_failure_reply(xid: u32) -> rpc_msg {
+    let reply = reply_body::MSG_DENIED(rejected_reply::AUTH_ERROR(auth_stat::default()));
+    rpc_msg {
+        xid,
+        body: rpc_body::REPLY(reply),
+    }
+}

@@ -131,27 +131,56 @@ pub mod kafka_producer {
 
 pub mod nfs_module {
     use config::{Config, ConfigError, File};
+    use subxt::blocks;
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::thread;
     use subxt::{
         PolkadotConfig,
         utils::{AccountId32, MultiAddress},
-        OnlineClient,
+        OnlineClient, blocks::{Block, BlocksClient}, 
     };
     use tokio::sync::Mutex;
     use subxt_signer::sr25519::{dev, Keypair};
     use tokio::runtime::Runtime;
+    use subxt::backend::{legacy::LegacyRpcMethods, rpc::RpcClient};
+    use subxt::config::DefaultExtrinsicParamsBuilder as Params;
 
     #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
     pub mod pallet_template {}
 
     type MyConfig = PolkadotConfig;
 
+    // struct DisReAssemblyStorage;
+
+    // impl Address for DisReAssemblyStorage {
+    //     type Target = FSEvent;
+    //     type Keys = Vec<u8>;
+    //     type IsFetchable = subxt::utils::Yes;
+    //     type IsDefaultable = subxt::utils::Yes;
+    //     type IsIterable = subxt::utils::Yes;
+
+    //     fn pallet_name(&self) -> &str {
+    //         "PalletName"
+    //     }
+
+    //     fn entry_name(&self) -> &str {
+    //         "DisReAssembly"
+    //     }
+
+    //     fn append_entry_bytes(&self, _metadata: &Metadata, _bytes: &mut Vec<u8>) -> Result<(), subxt::ext::subxt_core::Error> {
+    //         // Add any additional bytes needed to dig into maps, if necessary
+    //         Ok(())
+    //     }
+    // }
+
     pub struct NFSModule {
         api: OnlineClient<PolkadotConfig>,
         account_id: AccountId32,
         signer: Keypair,
         tx_sender: Sender<Event>,
+
+        rpc: LegacyRpcMethods<PolkadotConfig>,
+
     }
 
     pub struct Event {
@@ -168,13 +197,25 @@ pub mod nfs_module {
 
             let ws_url: String = settings.get("substrate.ws_url")?;
 
-            let api = OnlineClient::<MyConfig>::from_url(ws_url).await.expect("Failed to create BlockChain Connection");
+            
+            // Create the RPC client
+            let rpc_client = RpcClient::from_url(&ws_url).await.expect("Failed to create RPC client");
+
+            // Use this to construct our RPC methods
+            let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client.clone());
+
+            // Create the API client
+            let api = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client).await.expect("Failed to create BlockChain Connection");
+                
+            // let api = OnlineClient::<MyConfig>::from_url(ws_url).await.expect("Failed to create BlockChain Connection");
 
             println!("Connection with BlockChain Node established.");
 
 
             let account_id: AccountId32 = dev::alice().public_key().into();
             let signer = dev::alice();
+
+            let rpc_clone = rpc.clone();
 
             let api_clone = api.clone();
             let signer_clone = signer.clone();
@@ -187,7 +228,7 @@ pub mod nfs_module {
                 let rt = Runtime::new().unwrap();
                 rt.block_on(async move {
                     //NFSModule::event_handler(tx_receiver, api_clone, signer_clone, account_id_clone).await;
-                    NFSModule::event_handler(tx_receiver, api_clone, signer_clone, account_id_clone).await;
+                    NFSModule::event_handler(tx_receiver, api_clone, rpc_clone ,signer_clone, account_id_clone).await;
                 });
             });
 
@@ -196,41 +237,48 @@ pub mod nfs_module {
                 account_id,
                 signer,
                 tx_sender,
+                rpc,
             })
         }
 
         async fn event_handler(
             rx: Receiver<Event>,
             api: OnlineClient<PolkadotConfig>,
+            rpc: LegacyRpcMethods<PolkadotConfig>,
             signer: Keypair,
             account_id: AccountId32,
         ) {
             while let Ok(event) = rx.recv() {
                 // match NFSModule::send_event(&api, &signer, &account_id, &event).await {
-                match NFSModule::send_event(&api, &signer, &account_id, &event).await {
+                match NFSModule::send_event(&api, &rpc, &signer, &account_id, &event).await {
                     Ok(_) => println!("............................"),
                     Err(e) => println!("Failed to send event: {:?}", e),
                 }
             }
         }
 
+        
+
         async fn send_event(
             api: &OnlineClient<PolkadotConfig>,
+            rpc: &LegacyRpcMethods<PolkadotConfig>,
             signer: &Keypair,
             account_id: &AccountId32,
             event: &Event,
         ) -> Result<(), Box<dyn std::error::Error>> {
             println!("Preparing to send event...");
-
+        
             // Data to be used in calls (convert event data to Vec<u8>)
+            let event_type: Vec<u8> = event.event_type.clone().into_bytes();
             let creation_time: Vec<u8> = event.creation_time.clone().into_bytes();
             let file_path: Vec<u8> = event.file_path.clone().into_bytes();
             let event_key: Vec<u8> = event.event_key.clone().into_bytes();
-
-            // Log the data for debugging
-            println!("Creation Time: {:?}", creation_time);
-            println!("File Path: {:?}", file_path);
-            println!("Event Key: {:?}", event_key);
+        
+            // // Log the data for debugging
+            // println!("Event Type: {:?}", event_type);
+            // println!("Creation Time: {:?}", creation_time);
+            // println!("File Path: {:?}", file_path);
+            // println!("Event Key: {:?}", event_key);
 
           
 
@@ -239,7 +287,7 @@ pub mod nfs_module {
                 // Call the disassembled function
                 let disassembled_call = pallet_template::tx()
                     .template_module()
-                    .disassembled(creation_time.clone(), file_path.clone(), event_key.clone());
+                    .disassembled(event_type.clone() ,creation_time.clone(), file_path.clone(), event_key.clone());
             
                     let _disassembled_events = api.clone()
                     .tx()
@@ -259,7 +307,7 @@ pub mod nfs_module {
                 // Call the reassembled function
             let reassembled_call = pallet_template::tx()
                 .template_module()
-                .reassembled(creation_time.clone(), file_path.clone(), event_key.clone());
+                .reassembled(event_type.clone(), creation_time.clone(), file_path.clone(), event_key.clone());
                 let _reassembled_events = api.clone()
                 .tx()
                 .sign_and_submit_then_watch_default(&reassembled_call, &signer.clone())
@@ -279,7 +327,23 @@ pub mod nfs_module {
                 
             }
 
-            
+                    // // Fetch extrinsics and their events
+                    // let extrinsics = block.extrinsics().await?;
+                    // for extrinsic in extrinsics.iter() {
+                    //     let extrinsic_details = extrinsic?;
+                    //     let extrinsic_bytes = extrinsic_details.extrinsic().encode();
+                    //     let extrinsic_hash = sp_core::blake2_256(&extrinsic_bytes).into();
+
+                    //     println!("Block {}: Extrinsic Hash: {:?}", block_number, extrinsic_hash);
+
+                    //     // Fetch and process events for the extrinsic
+                    //     let events = extrinsic_details.events().await?;
+                    //     for event in events.iter() {
+                    //         let event_details = event?;
+                    //         println!("Block {}: Event Details: {:?}", block_number, event_details);
+                    //     }
+                    // }
+                
             // // Call the disassembled function
             // let disassembled_call = pallet_template::tx()
             //     .template_module()
@@ -314,21 +378,43 @@ pub mod nfs_module {
             // println!("Reassembled event processed.");
 
             // // Check storage to confirm disassembled data
-            // let disassembled_storage_query = pallet_template::storage().template_module().dis_re_assembly(account_id.clone());
-            // let disassembled_storage_details = api.clone()
+            // let storage_query = pallet_template::storage().template_module().dis_re_assembly(account_id.clone());
+            // let storage_details = api.clone()
             //     .storage()
             //     .at_latest()
             //     .await?
-            //     .fetch(&disassembled_storage_query)
+            //     .fetch(&storage_query)
             //     .await?
             //     .ok_or("The storage should have a value (disassembled event)")?;
 
-            // println!("Storage Item Details: {:?}", disassembled_storage_details);
+            //     println!("Storage Item Details: {:?}", storage_details);
+
+
+            // // Assuming storage_details is a struct with Vec<u8> fields
+            // let pallet_template::runtime_types::node_template_runtime::pallet_template::FSEvent { creationtime, filepath, eventkey } = storage_details;
+
+            // // Helper function to trim trailing zeros and convert to String
+            // fn vec_to_string(vec: Vec<u8>) -> Result<String, std::string::FromUtf8Error> {
+            //     let trimmed_vec: Vec<u8> = vec.into_iter().take_while(|&x| x != 0).collect();
+            //     String::from_utf8(trimmed_vec)
+            // }
+
+            // // Convert Vec<u8> back to Strings
+            // let creation_time_str = vec_to_string(creation_time)?;
+            // let file_path_str = vec_to_string(file_path)?;
+            // let event_key_str = vec_to_string(event_key)?;
+
+            // println!("Creation Time: {}", creation_time_str);
+            // println!("File Path: {}", file_path_str);
+            // println!("Event Key: {}", event_key_str);
+
 
             Ok(())
 
             
         }
+
+       
 
         pub fn trigger_event(&self, creation_time: &str, event_type: &str, file_path: &str, event_key: &str) {
             
@@ -340,8 +426,12 @@ pub mod nfs_module {
             };
             self.tx_sender.send(event).unwrap();
         }
+    
+
+
     }
 }
+
 
 
 

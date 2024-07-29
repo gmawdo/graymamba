@@ -1,13 +1,16 @@
 # Use Debian as the base image
-FROM debian:latest
+#FROM debian:latest
+FROM ubuntu:20.04
 
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install required packages and Redis
 RUN apt-get update && \
-    apt-get install -y nfs-common curl build-essential pkg-config libssl-dev redis-server redis-tools && \
+    apt-get install -y nfs-common curl build-essential pkg-config libssl-dev redis-server redis-tools npm && \
     rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g wscat
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -16,7 +19,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Create the necessary directories
-RUN mkdir -p /mnt/nfs /mount_point /app/Redis_database/redis-6380 /app/Redis_database/redis-6381 /app/Redis_database/redis-6382
+#RUN mkdir -p /mnt/nfs /mount_point /app/Redis_database/redis-6380 /app/Redis_database/redis-6381 /app/Redis_database/redis-6382
 
 # Copy the source code into the image
 COPY . /app
