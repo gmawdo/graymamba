@@ -1,13 +1,16 @@
 # Use Debian as the base image
-FROM debian:latest AS builder
+#FROM debian:latest
+FROM ubuntu:20.04
 
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install required packages and Redis
 RUN apt-get update && \
-    apt-get install -y nfs-common curl build-essential pkg-config libssl-dev redis-server redis-tools && \
+    apt-get install -y nfs-common curl build-essential pkg-config libssl-dev redis-server redis-tools npm && \
     rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g wscat
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y

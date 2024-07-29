@@ -95,9 +95,45 @@ pub async fn mountproc3_mnt(
 ) -> Result<(), anyhow::Error> {
     let mut path = dirpath::new();
     path.deserialize(input)?;
-    let utf8path = std::str::from_utf8(&path).unwrap_or_default();
-    //println!("Path-----------{}", utf8path);
+
+   
+    // Parse options from the input stream
+
+    let path = std::str::from_utf8(&path).unwrap_or_default();
+
+    //println!("path: {:?}", path);
+
+    // Parse user_key from the input stream
+
+    let mut user_key = None;
+
+    let options: Vec<&str> = path.split('/').collect();
+
+    for option in options {
+        if option.starts_with("user_key=") {
+            user_key = Some(option.trim_start_matches("user_key=").to_string());
+        }
+    }
+
+    println!("user_key: {:?}", user_key);
+
+    // Authenticate user
+    if let Some(user_key) = user_key {
+        if !authenticate_user(&user_key) {
+            make_failure_reply(xid).serialize(output)?;
+            return Err(anyhow::anyhow!("Authentication failed"));
+        }
+    } else {
+        make_failure_reply(xid).serialize(output)?;
+        return Err(anyhow::anyhow!("User key not provided"));
+    }
+
+
+    //Set the default directory
+    let utf8path = "/";
+
     let _ = init_user_directory();
+    
     // Convert utf8path to byte vector
     let utf8path_bytes = utf8path.as_bytes();
     
@@ -308,4 +344,24 @@ fn init_user_directory() -> RedisResult<()> {
         Ok(())
     }
 }
+}
+
+fn authenticate_user(user_key: &str) -> bool {
+    // Initialize Redis cluster pool from config file
+    {
+        let pool_result = RedisClusterPool::from_config_file();
+
+    let pool = pool_result.unwrap();
+
+    let mut conn = pool.get_connection();
+
+            let exists: Result<bool, _> = conn.sismember("LOCKULAR_NFS_USERS", user_key);
+            if let Ok(exists) = exists {
+                return exists;
+            }
+        
+    }
+
+    false
+
 }

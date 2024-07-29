@@ -1,16 +1,20 @@
 #!/bin/sh
 
 # Start Redis servers
-# redis-server /app/redis/redis-6380.conf &
-# redis-server /app/redis/redis-6381.conf &
-# redis-server /app/redis/redis-6382.conf &
+#redis-server /app/redis/redis-6380.conf &
+#redis-server /app/redis/redis-6381.conf &
+#redis-server /app/redis/redis-6382.conf &
 
 # Wait for Redis servers to start
-# sleep 5
+#sleep 5
 
 # Create the Redis cluster
 #yes | redis-cli --cluster create 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 --cluster-replicas 0 --cluster-yes
-# yes | redis-cli --cluster create 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 --cluster-replicas 0 -a 0rangerY --cluster-yes
+#yes | redis-cli --cluster create 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 --cluster-replicas 0 -a 0rangerY --cluster-yes
+
+
+# Edit the /etc/exports file to configure the NFS exports and add an entry to allow access from the client IP or all IPs
+echo "/mnt/nfs *(rw,sync,no_subtree_check)" >> /etc/exports
 
 # Start the NFS server
 /usr/local/bin/lockular_nfs /mnt/nfs &
@@ -20,8 +24,8 @@ sleep 5
 
 
 # Mount the NFS filesystem
-# mount -t nfs -o nolocks,tcp,rsize=131072,actimeo=120,port=2049,mountport=2049 localhost:/ /mount_point
-mount -t nfs -o tcp,rsize=131072,port=2049,mountport=2049 localhost:/ /mount_point
+mount -t nfs -o nolocks,tcp,rsize=131072,actimeo=120,port=2049,mountport=2049 localhost:/ ../mount_point
+# mount -t nfs -o tcp,rsize=131072,port=2049,mountport=2049 localhost:/ /mount_point
 
 # Check if the mount was successful
 if mountpoint -q /mount_point; then
