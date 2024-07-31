@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use std::ops::Bound;
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
+use std::path::Path;
 use std::sync::atomic::AtomicU64;
 //use std::io::Cursor;
 //use bytes::BufMut;
@@ -1283,10 +1284,19 @@ impl NFSFileSystem for MirrorFS {
             //self.kafka_producer.send_event(&creation_time, "File Read", &path, &user_id).await;
             
             //let _ = self.nfs_module.send_event(&creation_time, "reassembled", &path, &user_id).await;
+            // Initialize extracted with an empty string or any default value
             
+            let mut user = "";
+
+            let parts: Vec<&str> = path.split('/').collect();
+
+                if parts.len() > 2 {
+                    user = parts[1];
+                }
 
             
-            let _ = self.nfs_module.trigger_event(&creation_time, "reassembled", &path, &user_id);
+
+            let _ = self.nfs_module.trigger_event(&creation_time, "reassembled", &path, &user);
 
             
                 
@@ -1564,7 +1574,16 @@ impl NFSFileSystem for MirrorFS {
 
 
                         // Unwrap the Option inside the Mutex to access the NFSModule instance
-                        let _ = self.nfs_module.trigger_event(&creation_time, "disassembled", &path, &user_id);
+
+                        let mut user = "";
+
+                        let parts: Vec<&str> = path.split('/').collect();
+
+                            if parts.len() > 2 {
+                                user = parts[1];
+                            }
+
+                        let _ = self.nfs_module.trigger_event(&creation_time, "disassembled", &path, &user);
 
                         
                       
@@ -2182,6 +2201,7 @@ impl NFSFileSystem for MirrorFS {
         Ok((symlink_id, FileMetadata::metadata_to_fattr3(symlink_id, &metadata).await?))
         
     }
+
 
     async fn readlink(&self, id: fileid3) -> Result<nfspath3, nfsstat3> {
         
