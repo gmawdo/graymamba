@@ -1171,7 +1171,7 @@ impl NFSFileSystem for MirrorFS {
         let filename_str = OsStr::from_bytes(filename).to_str().ok_or(nfsstat3::NFS3ERR_IO)?;
 
         // Handle the root directory case
-        if dirid == 0 {
+        if dirid == 1 {
             
             let child_path = format!("/{}", filename_str);
             
