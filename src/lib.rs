@@ -126,7 +126,7 @@ pub mod nfs_module {
         tx_sender: Sender<Event>,
 
         rpc: LegacyRpcMethods<PolkadotConfig>,
-
+        enable_blockchain: bool
     }
 
     pub struct Event {
@@ -140,6 +140,8 @@ pub mod nfs_module {
         pub async fn new() -> Result<NFSModule, ConfigError> {
             let mut settings = Config::default();
             settings.merge(File::with_name("config/settings.toml"))?;
+
+            let enable_blockchain: bool = settings.get("enable_blockchain")?;
 
             let ws_url: String = settings.get("substrate.ws_url")?;
 
@@ -184,6 +186,7 @@ pub mod nfs_module {
                 signer,
                 tx_sender,
                 rpc,
+                enable_blockchain,
             })
         }
 
@@ -281,14 +284,15 @@ pub mod nfs_module {
        
 
         pub fn trigger_event(&self, creation_time: &str, event_type: &str, file_path: &str, event_key: &str) {
-            
-            let event = Event {
-                creation_time: creation_time.to_string(),
-                event_type: event_type.to_string(),
-                file_path: file_path.to_string(),
-                event_key: event_key.to_string(),
-            };
-            self.tx_sender.send(event).unwrap();
+            if self.enable_blockchain {    
+                let event = Event {
+                    creation_time: creation_time.to_string(),
+                    event_type: event_type.to_string(),
+                    file_path: file_path.to_string(),
+                    event_key: event_key.to_string(),
+                };
+                self.tx_sender.send(event).unwrap();
+            }
         }
     
 

@@ -230,8 +230,6 @@ impl MirrorFS {
         let in_memory_hashmap = Arc::new(OtherRwLock::new(HashMap::new()));
 
         // Initialize NFSModule
-        //let nfs_module_result = NFSModule::new().expect("Failed to initialize nfs_module");
-    
 
         // Wrap NFSModule in Arc for thread-safe sharing
         //let shared_nfs_module = Arc::new(nfs_module_result);
@@ -2251,10 +2249,7 @@ async fn main() {
         }
     };
     // Initialize MirrorFS with NFSModule
-   
-    // let nfs_module = nfs_module::NFSModule::new().await.expect("Failed to create NFSModule");
-    // nfs_module.trigger_event("2024-06-11T10:00:00Z", "file_created", "/path/to/file", "event_key");
-    
+       
     let fs = MirrorFS::new(nfs_module);
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), fs)
         .await

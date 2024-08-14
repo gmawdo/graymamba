@@ -14,6 +14,6 @@ prime = "16026476670980231576502085027608306461189715591806022797605606203058466
 thread_number = 5
 
 
-
+enable_blockchain = false
 #[account]
 #name = "Alice"
