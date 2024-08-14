@@ -36,7 +36,6 @@ use tracing::debug;
 //use std::fs::Permissions;
 
 use lockular_nfs::redis_pool;
-use lockular_nfs::kafka_producer;
 use lockular_nfs::nfs_module;
 //use lockular_nfs::fs_util::*;
 use lockular_nfs::nfs::*;
@@ -50,7 +49,6 @@ use lockular_nfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities}
 //mod redis_pool;
 //use redis_pool::RedisClusterPool;
 
-use crate::kafka_producer::KafkaProducer;
 use crate::redis_pool::RedisClusterPool;
 use crate::nfs_module::NFSModule;
 use crate::redis::RedisError;
@@ -209,7 +207,6 @@ pub struct MirrorFS {
     intern: SymbolTable,
     next_fileid: AtomicU64, // Atomic counter for generating unique IDs
     pool: Arc<RedisClusterPool>, // Wrap RedisClusterPool in Arc
-    //kafka_producer: Arc<KafkaProducer>, // Add KafkaProducer wrapped in Arc
     data_lock: Mutex<()>,
            // Add ShamirSecretSharing
     in_memory_hashmap: Arc<OtherRwLock<HashMap<String, String>>>, // In-Memory HashMap with RwLock for concurrency
@@ -226,13 +223,6 @@ impl MirrorFS {
 
         // Wrap the pool in Arc to share across threads/operations
         let shared_pool = Arc::new(pool_result);
-
-        // Initialize KafkaProducer
-        //let kafka_producer_result = KafkaProducer::new()
-         //   .expect("Failed to initialize KafkaProducer");
-
-        // Wrap KafkaProducer in Arc for thread-safe sharing
-        //let shared_kafka_producer = Arc::new(kafka_producer_result);
 
         // Initialize ShamirSecretSharing
         //let shamir = ShamirSS::new().expect("Failed to initialize Shamir");
@@ -254,7 +244,6 @@ impl MirrorFS {
             intern: SymbolTable::new(),
             next_fileid: AtomicU64::new(1), // Start from 1
             pool: shared_pool, // Set the shared pool
-            //kafka_producer: shared_kafka_producer,
             data_lock: Mutex::new(()),
             // shamir, // Set the ShamirSecretSharing
             in_memory_hashmap, // Initialize the in-memory HashMap
@@ -1270,9 +1259,6 @@ impl NFSFileSystem for MirrorFS {
 
             // Determine if this slice reaches the end of the file
             let eof = end >= current_data.len();
-
-
-            //Send read event to Kafka for Provenance
             
             // Get the current local date and time
             let local_date_time: DateTime<Local> = Local::now();
@@ -1553,8 +1539,6 @@ impl NFSFileSystem for MirrorFS {
                                 ("access_time_secs", epoch_seconds.to_string()),
                                 ("access_time_nsecs", epoch_nseconds.to_string()),
                             ]);
-                        
-                        //Send write event to Kafka for Provenance
                     
                         // Get the current local date and time
                         let local_date_time: DateTime<Local> = Local::now();
@@ -1662,9 +1646,6 @@ impl NFSFileSystem for MirrorFS {
             let _ = self.create_file_node("1", new_file_id, &new_file_path, &mut conn, setattr).await;
 
             let metadata = self.get_metadata_from_id(new_file_id, &mut conn).await?;
-
-
-            //Send file create event to Kafka for Provenance
             
             // Get the current local date and time
             let local_date_time: DateTime<Local> = Local::now();
@@ -1759,9 +1740,6 @@ impl NFSFileSystem for MirrorFS {
 
             
             let _ = self.create_node("1", new_file_id, &new_file_path, &mut conn).await;
-
-            
-            //Send create_exclusive event to Kafka for Provenance
             
             // Get the current local date and time
             let local_date_time: DateTime<Local> = Local::now();
@@ -1807,8 +1785,6 @@ impl NFSFileSystem for MirrorFS {
             
             
            let ftype_result = self.get_ftype(new_dir_path.clone(), &mut conn).await;
-
-            //Send remove event to Kafka for Provenance
             
             // Get the current local date and time
             let local_date_time: DateTime<Local> = Local::now();
@@ -1936,8 +1912,6 @@ impl NFSFileSystem for MirrorFS {
 
             let ftype_result = self.get_ftype(new_from_path.clone(), &mut conn).await;
             
-            //Send rename event to Kafka for Provenance
-            
             // Get the current local date and time
             let local_date_time: DateTime<Local> = Local::now();
 
@@ -2039,9 +2013,6 @@ impl NFSFileSystem for MirrorFS {
             let _ = self.create_node("0", new_dir_id, &new_dir_path, &mut conn).await;
 
             let metadata = self.get_metadata_from_id(new_dir_id, &mut conn).await?;
-            
-            
-            //Send directory create event to Kafka for Provenance
             
             // Get the current local date and time
             let local_date_time: DateTime<Local> = Local::now();
@@ -2158,9 +2129,6 @@ impl NFSFileSystem for MirrorFS {
         let _ = conn.hset::<_,_,_,()>(format!("{}/{}_id_to_path", hash_tag, user_id), symlink_id.to_string(), &symlink_path);
 
         let metadata = self.get_metadata_from_id(symlink_id, &mut conn).await?;
-        
-        
-        //Send read event to Kafka for Provenance
             
             // Get the current local date and time
             let local_date_time: DateTime<Local> = Local::now();
@@ -2199,8 +2167,6 @@ impl NFSFileSystem for MirrorFS {
             Ok(target) => target,
             Err(_) => return Err(nfsstat3::NFS3ERR_IO), // Error retrieving the symlink target
         };
-    
-        //Send read event to Kafka for Provenance
             
             // Get the current local date and time
             let local_date_time: DateTime<Local> = Local::now();
