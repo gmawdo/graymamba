@@ -17,3 +17,11 @@ thread_number = 5
 enable_blockchain = false
 #[account]
 #name = "Alice"
+
+[logging]
+level = "debug"
+#"error" => tracing::Level::ERROR,
+#"warn" => tracing::Level::WARN,
+#"info" => tracing::Level::INFO,
+#"debug" => tracing::Level::DEBUG,
+#"trace" => tracing::Level::TRACE,

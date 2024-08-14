@@ -80,7 +80,7 @@ use secretsharing::{disassemble, reassemble};
 
 //use lockular_nfs::nfs_module::pallet_template::runtime_types::node_template_runtime::Runtime;
 use tokio::runtime::Runtime;
-use config::ConfigError;
+use config::{ConfigError,Config, File as ConfigFile};
 
 
 
@@ -2210,8 +2210,29 @@ fn other_function() {
 
 #[tokio::main]
 async fn main() {
+    // Load settings from the configuration file
+    let mut settings = Config::default();
+    settings
+        .merge(ConfigFile::with_name("config/settings.toml"))
+        .expect("Failed to load configuration");
+
+    // Retrieve log level from the configuration
+    let log_level = settings
+        .get::<String>("logging.level")
+        .unwrap_or_else(|_| "warn".to_string());
+
+    // Convert string to Level
+    let level = match log_level.to_lowercase().as_str() {
+        "error" => tracing::Level::ERROR,
+        "warn" => tracing::Level::WARN,
+        "info" => tracing::Level::INFO,
+        "debug" => tracing::Level::DEBUG,
+        "trace" => tracing::Level::TRACE,
+        _ => tracing::Level::WARN, // Default to WARN if invalid
+    };
+
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
+        .with_max_level(level)
         .with_writer(std::io::stderr)
         .init();
 
