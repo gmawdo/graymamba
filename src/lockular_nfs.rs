@@ -203,7 +203,6 @@ impl FileMetadata {
 // 
 
 pub struct MirrorFS {
-    root: PathBuf,
     intern: SymbolTable,
     next_fileid: AtomicU64, // Atomic counter for generating unique IDs
     pool: Arc<RedisClusterPool>, // Wrap RedisClusterPool in Arc
@@ -216,7 +215,7 @@ pub struct MirrorFS {
 }
 
 impl MirrorFS {
-    pub fn new(root: PathBuf, nfs_module: Arc<NFSModule>) -> MirrorFS {
+    pub fn new(nfs_module: Arc<NFSModule>) -> MirrorFS {
         // Initialize the Redis cluster pool from a configuration file
         let pool_result = RedisClusterPool::from_config_file()
             .expect("Failed to create Redis cluster pool from the configuration file.");
@@ -240,7 +239,6 @@ impl MirrorFS {
         
 
         MirrorFS {
-            root,
             intern: SymbolTable::new(),
             next_fileid: AtomicU64::new(1), // Start from 1
             pool: shared_pool, // Set the shared pool
@@ -2244,12 +2242,6 @@ async fn main() {
         return;
     }
 
-
-    let path = std::env::args()
-        .nth(1)
-        .expect("must supply directory to mirror");
-    let path = PathBuf::from(path);
-
     //Initialize NFSModule
     let nfs_module = match NFSModule::new().await {
         Ok(module) => Arc::new(module),
@@ -2263,7 +2255,7 @@ async fn main() {
     // let nfs_module = nfs_module::NFSModule::new().await.expect("Failed to create NFSModule");
     // nfs_module.trigger_event("2024-06-11T10:00:00Z", "file_created", "/path/to/file", "event_key");
     
-    let fs = MirrorFS::new(path, nfs_module);
+    let fs = MirrorFS::new(nfs_module);
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), fs)
         .await
         .unwrap();
