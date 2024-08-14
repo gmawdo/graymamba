@@ -1279,11 +1279,7 @@ impl NFSFileSystem for MirrorFS {
 
             // Format the date and time using the specified pattern
             let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-
-            // Send the event with the formatted creation time, event type, path, and user ID
-            //self.kafka_producer.send_event(&creation_time, "File Read", &path, &user_id).await;
             
-            //let _ = self.nfs_module.send_event(&creation_time, "reassembled", &path, &user_id).await;
             // Initialize extracted with an empty string or any default value
             
             let mut user = "";
@@ -1566,15 +1562,6 @@ impl NFSFileSystem for MirrorFS {
                         // Format the date and time using the specified pattern
                         let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
 
-                        // Send the event with the formatted creation time, event type, path, and user ID
-                        //self.kafka_producer.send_event(&creation_time, "File write", &path, &user_id).await;
-
-
-                        //let _ = self.nfs_module.send_event(&creation_time, "disassembled", &path, &user_id).await;
-
-
-                        // Unwrap the Option inside the Mutex to access the NFSModule instance
-
                         let mut user = "";
 
                         let parts: Vec<&str> = path.split('/').collect();
@@ -1686,7 +1673,6 @@ impl NFSFileSystem for MirrorFS {
             let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
 
             // Send the event with the formatted creation time, event type, path, and user ID
-            //self.kafka_producer.send_event(&creation_time, "File Created", &new_file_path, &user_id).await;
             
             Ok((new_file_id, FileMetadata::metadata_to_fattr3(new_file_id, &metadata).await?))
 
@@ -1784,7 +1770,6 @@ impl NFSFileSystem for MirrorFS {
             let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
 
             // Send the event with the formatted creation time, event type, path, and user ID
-            //self.kafka_producer.send_event(&creation_time, "Exclusive Creation of File", &new_file_path, &user_id).await;
 
             Ok(new_file_id)
             
@@ -1837,13 +1822,10 @@ impl NFSFileSystem for MirrorFS {
             Ok(ftype) => {
                 if ftype == "0" {
                     self.remove_directory_file(&new_dir_path, &mut conn).await?;
-                    //self.kafka_producer.send_event(&creation_time, "Directory Removed", &new_dir_path, &user_id).await;
                 } else if ftype == "1" || ftype == "2"{
                     self.remove_directory_file(&new_dir_path, &mut conn).await?;
-                    //self.kafka_producer.send_event(&creation_time, "File Removed", &new_dir_path, &user_id).await;
                 } else if ftype == "2"{
                     self.remove_directory_file(&new_dir_path, &mut conn).await?;
-                    //self.kafka_producer.send_event(&creation_time, "Symlink Removed", &new_dir_path, &user_id).await;
                 }
                 else {
                     return Err(nfsstat3::NFS3ERR_IO);
@@ -1969,12 +1951,8 @@ impl NFSFileSystem for MirrorFS {
                 Ok(ftype) => {
                     if ftype == "0" {
                         self.rename_directory_file(&new_from_path, &new_to_path, &mut conn).await?;
-                        //self.kafka_producer.send_event(&creation_time, "Directory Renamed From", &new_from_path, &user_id).await;
-                        //self.kafka_producer.send_event(&creation_time, "Directory Renamed To", &new_to_path, &user_id).await;
                     } else if ftype == "1" || ftype == "2"{
                         self.rename_directory_file(&new_from_path, &new_to_path, &mut conn).await?;
-                        //self.kafka_producer.send_event(&creation_time, "File Renamed From", &new_from_path, &user_id).await;
-                        //self.kafka_producer.send_event(&creation_time, "File Renamed To", &new_to_path, &user_id).await;
                     } else {
                         return Err(nfsstat3::NFS3ERR_IO);
                     }
@@ -2070,10 +2048,6 @@ impl NFSFileSystem for MirrorFS {
 
             // Format the date and time using the specified pattern
             let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-
-            // Send the event with the formatted creation time, event type, path, and user ID
-            //self.kafka_producer.send_event(&creation_time, "Directory Created", &new_dir_path, &user_id).await;
-
 
             Ok((new_dir_id, FileMetadata::metadata_to_fattr3(new_dir_id, &metadata).await?))
             
@@ -2194,10 +2168,6 @@ impl NFSFileSystem for MirrorFS {
             // Format the date and time using the specified pattern
             let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
 
-            // Send the event with the formatted creation time, event type, path, and user ID
-            //self.kafka_producer.send_event(&creation_time, "Symlink created", &symlink_path, &user_id).await;
-
-
         Ok((symlink_id, FileMetadata::metadata_to_fattr3(symlink_id, &metadata).await?))
         
     }
@@ -2237,13 +2207,6 @@ impl NFSFileSystem for MirrorFS {
 
             // Format the date and time using the specified pattern
             let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-
-            // Send the event with the formatted creation time, event type, path, and user ID
-            // if let Some(target) = &symlink_target {
-            //     self.kafka_producer.send_event(&creation_time, "Readlink", target, &user_id).await;
-            // } 
-            
-            //self.kafka_producer.send_event(&creation_time, "Readlink", &symlink_target, &user_id).await;
 
         match symlink_target {
             Some(target) => Ok(nfsstring::from(target.into_bytes())),
