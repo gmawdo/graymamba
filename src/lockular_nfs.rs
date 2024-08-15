@@ -283,8 +283,12 @@ impl MirrorFS {
 
         let key = format!("{}/{}_path_to_id", hash_tag, user_id);
 
-        let id: fileid3 = conn
-            .hget(key, path)
+        let id_str: String = self.data_store
+        .hget(&key, path)
+        .await
+        .map_err(|_| nfsstat3::NFS3ERR_IO)?;
+    
+        let id: fileid3 = id_str.parse()
             .map_err(|_| nfsstat3::NFS3ERR_IO)?;
 
         Ok(id)
