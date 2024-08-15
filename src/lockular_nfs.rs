@@ -3,21 +3,13 @@ use std::ffi::OsStr;
 use std::sync::{Arc, RwLock};
 use tokio::sync::RwLock as OtherRwLock;
 use tokio::sync::Mutex;
-//use std::fs::Metadata;
-//use std::io::SeekFrom;
+
 use std::ops::Bound;
 use std::os::unix::ffi::OsStrExt;
 use std::sync::atomic::AtomicU64;
-//use std::io::Cursor;
-//use bytes::BufMut;
-//use bytes::buf::BufMut;
-//use base64;
 use regex::Regex;
 use chrono::{Local, DateTime};
 
-
-//use std::convert::TryInto;
-//use std::fmt;
 use std::os::unix::fs::PermissionsExt;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -26,17 +18,12 @@ use async_trait::async_trait;
 //use futures::future::ok;
 use intaglio::osstr::SymbolTable;
 use intaglio::Symbol;
-//use num_traits::ToPrimitive;
-//use tokio::fs::{File, OpenOptions};
-//use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::debug;
-//use std::fs::Permissions;
 
 use lockular_nfs::nfs_module;
 //use lockular_nfs::fs_util::*;
 use lockular_nfs::nfs::*;
 use lockular_nfs::nfs::nfsstat3;
-//use lockular_nfs::nfs::nfs_fh3;
 use lockular_nfs::tcp::{NFSTcp, NFSTcpListener};
 use lockular_nfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 
@@ -46,49 +33,24 @@ use lockular_nfs::data_store::{DataStore};
 use lockular_nfs::redis_data_store::RedisDataStore;
 
 use lockular_nfs::redis_pool;
-//use r2d2_redis_cluster::{r2d2::Pool, Commands, RedisClusterConnectionManager};
-//mod redis_pool;
-//use redis_pool::RedisClusterPool;
 
 use crate::redis_pool::RedisClusterPool;
 use crate::redis::RedisError;
 
-//use r2d2_redis_cluster::redis_cluster_rs::Connection;
-//use r2d2_redis_cluster::redis_cluster_rs::redis as other_redis;
 use r2d2_redis_cluster::RedisClusterConnectionManager;
 use r2d2::PooledConnection;
 use r2d2_redis_cluster::redis_cluster_rs::PipelineCommands;
 use r2d2_redis_cluster::redis_cluster_rs::redis::{self};
-//use r2d2_redis_cluster::redis_cluster_rs;
-//use r2d2_redis_cluster::ConnectionLike;
 use r2d2_redis_cluster::Commands;
 use r2d2_redis_cluster::RedisResult;
-use wasmtime::*;
+use redis::Iter;
 
-//use threshold_secret_sharing::shamir;
-//extern crate secretsharing; 
+use wasmtime::*;
 
 extern crate secretsharing;
 use secretsharing::{disassemble, reassemble};
 
-//use secretsharing;
-//cleause secretsharing::secretsharing::ShamirSS;
-//use lockular_nfs::secretsharing::ShamirSS;
-//use shamir_secret_sharing::ShamirSecretSharing;
-
-//use crate::nfs_module::pallet_template::runtime_types::node_template_runtime::Runtime;
-
-//use lockular_nfs::nfs_module::pallet_template::runtime_types::node_template_runtime::Runtime;
 use config::{Config, File as ConfigFile};
-
-
-
-//use r2d2_redis_cluster::Commands; 
-use redis::Iter;
-
-//use lazy_static::lazy_static;
-
-
 
 lazy_static::lazy_static! {
     //static ref USER_ID: Mutex<String> = Mutex::new(String::new());
@@ -96,29 +58,10 @@ lazy_static::lazy_static! {
 }
 
 lazy_static::lazy_static! {
-    //static ref HASH_TAG: Mutex<String> = Mutex::new(String::new());
     static ref HASH_TAG: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
 }
 
-// static USER_ID: Lazy<Arc<RwLock<String>>> = Lazy::new(|| {
-//     Arc::new(RwLock::new(String::new()))
-// });
-
-// static HASH_TAG: Lazy<Arc<RwLock<String>>> = Lazy::new(|| {
-//     Arc::new(RwLock::new(String::new()))
-// });
-
-// static USER_ID: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
-// static HASH_TAG: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
-
 #[derive(Debug, Clone)]
-// struct FSEntry {
-//     name: Vec<Symbol>,
-//     fsmeta: fattr3,
-//     /// metadata when building the children list
-//     children_meta: fattr3,
-//     children: Option<BTreeSet<fileid3>>,
-// }
 struct FileMetadata {
 
     // Common metadata fields
@@ -236,12 +179,6 @@ impl MirrorFS {
         }
     }
 
-    // pub async fn trigger_nfs_event(&self, creation_time: &str, event_type: &str, file_path: &str, user_id: &str) -> Result<(), nfsstat3> {
-    //     self.nfs_module.trigger_event(creation_time, event_type, file_path, user_id);
-    //     Ok(())
-    // }
-
-
     /// Helper function to convert a file/directory path to a Redis key
     fn path_to_key(path: &[Symbol]) -> String {
         path.iter()
@@ -290,37 +227,6 @@ impl MirrorFS {
         Ok(id)
     }
 
-    /// Set the path for a given file/directory ID
-    /*
-    async fn set_path_for_id(&self, id: fileid3, path: &str) -> Result<(), nfsstat3> {
-        
-        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-
-        let key = format!("{}/{}_id_to_path", hash_tag, user_id);
-        
-        self.data_store.hset(&key, &id.to_string(), path)
-        .await
-        .map_err(|_| nfsstat3::NFS3ERR_IO)?;
-
-        Ok(())
-    }*/
-
-    /// Set the ID for a given file/directory path
-    /*
-    async fn set_id_for_path(&self, path: &str, id: fileid3) -> Result<(), nfsstat3> {
-
-        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-
-        let key = format!("{}/{}_path_to_id", hash_tag, user_id);
-
-        self.data_store.hset(&key, &id.to_string(), path)
-        .await
-        .map_err(|_| nfsstat3::NFS3ERR_IO)?;
-
-        Ok(())
-    }
-    */
-
     /// Get the metadata for a given file/directory ID
     async fn get_metadata_from_id(&self, id: fileid3) -> Result<FileMetadata, nfsstat3> {
         let path = self.get_path_from_id(id).await?;
@@ -340,9 +246,6 @@ impl MirrorFS {
         }
 
         let metadata: HashMap<String, String> = metadata_vec.into_iter().collect();
-
-
-
         // Parse metadata fields and construct FileMetadata object
         let file_metadata = FileMetadata {
             // Extract metadata fields from the HashMap
@@ -505,10 +408,6 @@ impl MirrorFS {
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}{}", hash_tag, path);
-        
-        // let mut pipeline = redis::pipe();
-       
-        //let mut pipeline = r2d2_redis_cluster::redis_cluster_rs::pipe();
       
         let size = 0;
         let permissions = 777;
@@ -519,10 +418,6 @@ impl MirrorFS {
             .unwrap();
         let epoch_seconds = system_time.as_secs();
         let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
-
-        //pipeline.atomic();
-        // let pool_guard = shared_pool.lock().unwrap();
-        // let mut conn = pool_guard.get_connection();
         
         let _ = conn.zadd::<_,_,_,()>(format!("{}/{}_nodes", hash_tag, user_id), path, score.to_string());
        
@@ -557,38 +452,20 @@ impl MirrorFS {
         let _ = conn.hset::<_,_,_,()>(format!("{}/{}_path_to_id", hash_tag, user_id), path, fileid);
         let _ = conn.hset::<_,_,_,()>(format!("{}/{}_id_to_path", hash_tag, user_id), fileid, path);
         
-        //pipeline.query(conn)?;
-        
-
         Ok(())
             
     }
     
     async fn get_ftype(&self, path: String, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<String, nfsstat3> {
-        
-
         // Acquire lock on HASH_TAG
-        //let hash_tag = HASH_TAG.lock().unwrap();
         let hash_tag = HASH_TAG.read().unwrap().clone();
-
         let key = format!("{}{}", hash_tag, path.clone());
-
-        // let pool_guard = shared_pool.lock().unwrap();
-        // let mut conn = pool_guard.get_connection();
 
         let ftype_result = conn.hget(key, "ftype");
         let ftype: String = match ftype_result {
             Ok(k) => k,
             Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
-        };
-        // let ftype: String = match ftype_result {
-        //     Some(ftype_str) => ftype_str.trim().parse().ok(),
-        //     None => None,
-        // };
-
-        
-        
-    
+        };   
         Ok(ftype)
     }
 
@@ -598,9 +475,6 @@ impl MirrorFS {
             sorted_set_key: &str,
             conn: &mut PooledConnection<RedisClusterConnectionManager>,
         ) -> Result<bool, nfsstat3> {
-        
-        // let pool_guard = shared_pool.lock().unwrap();
-        // let mut conn = pool_guard.get_connection();
 
         let result: Result<Iter<'_, Vec<u8>>, RedisError> =
             conn.zscan_match(sorted_set_key, pattern);
@@ -2022,22 +1896,6 @@ async fn main() {
     set_user_id_and_hashtag().await;
     other_function();
     
-
-    // // Initialize Redis cluster pool from config file
-    // let pool_result = RedisClusterPool::from_config_file();
-
-    // {
-
-    // let pool = pool_result.unwrap();
-    // let mut conn = pool.get_connection();
-
-    // // Directly use the connection to set a key-value pair in Redis
-    // //let _: () = conn.set("Test", "Redis").unwrap();
-    // //println!("Key set successfully");
-
-    // }
-    
-
     // Start the IPFS server
     if let Err(e) = start_ipfs_server().await {
         eprintln!("Failed to start NFS server: {}", e);
@@ -2062,6 +1920,3 @@ async fn main() {
     listener.handle_forever().await.unwrap();
 }    //Initialize NFSModule
 
-// Test with
-// Test with
-// mount -t nfs -o nolocks,vers=3,tcp,port=12000,mountport=12000,soft 127.0.0.1:/ mnt/
