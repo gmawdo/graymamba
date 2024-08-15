@@ -368,12 +368,12 @@ impl MirrorFS {
             .unwrap();
         let epoch_seconds = system_time.as_secs();
         let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
-
-        //pipeline.atomic();
-        // let pool_guard = shared_pool.lock().unwrap();
-        // let mut conn = pool_guard.get_connection();
         
-        let _ = conn.zadd::<_,_,_,()>(format!("{}/{}_nodes", hash_tag, user_id), path, score.to_string());
+        let _ = self.data_store.zadd(
+            &format!("{}/{}_nodes", hash_tag, user_id),
+            &path,
+            score
+        );
        
         let _ = conn.hset_multiple::<_,_,_,()>(format!("{}{}", hash_tag, path), 
             &[
@@ -391,14 +391,11 @@ impl MirrorFS {
             ("fileid", &fileid.to_string())
             ]);
         if node_type == "1" {
-        let _ = conn.hset::<_,_,_,()>(format!("{}{}", hash_tag, path), "data", "");
+            let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "");
         }
-        let _ = conn.hset::<_,_,_,()>(format!("{}/{}_path_to_id", hash_tag, user_id), path, fileid);
-        let _ = conn.hset::<_,_,_,()>(format!("{}/{}_id_to_path", hash_tag, user_id), fileid, path);
+        let _ = self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string());
+        let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path);
         
-        //pipeline.query(conn)?;
-        
-
         Ok(())
             
     }
