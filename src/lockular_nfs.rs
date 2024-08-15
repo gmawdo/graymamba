@@ -35,7 +35,6 @@ use intaglio::Symbol;
 use tracing::debug;
 //use std::fs::Permissions;
 
-use lockular_nfs::redis_pool;
 use lockular_nfs::nfs_module;
 //use lockular_nfs::fs_util::*;
 use lockular_nfs::nfs::*;
@@ -44,13 +43,17 @@ use lockular_nfs::nfs::nfsstat3;
 use lockular_nfs::tcp::{NFSTcp, NFSTcpListener};
 use lockular_nfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 
+use crate::nfs_module::NFSModule;
 
+use lockular_nfs::data_store::{DataStore, DataStoreError};
+use lockular_nfs::redis_data_store::RedisDataStore;
+
+use lockular_nfs::redis_pool;
 //use r2d2_redis_cluster::{r2d2::Pool, Commands, RedisClusterConnectionManager};
 //mod redis_pool;
 //use redis_pool::RedisClusterPool;
 
 use crate::redis_pool::RedisClusterPool;
-use crate::nfs_module::NFSModule;
 use crate::redis::RedisError;
 
 //use r2d2_redis_cluster::redis_cluster_rs::Connection;

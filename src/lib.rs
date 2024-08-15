@@ -17,8 +17,8 @@ pub mod nfs;
 mod nfs_handlers;
 
 pub use redis_pool::RedisClusterPool;
-
-
+pub mod data_store;
+pub mod redis_data_store;
 
 pub mod redis_pool {
     use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
@@ -299,14 +299,6 @@ pub mod nfs_module {
 
     }
 }
-
-
-
-
-
-
-
-
 
 #[cfg(not(target_os = "windows"))]
 pub mod fs_util;

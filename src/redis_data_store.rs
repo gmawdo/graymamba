@@ -1,5 +1,6 @@
+use r2d2_redis_cluster::Commands;
 use async_trait::async_trait;
-use r2d2_redis_cluster::{redis::Commands, RedisClusterConnectionManager};
+use r2d2_redis_cluster::RedisClusterConnectionManager;
 use r2d2::Pool;
 use crate::data_store::{DataStore, DataStoreError};
 
