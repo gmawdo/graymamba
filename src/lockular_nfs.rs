@@ -263,41 +263,15 @@ impl MirrorFS {
 
     async fn get_path_from_id(&self, id: fileid3, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<String, nfsstat3> {
 
-        // Acquire lock on USER_ID
-        //let user_id = USER_ID.lock().unwrap();
-        let user_id = USER_ID.read().unwrap().clone();
-
-        // Acquire lock on HASH_TAG
-        //let hash_tag = HASH_TAG.lock().unwrap();
-        let hash_tag = HASH_TAG.read().unwrap().clone();
+        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_id_to_path", hash_tag, user_id);
-        
-        //let mut pipeline = r2d2_redis_cluster::redis_cluster_rs::pipe();
-        //let result: Result<String, RedisError> = conn.hget(key, id);
-        // let path: String = match result {
-        //     Ok(value) => value,
-        //     Err(e) => {
-        //         // Handle the error here, you can convert it to your own error type if needed
-        //         return Err(nfsstat3::NFS3ERR_IO);  // assuming you have a from function for RedisError
-        //     }
-        // };
-        
-        // let pool_guard = shared_pool.lock().unwrap();
-        // let mut conn = pool_guard.get_connection();
-
-        
+          
         let path: String = {
             conn
                 .hget(key, id)
                 .map_err(|_| nfsstat3::NFS3ERR_IO)?
         };
-
-        //let path: String = results[0].clone()?; 
-        //let path: String = pipeline.hget(key, id).query(conn);
-        // let path: String = conn
-        //     .hget(key, id)
-        //     .map_err(|_| nfsstat3::NFS3ERR_IO)?;
 
         Ok(path)
     }
@@ -305,19 +279,9 @@ impl MirrorFS {
     /// Get the ID for a given file/directory path
     async fn get_id_from_path(&self, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<fileid3, nfsstat3> {
        
-        // Acquire lock on USER_ID
-        //let user_id = USER_ID.lock().unwrap();
-        let user_id = USER_ID.read().unwrap().clone();
-
-        // Acquire lock on HASH_TAG
-        //let hash_tag = HASH_TAG.lock().unwrap();
-        let hash_tag = HASH_TAG.read().unwrap().clone();
+        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_path_to_id", hash_tag, user_id);
-
-        // let pool_guard = shared_pool.lock().unwrap();
-
-        // let mut conn = pool_guard.get_connection();
 
         let id: fileid3 = conn
             .hget(key, path)
@@ -329,13 +293,7 @@ impl MirrorFS {
     /// Set the path for a given file/directory ID
     async fn set_path_for_id(&self, id: fileid3, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> {
         
-        // Acquire lock on USER_ID
-        //let user_id = USER_ID.lock().unwrap();
-        let user_id = USER_ID.read().unwrap().clone();
-
-        // Acquire lock on HASH_TAG
-        //let hash_tag = HASH_TAG.lock().unwrap();
-        let hash_tag = HASH_TAG.read().unwrap().clone();
+        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_id_to_path", hash_tag, user_id);
         
@@ -347,14 +305,8 @@ impl MirrorFS {
 
     /// Set the ID for a given file/directory path
     async fn set_id_for_path(&self, path: &str, id: fileid3, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> {
-        
-        // Acquire lock on USER_ID
-        //let user_id = USER_ID.lock().unwrap();
-        let user_id = USER_ID.read().unwrap().clone();
 
-        // Acquire lock on HASH_TAG
-        //let hash_tag = HASH_TAG.lock().unwrap();
-        let hash_tag = HASH_TAG.read().unwrap().clone();
+        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_path_to_id", hash_tag, user_id);
         
@@ -449,13 +401,7 @@ impl MirrorFS {
 
     async fn get_nodes_in_subpath(&self, subpath: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<Vec<String>, nfsstat3> {
         
-       // Acquire lock on USER_ID
-        //let user_id = USER_ID.lock().unwrap();
-        let user_id = USER_ID.read().unwrap().clone();
-
-        // Acquire lock on HASH_TAG
-        //let hash_tag = HASH_TAG.lock().unwrap();
-        let hash_tag = HASH_TAG.read().unwrap().clone();
+        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_nodes", hash_tag, user_id);
 
@@ -514,13 +460,7 @@ impl MirrorFS {
 
     async fn create_node(&self, node_type: &str, fileid: fileid3, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> RedisResult<()> {
        
-        // Acquire lock on USER_ID
-        //let user_id = USER_ID.lock().unwrap();
-        let user_id = USER_ID.read().unwrap().clone();
-
-        // Acquire lock on HASH_TAG
-        //let hash_tag = HASH_TAG.lock().unwrap();
-        let hash_tag = HASH_TAG.read().unwrap().clone();
+        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}{}", hash_tag, path);
         
@@ -574,14 +514,7 @@ impl MirrorFS {
     
     async fn create_file_node(&self, node_type: &str, fileid: fileid3, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>, setattr: sattr3,) -> RedisResult<()> {
        
-        //println!("Setattr----{:?}", setattr);
-        // Acquire lock on USER_ID
-        //let user_id = USER_ID.lock().unwrap();
-        let user_id = USER_ID.read().unwrap().clone();
-
-        // Acquire lock on HASH_TAG
-        //let hash_tag = HASH_TAG.lock().unwrap();
-        let hash_tag = HASH_TAG.read().unwrap().clone();
+        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}{}", hash_tag, path);
         
@@ -707,13 +640,7 @@ impl MirrorFS {
     async fn remove_directory_file(&self, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> {
             
             let (user_id, hash_tag, key1, key2) = {
-                // Acquire lock on USER_ID
-                //let user_id = USER_ID.lock().unwrap();
-                let user_id = USER_ID.read().unwrap().clone();
-
-                // Acquire lock on HASH_TAG
-                //let hash_tag = HASH_TAG.lock().unwrap();
-                let hash_tag = HASH_TAG.read().unwrap().clone();
+                let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
     
                 let key1 = format!("{}/{}_id_to_path", hash_tag, user_id);
                 let key2 = format!("{}/{}_path_to_id", hash_tag, user_id);
@@ -765,32 +692,7 @@ impl MirrorFS {
     
     async fn rename_directory_file(&self, from_path: &str, to_path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> {
        
-        let (user_id, hash_tag) = {
-            // Acquire lock on USER_ID
-            //let user_id = USER_ID.lock().unwrap();
-            let user_id = USER_ID.read().unwrap().clone();
-
-            // Acquire lock on HASH_TAG
-            //let hash_tag = HASH_TAG.lock().unwrap();
-            let hash_tag = HASH_TAG.read().unwrap().clone();
-
-            (user_id, hash_tag) // Return the values needed outside the scope
-        };
-
-        // let pool_guard = shared_pool.lock().unwrap();
-        // let mut conn = pool_guard.get_connection();             
-
-
-        // Check if the new file already exists in Redis
-
-        // let to_exists: bool = match conn.zscore::<String, &str, Option<f64>>(format!("{}/{}_nodes", hash_tag, user_id), to_path) {
-        //     Ok(score) => score.is_some(),
-        //     Err(_) => false,
-        // };
-
-        // if to_exists {
-        //     return Err(nfsstat3::NFS3ERR_EXIST);
-        // }
+        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         //<<<<<<<<<<<<<<<<<<<Rename the metadata hashkey>>>>>>>>>>>>>>>>>>
         //****************************************************************
@@ -1099,6 +1001,12 @@ impl MirrorFS {
         }
         
     }
+
+    async fn get_user_id_and_hash_tag() -> (String, String) {
+        let user_id = USER_ID.read().unwrap().clone();
+        let hash_tag = HASH_TAG.read().unwrap().clone();
+        (user_id, hash_tag)
+    }
 }
 
 
@@ -1178,18 +1086,7 @@ impl NFSFileSystem for MirrorFS {
         {
             let mut conn = self.pool.get_connection();             
 
-            let (user_id, hash_tag) = {
-
-                // Acquire lock on USER_ID
-                //let user_id = USER_ID.lock().unwrap();
-                let user_id = USER_ID.read().unwrap().clone();
-
-                // Acquire lock on HASH_TAG
-                //let hash_tag = HASH_TAG.lock().unwrap();
-                let hash_tag = HASH_TAG.read().unwrap().clone();
-
-                (user_id, hash_tag) // Return the values needed outside the scope
-            };
+            let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
 
             // Get file path from Redis
@@ -1325,16 +1222,7 @@ impl NFSFileSystem for MirrorFS {
 
             let mut conn = self.pool.get_connection();             
 
-            let (user_id, hash_tag) = {
-
-                // Acquire lock on USER_ID
-                let user_id = USER_ID.read().unwrap().clone();
-
-                // Acquire lock on HASH_TAG
-                let hash_tag = HASH_TAG.read().unwrap().clone();
-
-                (user_id, hash_tag) // Return the values needed outside the scope
-            };
+            let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
             {
 
@@ -1446,16 +1334,7 @@ impl NFSFileSystem for MirrorFS {
 
             let mut conn = self.pool.get_connection();             
 
-            let (user_id, hash_tag) = {
-
-                // Acquire lock on USER_ID
-                let user_id = USER_ID.read().unwrap().clone();
-
-                // Acquire lock on HASH_TAG
-                let hash_tag = HASH_TAG.read().unwrap().clone();
-
-                (user_id, hash_tag) // Return the values needed outside the scope
-            };
+            let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
 
             // Retrieve the path using the file ID
@@ -1549,11 +1428,7 @@ impl NFSFileSystem for MirrorFS {
 
             let (user_id, hash_tag, new_file_path,new_file_id ) = {
                 
-                // Acquire lock on USER_ID
-                let user_id = USER_ID.read().unwrap().clone();
-
-                // Acquire lock on HASH_TAG
-                let hash_tag = HASH_TAG.read().unwrap().clone();
+                let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
                 
                 // Get parent directory path from Redis
                 let parent_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), dirid.to_string()).unwrap_or_default();
@@ -1635,11 +1510,7 @@ impl NFSFileSystem for MirrorFS {
 
             let (user_id, hash_tag, new_file_path,new_file_id ) = {
                 
-                // Acquire lock on USER_ID
-                let user_id = USER_ID.read().unwrap().clone();
-
-                // Acquire lock on HASH_TAG
-                let hash_tag = HASH_TAG.read().unwrap().clone();
+                let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
                 
                 // Get parent directory path from Redis
                 let parent_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), dirid.to_string()).unwrap_or_default();
@@ -1724,11 +1595,7 @@ impl NFSFileSystem for MirrorFS {
 
             let mut conn = self.pool.get_connection();             
 
-            // Acquire lock on USER_ID
-            let user_id = USER_ID.read().unwrap().clone();
-
-            // Acquire lock on HASH_TAG
-            let hash_tag = HASH_TAG.read().unwrap().clone();
+            let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
             let parent_path = format!("{}", self.get_path_from_id(dirid, &mut conn).await?);
 
@@ -1792,11 +1659,7 @@ impl NFSFileSystem for MirrorFS {
 
             let (user_id, hash_tag, new_from_path, new_to_path) = {
                 
-                // Acquire lock on USER_ID
-                let user_id = USER_ID.read().unwrap().clone();
-
-                // Acquire lock on HASH_TAG
-                let hash_tag = HASH_TAG.read().unwrap().clone();
+                let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
                 
                 let mut from_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), from_dirid.to_string()).unwrap_or_default();
                 
@@ -1911,13 +1774,7 @@ impl NFSFileSystem for MirrorFS {
             let mut conn = self.pool.get_connection();             
 
             let (user_id, hash_tag, parent_path, new_dir_path, new_dir_id) = {
-
-
-                // Acquire lock on USER_ID
-                let user_id = USER_ID.read().unwrap().clone();
-
-                // Acquire lock on HASH_TAG
-                let hash_tag = HASH_TAG.read().unwrap().clone();
+                let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
         
                 let key1 = format!("{}/{}_id_to_path", hash_tag, user_id);
 
@@ -1996,11 +1853,7 @@ impl NFSFileSystem for MirrorFS {
     
     let mut conn = self.pool.get_connection();  
 
-        // Acquire lock on USER_ID
-        let user_id = USER_ID.read().unwrap().clone();
-
-        // Acquire lock on HASH_TAG
-        let hash_tag = HASH_TAG.read().unwrap().clone();      
+    let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;   
 
     // Get the current system time for metadata timestamps
     let system_time = SystemTime::now()
@@ -2094,11 +1947,7 @@ impl NFSFileSystem for MirrorFS {
         
         let mut conn = self.pool.get_connection();  
         
-        // Acquire lock on USER_ID
-        let user_id = USER_ID.read().unwrap().clone();
-
-        // Acquire lock on HASH_TAG
-        let hash_tag = HASH_TAG.read().unwrap().clone(); 
+        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         // Retrieve the path from the file ID
         let path: Option<String> = match conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), id.to_string()) {
