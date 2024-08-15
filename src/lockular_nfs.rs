@@ -261,15 +261,16 @@ impl MirrorFS {
         permissions.mode() & 0x1FF
     }
 
-    async fn get_path_from_id(&self, id: fileid3, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<String, nfsstat3> {
+    async fn get_path_from_id(&self, id: fileid3) -> Result<String, nfsstat3> {
 
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_id_to_path", hash_tag, user_id);
           
         let path: String = {
-            conn
-                .hget(key, id)
+            self.data_store
+                .hget(&key, &id.to_string())
+                .await
                 .map_err(|_| nfsstat3::NFS3ERR_IO)?
         };
 
@@ -326,10 +327,8 @@ impl MirrorFS {
     */
 
     /// Get the metadata for a given file/directory ID
-    async fn get_metadata_from_id(&self, id: fileid3, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<FileMetadata, nfsstat3> {
-        //println!("Before path in get_metadata_from_id");
-        let path = self.get_path_from_id(id, conn).await?;
-        //println!("Path:---{},Id:-------{}", path, id);
+    async fn get_metadata_from_id(&self, id: fileid3) -> Result<FileMetadata, nfsstat3> {
+        let path = self.get_path_from_id(id).await?;
         
         // Acquire lock on HASH_TAG
         //let hash_tag = HASH_TAG.lock().unwrap();
@@ -338,30 +337,15 @@ impl MirrorFS {
         // Construct the Redis key for metadata
         let metadata_key = format!("{}{}", hash_tag, path);
 
-        // let mut pipeline = r2d2_redis_cluster::redis_cluster_rs::pipe();
-        // //let metadata: Option<HashMap<String, String>> = pipeline.hgetall(&metadata_key).query(conn);
-        // let result: Result<HashMap<String, String>, RedisError> = pipeline.hgetall(&metadata_key).query(conn);
-        // let metadata: Option<HashMap<String, String>> = match result {
-        //     Ok(value) => Some(value),
-        //     Err(e) => {
-        //         // Handle the error here, you can convert it to your own error type if needed
-        //         None  // or however you want to handle this case
-        //     }
-        // };
+        let metadata_vec = self.data_store.hgetall(&metadata_key).await
+        .map_err(|_| nfsstat3::NFS3ERR_IO)?;
 
-        // Fetch metadata from Redis
+        if metadata_vec.is_empty() {
+            return Err(nfsstat3::NFS3ERR_NOENT);
+        }
 
-        // let pool_guard = shared_pool.lock().unwrap();
-        // let mut conn = pool_guard.get_connection();
-        
-        //let metadata: Option<HashMap<String, String>> = conn.hgetall(&metadata_key).map_err(|_| nfsstat3::NFS3ERR_IO)?;
-        let metadata: Option<HashMap<String, String>> = conn.hgetall(&metadata_key).map_err(|_| nfsstat3::NFS3ERR_IO)?;
+        let metadata: HashMap<String, String> = metadata_vec.into_iter().collect();
 
-        // Check if metadata is present
-        let metadata = match metadata {
-            Some(metadata) => metadata,
-            None => return Err(nfsstat3::NFS3ERR_NOENT), // No metadata found
-        };
 
 
         // Parse metadata fields and construct FileMetadata object
@@ -1050,7 +1034,7 @@ impl NFSFileSystem for MirrorFS {
         }
     
         // Handle other directories
-        let parent_path = self.get_path_from_id(dirid, &mut conn).await?;
+        let parent_path = self.get_path_from_id(dirid).await?;
         let child_path = format!("{}/{}", parent_path, filename_str);
     
         if let Ok(child_id) = self.get_id_from_path(&child_path).await {
@@ -1070,9 +1054,9 @@ impl NFSFileSystem for MirrorFS {
         
         let mut conn = self.pool.get_connection();             
        
-        let metadata = self.get_metadata_from_id(id, &mut conn).await?;
+        let metadata = self.get_metadata_from_id(id).await?;
        
-        let path = self.get_path_from_id(id, &mut conn).await?;
+        let path = self.get_path_from_id(id).await?;
 
         debug!("Stat {:?}: {:?}", path, &metadata);
 
@@ -1169,9 +1153,8 @@ impl NFSFileSystem for MirrorFS {
 
         let mut conn = self.pool.get_connection();             
 
-        let path = self.get_path_from_id(dirid, &mut conn).await?;
+        let path = self.get_path_from_id(dirid).await?;
 
-        //let children = self.get_direct_children(&path, &mut conn).await?;
         let children_vec = self.get_direct_children(&path, &mut conn).await?;
         let children: BTreeSet<u64> = children_vec.into_iter().collect();
         
@@ -1194,9 +1177,9 @@ impl NFSFileSystem for MirrorFS {
         debug!("remaining_len : {:?}", remaining_length);
         for child_id in children.range((range_start, Bound::Unbounded)) {
             //println!("Child_Id-------{}", *child_id);
-            let child_path = self.get_path_from_id(*child_id, &mut conn).await?;
+            let child_path = self.get_path_from_id(*child_id).await?;
             let child_name = self.get_last_path_element(child_path).await;
-            let child_metadata = self.get_metadata_from_id(*child_id, &mut conn).await?;
+            let child_metadata = self.get_metadata_from_id(*child_id).await?;
 
             debug!("\t --- {:?} {:?}", child_id, child_name);
             
@@ -1326,7 +1309,7 @@ impl NFSFileSystem for MirrorFS {
 
         }
             
-            let metadata = self.get_metadata_from_id(id, &mut conn).await?;
+            let metadata = self.get_metadata_from_id(id).await?;
 
             //FileMetadata::metadata_to_fattr3(id, &metadata)
             let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
@@ -1407,7 +1390,7 @@ impl NFSFileSystem for MirrorFS {
 
                         
                       
-                        let metadata = self.get_metadata_from_id(id, &mut conn).await?;
+                        let metadata = self.get_metadata_from_id(id).await?;
                         let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
                         Ok(fattr)
                         
@@ -1490,7 +1473,7 @@ impl NFSFileSystem for MirrorFS {
 
             let _ = self.create_file_node("1", new_file_id, &new_file_path, &mut conn, setattr).await;
 
-            let metadata = self.get_metadata_from_id(new_file_id, &mut conn).await?;
+            let metadata = self.get_metadata_from_id(new_file_id).await?;
             
             // Get the current local date and time
             let local_date_time: DateTime<Local> = Local::now();
@@ -1606,7 +1589,7 @@ impl NFSFileSystem for MirrorFS {
 
             let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
-            let parent_path = format!("{}", self.get_path_from_id(dirid, &mut conn).await?);
+            let parent_path = format!("{}", self.get_path_from_id(dirid).await?);
 
             let objectname_osstr = OsStr::from_bytes(filename).to_os_string();
             
@@ -1839,7 +1822,7 @@ impl NFSFileSystem for MirrorFS {
             
             let _ = self.create_node("0", new_dir_id, &new_dir_path, &mut conn).await;
 
-            let metadata = self.get_metadata_from_id(new_dir_id, &mut conn).await?;
+            let metadata = self.get_metadata_from_id(new_dir_id).await?;
 
             Ok((new_dir_id, FileMetadata::metadata_to_fattr3(new_dir_id, &metadata).await?))
             
@@ -1945,7 +1928,7 @@ impl NFSFileSystem for MirrorFS {
         let _ = conn.hset::<_,_,_,()>(format!("{}/{}_path_to_id", hash_tag, user_id), &symlink_path, symlink_id.to_string());
         let _ = conn.hset::<_,_,_,()>(format!("{}/{}_id_to_path", hash_tag, user_id), symlink_id.to_string(), &symlink_path);
 
-        let metadata = self.get_metadata_from_id(symlink_id, &mut conn).await?;
+        let metadata = self.get_metadata_from_id(symlink_id).await?;
 
         Ok((symlink_id, FileMetadata::metadata_to_fattr3(symlink_id, &metadata).await?))
         
