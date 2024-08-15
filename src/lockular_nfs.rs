@@ -310,17 +310,20 @@ impl MirrorFS {
     }*/
 
     /// Set the ID for a given file/directory path
-    async fn set_id_for_path(&self, path: &str, id: fileid3, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> {
+    /*
+    async fn set_id_for_path(&self, path: &str, id: fileid3) -> Result<(), nfsstat3> {
 
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_path_to_id", hash_tag, user_id);
-        
-        conn.hset(key, path, id)
-            .map_err(|_| nfsstat3::NFS3ERR_IO)?;
+
+        self.data_store.hset(&key, &id.to_string(), path)
+        .await
+        .map_err(|_| nfsstat3::NFS3ERR_IO)?;
 
         Ok(())
     }
+    */
 
     /// Get the metadata for a given file/directory ID
     async fn get_metadata_from_id(&self, id: fileid3, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<FileMetadata, nfsstat3> {
