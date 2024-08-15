@@ -10,17 +10,6 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::FromPrimitive;
 use std::io::{Read, Write};
 use tracing::{debug, error, trace, warn};
-use chrono::Utc;
-
-
-
-// src/some_module.rs
-
-//use std::sync::Arc;
-
-// src/nfs_handlers.rs
-
-// The rest of your code...
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
@@ -162,11 +151,6 @@ pub async fn nfsproc3_lookup(
     debug!("nfsproc3_lookup({:?},{:?}) ", xid, dirops);
 
     let dirid = context.vfs.fh_to_id(&dirops.dir);
-    // if let Ok(id) = dirid {
-    //     println!("Directory-ID: --------------------{}", id);
-    // } else {
-    //     eprintln!("Failed to get Directory-ID");
-    // }
     // fail if unable to convert file handle
     if let Err(stat) = dirid {
         make_success_reply(xid).serialize(output)?;
@@ -1365,6 +1349,7 @@ pub async fn nfsproc3_mkdir(
         }
     }
 
+    /* 
     if let Ok((_fid, _fattr)) = res {
         if let Ok(name_str) = std::str::from_utf8(&args.dirops.name) {
             if name_str.contains("sdk") {
@@ -1382,7 +1367,7 @@ pub async fn nfsproc3_mkdir(
                 let name_str = String::from_utf8_lossy(&args.dirops.name);
             }
         }
-    }
+    } */
 
     Ok(())
 }

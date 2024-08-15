@@ -117,20 +117,15 @@ pub async fn mountproc3_mnt(
     }
 
     // Authenticate user
-    let mut utf8path = String::new();
-    if let Some(ref user_key) = user_key {
+    let utf8path = if let Some(ref user_key) = user_key {
         match authenticate_user(user_key) {
             KeyType::Usual => {
                 println!("Authenticated as a usual user key: {}", user_key);
-                // Set the default mount directory
-                utf8path = format!("/{}", user_key);
-                
+                format!("/{}", user_key)
             }
             KeyType::Special => {
                 println!("Authenticated as a special user key: {}", user_key);
-                // Set the default mount directory for special key
-                utf8path = String::from("/");
-                
+                String::from("/")
             }
             KeyType::None => {
                 make_failure_reply(xid).serialize(output)?;
@@ -140,7 +135,7 @@ pub async fn mountproc3_mnt(
     } else {
         make_failure_reply(xid).serialize(output)?;
         return Err(anyhow::anyhow!("User key not provided"));
-    }
+    };
 
     // Initialize the mount directory
     let _ = init_user_directory(&utf8path);

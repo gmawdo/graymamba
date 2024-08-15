@@ -80,22 +80,19 @@ pub mod nfs_module {
     
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::thread;
-    use subxt::{
-        PolkadotConfig,
-        utils::{AccountId32},
-        OnlineClient, 
-    };
+    use subxt::{PolkadotConfig,utils::AccountId32,OnlineClient};
     
-    use subxt_signer::sr25519::{dev, Keypair};
+    use subxt_signer::sr25519::Keypair;
+    use subxt_signer::sr25519::dev;
     use tokio::runtime::Runtime;
-    use subxt::backend::{legacy::LegacyRpcMethods, rpc::RpcClient};
+    use subxt::backend::legacy::LegacyRpcMethods;
+    use subxt::backend::rpc::RpcClient;
     
 
     #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
     pub mod pallet_template {}
 
-    type MyConfig = PolkadotConfig;
-
+    #[allow(dead_code)]
     pub struct NFSModule {
         api: OnlineClient<PolkadotConfig>,
         account_id: AccountId32,
@@ -187,9 +184,9 @@ pub mod nfs_module {
 
         async fn send_event(
             api: &OnlineClient<PolkadotConfig>,
-            rpc: &LegacyRpcMethods<PolkadotConfig>,
+            _rpc: &LegacyRpcMethods<PolkadotConfig>,
             signer: &Keypair,
-            account_id: &AccountId32,
+            _account_id: &AccountId32,
             event: &Event,
         ) -> Result<(), Box<dyn std::error::Error>> {
             println!("Preparing to send event...");
