@@ -277,7 +277,7 @@ impl MirrorFS {
     }
 
     /// Get the ID for a given file/directory path
-    async fn get_id_from_path(&self, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<fileid3, nfsstat3> {
+    async fn get_id_from_path(&self, path: &str) -> Result<fileid3, nfsstat3> {
        
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
@@ -295,17 +295,19 @@ impl MirrorFS {
     }
 
     /// Set the path for a given file/directory ID
-    async fn set_path_for_id(&self, id: fileid3, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> {
+    /*
+    async fn set_path_for_id(&self, id: fileid3, path: &str) -> Result<(), nfsstat3> {
         
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_id_to_path", hash_tag, user_id);
         
-        conn.hset(key, id, path)
-            .map_err(|_| nfsstat3::NFS3ERR_IO)?;
+        self.data_store.hset(&key, &id.to_string(), path)
+        .await
+        .map_err(|_| nfsstat3::NFS3ERR_IO)?;
 
         Ok(())
-    }
+    }*/
 
     /// Set the ID for a given file/directory path
     async fn set_id_for_path(&self, path: &str, id: fileid3, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> {
@@ -392,7 +394,7 @@ impl MirrorFS {
         let mut direct_children = Vec::new();
         for node in nodes_in_subpath {
             if self.is_direct_child(&node, path).await {
-                let id_result = self.get_id_from_path(&node, conn).await;
+                let id_result = self.get_id_from_path(&node).await;
                 match id_result {
                     Ok(id) => direct_children.push(id),
                     Err(_) => return Err(nfsstat3::NFS3ERR_IO), // Assuming RedisError is your custom error type
@@ -1037,7 +1039,7 @@ impl NFSFileSystem for MirrorFS {
             
             let child_path = format!("/{}", filename_str);
             
-            if let Ok(child_id) = self.get_id_from_path(&child_path, &mut conn).await {
+            if let Ok(child_id) = self.get_id_from_path(&child_path).await {
                 //println!("ID--------{}", child_id);
                 return Ok(child_id);
             }
@@ -1048,7 +1050,7 @@ impl NFSFileSystem for MirrorFS {
         let parent_path = self.get_path_from_id(dirid, &mut conn).await?;
         let child_path = format!("{}/{}", parent_path, filename_str);
     
-        if let Ok(child_id) = self.get_id_from_path(&child_path, &mut conn).await {
+        if let Ok(child_id) = self.get_id_from_path(&child_path).await {
             return Ok(child_id);
         }
     
