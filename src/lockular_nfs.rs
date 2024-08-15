@@ -206,6 +206,7 @@ impl FileMetadata {
 // 
 
 pub struct MirrorFS {
+    data_store: Arc<dyn DataStore>,
     intern: SymbolTable,
     next_fileid: AtomicU64, // Atomic counter for generating unique IDs
     pool: Arc<RedisClusterPool>, // Wrap RedisClusterPool in Arc
@@ -218,7 +219,7 @@ pub struct MirrorFS {
 }
 
 impl MirrorFS {
-    pub fn new(nfs_module: Arc<NFSModule>) -> MirrorFS {
+    pub fn new(data_store: Arc<dyn DataStore>, nfs_module: Arc<NFSModule>) -> MirrorFS {
         // Initialize the Redis cluster pool from a configuration file
         let pool_result = RedisClusterPool::from_config_file()
             .expect("Failed to create Redis cluster pool from the configuration file.");
@@ -226,30 +227,17 @@ impl MirrorFS {
         // Wrap the pool in Arc to share across threads/operations
         let shared_pool = Arc::new(pool_result);
 
-        // Initialize ShamirSecretSharing
-        //let shamir = ShamirSS::new().expect("Failed to initialize Shamir");
-
         // Create an empty in-memory HashMap wrapped in RwLock and then in Arc for safe concurrent access
         let in_memory_hashmap = Arc::new(OtherRwLock::new(HashMap::new()));
 
-        // Initialize NFSModule
-
-        // Wrap NFSModule in Arc for thread-safe sharing
-        //let shared_nfs_module = Arc::new(nfs_module_result);
-        
-        
-
         MirrorFS {
+            data_store,
             intern: SymbolTable::new(),
-            next_fileid: AtomicU64::new(1), // Start from 1
-            pool: shared_pool, // Set the shared pool
+            next_fileid: AtomicU64::new(1),
+            pool: shared_pool,
             data_lock: Mutex::new(()),
-            // shamir, // Set the ShamirSecretSharing
-            in_memory_hashmap, // Initialize the in-memory HashMap
-            //nfs_module: shared_nfs_module, // Initialize NFSModule
+            in_memory_hashmap,
             nfs_module,
-            
-           
         }
     }
 
@@ -440,18 +428,6 @@ impl MirrorFS {
         
     }
 
-    /// Get the children for a given directory ID
-    // async fn get_children_from_id(&self, id: fileid3, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<BTreeSet<fileid3>, nfsstat3> {
-    //     let path = self.get_path_from_id(id, conn)?;
-    
-    //     let children: BTreeSet<fileid3> = conn
-    //         .smembers(&key)
-    //         .map_err(|_| nfsstat3::NFS3ERR_IO)?;
-
-    //     Ok(children)
-    // }
-
-
     async fn get_direct_children(&self, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<Vec<fileid3>, nfsstat3> {
         // Get nodes in the specified subpath
 
@@ -520,7 +496,6 @@ impl MirrorFS {
             node.starts_with(&format!("{}{}", path, "/")) && !node[(path.len() + 1)..].contains("/")
         }
     }
-
 
     async fn get_last_path_element(&self, input: String) -> String {
         let elements: Vec<&str> = input.split("/").collect();
@@ -697,11 +672,11 @@ impl MirrorFS {
     }
 
     async fn get_member_keys(
-        &self,
-        pattern: &str,
-        sorted_set_key: &str,
-        conn: &mut PooledConnection<RedisClusterConnectionManager>,
-    ) -> Result<bool, nfsstat3> {
+            &self,
+            pattern: &str,
+            sorted_set_key: &str,
+            conn: &mut PooledConnection<RedisClusterConnectionManager>,
+        ) -> Result<bool, nfsstat3> {
         
         // let pool_guard = shared_pool.lock().unwrap();
         // let mut conn = pool_guard.get_connection();
@@ -788,8 +763,6 @@ impl MirrorFS {
         
     }
     
-
-   
     async fn rename_directory_file(&self, from_path: &str, to_path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> {
        
         let (user_id, hash_tag) = {
@@ -1052,7 +1025,6 @@ impl MirrorFS {
        
     }
 
-
     async fn get_data(&self, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Vec<u8> {
         
          // Acquire lock on USER_ID
@@ -1097,7 +1069,7 @@ impl MirrorFS {
         
     }
 
-    async fn write_data(&self, path: &str, data: Vec<u8>, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> bool {
+    async fn write_data(&self, path: &str, data: Vec<u8>, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<bool, RedisError> {
         
         // Acquire lock on HASH_TAG 
         let hash_tag = HASH_TAG.read().unwrap().clone();
@@ -1108,35 +1080,28 @@ impl MirrorFS {
             // Retrieve the existing data from the in-memory hashmap
             let mut data_block = self.in_memory_hashmap.write().await;
             data_block.insert(path.to_owned(), base64_string);
-            true // Operation successful
+            Ok(true) // Operation successful
         } else {
 
             // Apply secret sharing to the secret
-            let shares_result = disassemble(&base64_string).await;
-            match shares_result {
-                Ok(shares) => {
-                    
-                        // Write the shares to Redis
-                        let result: Result<(), RedisError> = conn.hset(format!("{}{}", hash_tag, path), "data", shares);
-                        match result {
-                            Ok(_) => return true, // Operation successful
-                            Err(e) => {
-                                eprintln!("Error writing to Redis: {}", e);
-                                return false; // Operation failed
-                            }
-                    }
-                    true // Operation successful
+            match disassemble(&base64_string).await {
+                Ok(shares) => {               
+                    // Write the shares to Redis
+                    conn.hset(format!("{}{}", hash_tag, path), "data", shares)
+                        .map(|_: i32| true) // Explicitly specify the type
+                        .map_err(|e| {
+                            eprintln!("Error writing to Redis: {}", e);
+                            e
+                        })
                 }
                 Err(e) => {
                     eprintln!("Error during dis_assembly: {}", e);
-                    false // Operation failed
+                    Err(RedisError::from((redis::ErrorKind::IoError, "Error during dis_assembly")))
                 }
             }
         }
         
     }
-    
-
 }
 
 
@@ -1521,7 +1486,7 @@ impl NFSFileSystem for MirrorFS {
             //let data_write = self.write_data(&path, contents, &mut conn);
             
                     // Retrieve the existing data from Redis
-                    if self.write_data(&path, contents.clone(), &mut conn).await {
+                    if self.write_data(&path, contents.clone(), &mut conn).await.unwrap_or(false) {
                         let system_time = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
                             .unwrap();
@@ -2263,8 +2228,10 @@ async fn main() {
         eprintln!("Failed to start NFS server: {}", e);
         return;
     }
-
-    //Initialize NFSModule
+    
+    let redis_pool = Arc::new(RedisClusterPool::from_config_file().expect("Failed to create Redis cluster pool"));
+    let inner_pool = redis_pool.pool.clone();
+    let redis_data_store = Arc::new(RedisDataStore::new(inner_pool));
     let nfs_module = match NFSModule::new().await {
         Ok(module) => Arc::new(module),
         Err(e) => {
@@ -2272,15 +2239,14 @@ async fn main() {
             return;
         }
     };
-    // Initialize MirrorFS with NFSModule
-       
-    let fs = MirrorFS::new(nfs_module);
+    let fs = MirrorFS::new(redis_data_store, nfs_module);
+
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), fs)
         .await
         .unwrap();
     listener.handle_forever().await.unwrap();
+}    //Initialize NFSModule
 
-
-}
+// Test with
 // Test with
 // mount -t nfs -o nolocks,vers=3,tcp,port=12000,mountport=12000,soft 127.0.0.1:/ mnt/

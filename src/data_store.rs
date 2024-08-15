@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 #[async_trait]
-pub trait DataStore {
+pub trait DataStore: Send + Sync {
     async fn get(&self, key: &str) -> Result<String, DataStoreError>;
     async fn set(&self, key: &str, value: &str) -> Result<(), DataStoreError>;
     async fn delete(&self, key: &str) -> Result<(), DataStoreError>;
