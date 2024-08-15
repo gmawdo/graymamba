@@ -16,6 +16,8 @@ pub trait DataStore: Send + Sync {
     async fn zadd(&self, key: &str, member: &str, score: f64) -> Result<(), DataStoreError>;
     async fn zrem(&self, key: &str, member: &str) -> Result<(), DataStoreError>;
     async fn zrangebyscore(&self, key: &str, min: f64, max: f64) -> Result<Vec<String>, DataStoreError>;
+    async fn hset_multiple(&self, key: &str, fields: &[(&str, &str)]) -> Result<(), DataStoreError>;
+
 }
 
 #[derive(Debug)]

@@ -369,12 +369,31 @@ impl MirrorFS {
         let epoch_seconds = system_time.as_secs();
         let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
         
-        let _ = self.data_store.zadd(
+        /*let _ = self.data_store.zadd(
             &format!("{}/{}_nodes", hash_tag, user_id),
             &path,
             score
-        );
+        );*/
+        let _ = conn.zadd::<_,_,_,()>(format!("{}/{}_nodes", hash_tag, user_id), path, score.to_string());
+
        
+       
+        /*        self.data_store.hset_multiple(&format!("{}{}", hash_tag, path), &[
+            ("ftype", node_type),
+            ("size", &size.to_string()),
+            ("permissions", &permissions.to_string()),
+            ("change_time_secs", &epoch_seconds.to_string()),
+            ("change_time_nsecs", &epoch_nseconds.to_string()),
+            ("modification_time_secs", &epoch_seconds.to_string()),
+            ("modification_time_nsecs", &epoch_nseconds.to_string()),
+            ("access_time_secs", &epoch_seconds.to_string()),
+            ("access_time_nsecs", &epoch_nseconds.to_string()),
+            ("birth_time_secs", &epoch_seconds.to_string()),
+            ("birth_time_nsecs", &epoch_nseconds.to_string()),
+            ("fileid", &fileid.to_string())
+        ]).await.map_err(|_| nfsstat3::NFS3ERR_IO);    */
+
+     
         let _ = conn.hset_multiple::<_,_,_,()>(format!("{}{}", hash_tag, path), 
             &[
             ("ftype", node_type),
@@ -390,11 +409,19 @@ impl MirrorFS {
             ("birth_time_nsecs", &epoch_nseconds.to_string()),
             ("fileid", &fileid.to_string())
             ]);
-        if node_type == "1" {
+
+        /*if node_type == "1" {
             let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "");
         }
         let _ = self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string());
-        let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path);
+        let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path);*/
+        
+        if node_type == "1" {
+            let _ = conn.hset::<_,_,_,()>(format!("{}{}", hash_tag, path), "data", "");
+            }
+        let _ = conn.hset::<_,_,_,()>(format!("{}/{}_path_to_id", hash_tag, user_id), path, fileid);
+        let _ = conn.hset::<_,_,_,()>(format!("{}/{}_id_to_path", hash_tag, user_id), fileid, path);
+    
         
         Ok(())
             

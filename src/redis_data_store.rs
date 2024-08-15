@@ -6,7 +6,7 @@ use r2d2::Pool;
 use crate::data_store::{DataStore, DataStoreError};
 
 pub struct RedisDataStore {
-    pool: Arc<Pool<RedisClusterConnectionManager>>,
+    pool: Arc<r2d2::Pool<r2d2_redis_cluster::RedisClusterConnectionManager>>,
 }
 
 impl RedisDataStore {
@@ -84,5 +84,10 @@ impl DataStore for RedisDataStore {
     async fn zrangebyscore(&self, key: &str, min: f64, max: f64) -> Result<Vec<String>, DataStoreError> {
         let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
         conn.zrangebyscore(key, min, max).map_err(|_| DataStoreError::OperationFailed)
+    }
+    async fn hset_multiple(&self, key: &str, fields: &[(&str, &str)]) -> Result<(), DataStoreError> {
+        let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
+        conn.hset_multiple::<_, _, _, ()>(key, fields).map_err(|_| DataStoreError::OperationFailed)?;
+        Ok(())
     }
 }
