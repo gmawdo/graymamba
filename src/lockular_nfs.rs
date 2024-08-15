@@ -7,16 +7,13 @@ use tokio::sync::Mutex;
 //use std::io::SeekFrom;
 use std::ops::Bound;
 use std::os::unix::ffi::OsStrExt;
-use std::path::PathBuf;
-use std::path::Path;
 use std::sync::atomic::AtomicU64;
 //use std::io::Cursor;
 //use bytes::BufMut;
 //use bytes::buf::BufMut;
 //use base64;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use regex::Regex;
-use chrono::{Local, DateTime, Datelike, Timelike, TimeZone};
+use chrono::{Local, DateTime};
 
 
 //use std::convert::TryInto;
@@ -45,7 +42,7 @@ use lockular_nfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities}
 
 use crate::nfs_module::NFSModule;
 
-use lockular_nfs::data_store::{DataStore, DataStoreError};
+use lockular_nfs::data_store::{DataStore};
 use lockular_nfs::redis_data_store::RedisDataStore;
 
 use lockular_nfs::redis_pool;
@@ -61,7 +58,7 @@ use crate::redis::RedisError;
 use r2d2_redis_cluster::RedisClusterConnectionManager;
 use r2d2::PooledConnection;
 use r2d2_redis_cluster::redis_cluster_rs::PipelineCommands;
-use r2d2_redis_cluster::redis_cluster_rs::redis::{self, Pipeline};
+use r2d2_redis_cluster::redis_cluster_rs::redis::{self};
 //use r2d2_redis_cluster::redis_cluster_rs;
 //use r2d2_redis_cluster::ConnectionLike;
 use r2d2_redis_cluster::Commands;
@@ -82,14 +79,12 @@ use secretsharing::{disassemble, reassemble};
 //use crate::nfs_module::pallet_template::runtime_types::node_template_runtime::Runtime;
 
 //use lockular_nfs::nfs_module::pallet_template::runtime_types::node_template_runtime::Runtime;
-use tokio::runtime::Runtime;
-use config::{ConfigError,Config, File as ConfigFile};
+use config::{Config, File as ConfigFile};
 
 
 
 //use r2d2_redis_cluster::Commands; 
 use redis::Iter;
-use ::redis::Value;
 
 //use lazy_static::lazy_static;
 
@@ -1017,7 +1012,7 @@ impl NFSFileSystem for MirrorFS {
         
         {
         
-        let mut conn = self.pool.get_connection();             
+        let conn = self.pool.get_connection();             
 
         let filename_str = OsStr::from_bytes(filename).to_str().ok_or(nfsstat3::NFS3ERR_IO)?;
 
@@ -1052,7 +1047,7 @@ impl NFSFileSystem for MirrorFS {
 
         {
         
-        let mut conn = self.pool.get_connection();             
+        let conn = self.pool.get_connection();             
        
         let metadata = self.get_metadata_from_id(id).await?;
        
@@ -1091,7 +1086,7 @@ impl NFSFileSystem for MirrorFS {
            
          
             // Retrieve the existing data from Redis
-            let mut current_data= self.get_data(&path, &mut conn).await;
+            let current_data= self.get_data(&path, &mut conn).await;
             
 
 
@@ -1653,9 +1648,9 @@ impl NFSFileSystem for MirrorFS {
                 
                 let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
                 
-                let mut from_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), from_dirid.to_string()).unwrap_or_default();
+                let from_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), from_dirid.to_string()).unwrap_or_default();
                 
-                let mut objectname_osstr = OsStr::from_bytes(&from_filename).to_os_string();
+                let objectname_osstr = OsStr::from_bytes(&from_filename).to_os_string();
             
                 let new_from_path: String;
 
@@ -1677,9 +1672,9 @@ impl NFSFileSystem for MirrorFS {
                         return Err(nfsstat3::NFS3ERR_NOENT);
                     }
 
-                let mut to_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), to_dirid.to_string()).unwrap_or_default();
+                let to_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), to_dirid.to_string()).unwrap_or_default();
                 
-                let mut objectname_osstr = OsStr::from_bytes(&to_filename).to_os_string();
+                let objectname_osstr = OsStr::from_bytes(&to_filename).to_os_string();
             
                 let new_to_path: String;
 

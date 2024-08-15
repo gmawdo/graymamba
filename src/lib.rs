@@ -77,47 +77,24 @@ pub mod redis_pool {
 
 pub mod nfs_module {
     use config::{Config, ConfigError, File};
-    use subxt::blocks;
+    
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::thread;
     use subxt::{
         PolkadotConfig,
-        utils::{AccountId32, MultiAddress},
-        OnlineClient, blocks::{Block, BlocksClient}, 
+        utils::{AccountId32},
+        OnlineClient, 
     };
-    use tokio::sync::Mutex;
+    
     use subxt_signer::sr25519::{dev, Keypair};
     use tokio::runtime::Runtime;
     use subxt::backend::{legacy::LegacyRpcMethods, rpc::RpcClient};
-    use subxt::config::DefaultExtrinsicParamsBuilder as Params;
+    
 
     #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
     pub mod pallet_template {}
 
     type MyConfig = PolkadotConfig;
-
-    // struct DisReAssemblyStorage;
-
-    // impl Address for DisReAssemblyStorage {
-    //     type Target = FSEvent;
-    //     type Keys = Vec<u8>;
-    //     type IsFetchable = subxt::utils::Yes;
-    //     type IsDefaultable = subxt::utils::Yes;
-    //     type IsIterable = subxt::utils::Yes;
-
-    //     fn pallet_name(&self) -> &str {
-    //         "PalletName"
-    //     }
-
-    //     fn entry_name(&self) -> &str {
-    //         "DisReAssembly"
-    //     }
-
-    //     fn append_entry_bytes(&self, _metadata: &Metadata, _bytes: &mut Vec<u8>) -> Result<(), subxt::ext::subxt_core::Error> {
-    //         // Add any additional bytes needed to dig into maps, if necessary
-    //         Ok(())
-    //     }
-    // }
 
     pub struct NFSModule {
         api: OnlineClient<PolkadotConfig>,
@@ -222,14 +199,6 @@ pub mod nfs_module {
             let creation_time: Vec<u8> = event.creation_time.clone().into_bytes();
             let file_path: Vec<u8> = event.file_path.clone().into_bytes();
             let event_key: Vec<u8> = event.event_key.clone().into_bytes();
-        
-            // // Log the data for debugging
-            // println!("Event Type: {:?}", event_type);
-            // println!("Creation Time: {:?}", creation_time);
-            // println!("File Path: {:?}", file_path);
-            // println!("Event Key: {:?}", event_key);
-
-          
 
             if event.event_type == "disassembled" {
 
