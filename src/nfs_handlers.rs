@@ -10,7 +10,6 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::FromPrimitive;
 use std::io::{Read, Write};
 use tracing::{debug, error, trace, warn};
-use std::time::Duration;
 use chrono::Utc;
 
 
@@ -1381,10 +1380,6 @@ pub async fn nfsproc3_mkdir(
                 //String.format("%s, %s, %s, %s", creationTime, eventType, filePath, userId)
                 
                 let name_str = String::from_utf8_lossy(&args.dirops.name);
-                let log_message = format!(
-                    "{}, {}, {}, {}",
-                    formatted_datetime, event_type, name_str, userid
-                );
             }
         }
     }

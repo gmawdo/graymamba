@@ -1026,9 +1026,6 @@ impl MirrorFS {
     }
 
     async fn get_data(&self, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Vec<u8> {
-        
-         // Acquire lock on USER_ID
-        let user_id = USER_ID.read().unwrap().clone();
 
         // Acquire lock on HASH_TAG 
         let hash_tag = HASH_TAG.read().unwrap().clone();
@@ -1977,12 +1974,6 @@ impl NFSFileSystem for MirrorFS {
             let _ = self.create_node("0", new_dir_id, &new_dir_path, &mut conn).await;
 
             let metadata = self.get_metadata_from_id(new_dir_id, &mut conn).await?;
-            
-            // Get the current local date and time
-            let local_date_time: DateTime<Local> = Local::now();
-
-            // Format the date and time using the specified pattern
-            let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
 
             Ok((new_dir_id, FileMetadata::metadata_to_fattr3(new_dir_id, &metadata).await?))
             
@@ -2093,12 +2084,6 @@ impl NFSFileSystem for MirrorFS {
         let _ = conn.hset::<_,_,_,()>(format!("{}/{}_id_to_path", hash_tag, user_id), symlink_id.to_string(), &symlink_path);
 
         let metadata = self.get_metadata_from_id(symlink_id, &mut conn).await?;
-            
-            // Get the current local date and time
-            let local_date_time: DateTime<Local> = Local::now();
-
-            // Format the date and time using the specified pattern
-            let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
 
         Ok((symlink_id, FileMetadata::metadata_to_fattr3(symlink_id, &metadata).await?))
         
@@ -2131,12 +2116,6 @@ impl NFSFileSystem for MirrorFS {
             Ok(target) => target,
             Err(_) => return Err(nfsstat3::NFS3ERR_IO), // Error retrieving the symlink target
         };
-            
-            // Get the current local date and time
-            let local_date_time: DateTime<Local> = Local::now();
-
-            // Format the date and time using the specified pattern
-            let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
 
         match symlink_target {
             Some(target) => Ok(nfsstring::from(target.into_bytes())),
