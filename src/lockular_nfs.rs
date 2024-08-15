@@ -368,10 +368,10 @@ impl MirrorFS {
         
     }
 
-    async fn get_direct_children(&self, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<Vec<fileid3>, nfsstat3> {
+    async fn get_direct_children(&self, path: &str) -> Result<Vec<fileid3>, nfsstat3> {
         // Get nodes in the specified subpath
 
-        let nodes_in_subpath: Vec<String> = self.get_nodes_in_subpath(path, conn).await?;
+        let nodes_in_subpath: Vec<String> = self.get_nodes_in_subpath(path).await?;
 
         let mut direct_children = Vec::new();
         for node in nodes_in_subpath {
@@ -387,7 +387,7 @@ impl MirrorFS {
         Ok(direct_children)
     }
 
-    async fn get_nodes_in_subpath(&self, subpath: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<Vec<String>, nfsstat3> {
+    async fn get_nodes_in_subpath(&self, subpath: &str) -> Result<Vec<String>, nfsstat3> {
         
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
@@ -402,7 +402,7 @@ impl MirrorFS {
             // ok(nodes)
             // If the subpath is the root, return nodes with a score of ROOT_DIRECTORY_SCORE
             // Await the async operation and then transform the Ok value
-            let nodes_result: Vec<String> = conn.zrangebyscore(key, 2, 2).map_err(|_| nfsstat3::NFS3ERR_IO)?;
+            let nodes_result: Vec<String> = self.data_store.zrangebyscore(&key, 2.0, 2.0).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
             Ok(nodes_result.into())
             
         } else {
@@ -415,7 +415,7 @@ impl MirrorFS {
             // ok(nodes)
             // Retrieve nodes at the specified hierarchy level
             // Await the async operation and then transform the Ok value
-            let nodes_result: Vec<String> = conn.zrangebyscore(key, end_score, end_score).map_err(|_| nfsstat3::NFS3ERR_IO)?;
+            let nodes_result: Vec<String> = self.data_store.zrangebyscore(&key, end_score, end_score).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
             Ok(nodes_result.into())
             
         }
@@ -1150,7 +1150,7 @@ impl NFSFileSystem for MirrorFS {
 
         let path = self.get_path_from_id(dirid).await?;
 
-        let children_vec = self.get_direct_children(&path, &mut conn).await?;
+        let children_vec = self.get_direct_children(&path).await?;
         let children: BTreeSet<u64> = children_vec.into_iter().collect();
         
         //println!("Children: {:?}", children.iter().collect::<Vec<_>>());

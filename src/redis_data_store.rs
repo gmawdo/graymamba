@@ -81,4 +81,8 @@ impl DataStore for RedisDataStore {
         let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
         conn.zrem(key, member).map_err(|_| DataStoreError::OperationFailed)
     }
+    async fn zrangebyscore(&self, key: &str, min: f64, max: f64) -> Result<Vec<String>, DataStoreError> {
+        let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
+        conn.zrangebyscore(key, min, max).map_err(|_| DataStoreError::OperationFailed)
+    }
 }
