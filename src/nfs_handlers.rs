@@ -17,29 +17,11 @@ use chrono::Utc;
 
 // src/some_module.rs
 
-use rdkafka::producer::{FutureProducer, FutureRecord};
-use std::sync::Arc;
+//use std::sync::Arc;
 
 // src/nfs_handlers.rs
 
-use crate::app_state::APP_STATE; // Adjust the path according to your module structure
-
-
-
 // The rest of your code...
-
-//function to send message to kafka
-pub async fn log_to_kafka(producer: Arc<FutureProducer>, message: &str) {
-    let record = FutureRecord::to("BMFS2_events")
-        .payload(message)
-        .key("");
-
-    let result = producer.send(record, Duration::from_secs(0)).await;
-    match result {
-        Ok(delivery) => println!("Message delivered: {:?}", delivery),
-        Err((e, _)) => eprintln!("Error sending message: {:?}", e),
-    }
-}
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
@@ -1403,17 +1385,6 @@ pub async fn nfsproc3_mkdir(
                     "{}, {}, {}, {}",
                     formatted_datetime, event_type, name_str, userid
                 );
-
-                // Assuming `producer` is accessible here, either passed as a parameter or through context
-                // And assuming you're within an async context
-                let producer_clone = {
-                    let app_state = APP_STATE.lock().unwrap();
-                    app_state.producer.clone()
-                };
-
-                tokio::spawn(async move {
-                    log_to_kafka(producer_clone, &log_message).await;
-                });
             }
         }
     }

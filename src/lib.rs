@@ -75,60 +75,6 @@ pub mod redis_pool {
 
 }
 
-pub mod kafka_producer {
-    use std::sync::Arc;
-    use rdkafka::producer::{FutureProducer, FutureRecord};
-    use rdkafka::ClientConfig;
-    use config::{Config, ConfigError, File};
-    use std::time::Duration;
-
-    pub struct KafkaProducer {
-        producer: Arc<FutureProducer>,
-        topic: String,
-    }
-
-    impl KafkaProducer {
-        pub fn new() -> Result<KafkaProducer, ConfigError> {
-            // Load settings from the configuration file
-            let mut settings = Config::default();
-            settings.merge(File::with_name("config/settings.toml"))?;
-
-            // Retrieve the bootstrap.servers value from the configuration
-            let brokers: String = settings.get("bootstrap.servers")?;
-            let topic: String = settings.get("kafka.topic")?;
-
-            // Configure Kafka producer
-            let producer: FutureProducer = ClientConfig::new()
-                .set("bootstrap.servers", &brokers)
-                .create()
-                .expect("Failed to create Kafka producer");
-
-            Ok(KafkaProducer {
-                producer: Arc::new(producer),
-                topic,
-            })
-        }
-
-            pub async fn send_event(&self, creation_time: &str, event_type: &str, file_path: &str, event_key: &str) {
-                
-                // Format the event data string
-                let event_data = format!("{}, {}, {}, {}", creation_time, event_type, file_path, event_key);
-
-                // Send event to Kafka
-                let record = FutureRecord::to(&self.topic)
-                    .payload(&event_data)
-                    .key(event_key);
-        
-                // Asynchronously send the record to Kafka
-                if let Err(e) = self.producer.send(record, Duration::from_secs(5)).await {
-                    eprintln!("Error sending event to Kafka: {:?}", e);
-                }
-            }
-        }
-
-}
-
-
 pub mod nfs_module {
     use config::{Config, ConfigError, File};
     use subxt::blocks;
@@ -180,7 +126,7 @@ pub mod nfs_module {
         tx_sender: Sender<Event>,
 
         rpc: LegacyRpcMethods<PolkadotConfig>,
-
+        enable_blockchain: bool
     }
 
     pub struct Event {
@@ -194,6 +140,8 @@ pub mod nfs_module {
         pub async fn new() -> Result<NFSModule, ConfigError> {
             let mut settings = Config::default();
             settings.merge(File::with_name("config/settings.toml"))?;
+
+            let enable_blockchain: bool = settings.get("enable_blockchain")?;
 
             let ws_url: String = settings.get("substrate.ws_url")?;
 
@@ -238,6 +186,7 @@ pub mod nfs_module {
                 signer,
                 tx_sender,
                 rpc,
+                enable_blockchain,
             })
         }
 
@@ -335,14 +284,15 @@ pub mod nfs_module {
        
 
         pub fn trigger_event(&self, creation_time: &str, event_type: &str, file_path: &str, event_key: &str) {
-            
-            let event = Event {
-                creation_time: creation_time.to_string(),
-                event_type: event_type.to_string(),
-                file_path: file_path.to_string(),
-                event_key: event_key.to_string(),
-            };
-            self.tx_sender.send(event).unwrap();
+            if self.enable_blockchain {    
+                let event = Event {
+                    creation_time: creation_time.to_string(),
+                    event_type: event_type.to_string(),
+                    file_path: file_path.to_string(),
+                    event_key: event_key.to_string(),
+                };
+                self.tx_sender.send(event).unwrap();
+            }
         }
     
 
@@ -363,8 +313,6 @@ pub mod fs_util;
 
 pub mod tcp;
 pub mod vfs;
-
-pub mod app_state;
 
 
 

@@ -6,12 +6,6 @@ cluster_nodes = ["redis://:0rangerY@127.0.0.1:6380", "redis://:0rangerY@127.0.0.
 #Substrate-Blockchain Configuration
 substrate.ws_url = "ws://127.0.0.1:9944"
 
-# Kafka Configuration
-bootstrap.servers = "127.0.0.1:9092"
-#bootstrap.servers = "tcp-apps.lockular.in:9092"  # Specifye Kafka bootstrap server here
-kafka.topic = "nfs_events"  # Specify Kafka topic name here
-
-
 #Secret Sharing Configuration
 chunk_size = 48
 threshold = 2
@@ -20,6 +14,14 @@ prime = "16026476670980231576502085027608306461189715591806022797605606203058466
 thread_number = 5
 
 
-
+enable_blockchain = false
 #[account]
 #name = "Alice"
+
+[logging]
+level = "debug"
+#"error" => tracing::Level::ERROR,
+#"warn" => tracing::Level::WARN,
+#"info" => tracing::Level::INFO,
+#"debug" => tracing::Level::DEBUG,
+#"trace" => tracing::Level::TRACE,

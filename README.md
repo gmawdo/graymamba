@@ -93,11 +93,6 @@ Steps
  		$ `cargo build —release`
 		$ `scripts/run_nodes.sh`
 
-5. Configure Kafka and Zookeeper:
-      - $ `brew install kafka`
-      - $ `brew services start kafka`
-      - $ `brew services start zookeeper`
-
 5. Now to Build the filesystem open terminal at secure-provenance-filesystem folder and run:
 
        `cargo build --bin lockular_nfs --features="demo" --release`
