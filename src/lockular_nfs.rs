@@ -531,20 +531,15 @@ impl MirrorFS {
         
     }
     
-    async fn rename_directory_file(&self, from_path: &str, to_path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> {
-       
+    async fn rename_directory_file(&self, from_path: &str, to_path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> { 
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-
-        //<<<<<<<<<<<<<<<<<<<Rename the metadata hashkey>>>>>>>>>>>>>>>>>>
-        //****************************************************************
-
-        let _ = conn.rename::<_,()>(format!("{}{}", hash_tag, from_path), format!("{}{}", hash_tag, to_path));
-
-
-
-
-        //<<<<<<<<<<<<<<<<<<<Rename entries in hashset>>>>>>>>>>>>>>>>>>
-        //**************************************************************
+        //Rename the metadata hashkey
+        //let _ = conn.rename::<_,()>(format!("{}{}", hash_tag, from_path), format!("{}{}", hash_tag, to_path));
+        let _ = self.data_store.rename(
+            &format!("{}{}", hash_tag, from_path),
+            &format!("{}{}", hash_tag, to_path)
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+        //Rename entries in hashset
 
         // Create a pattern to match all keys under the old path
         let pattern = format!("{}{}{}", hash_tag, from_path, "/*");
@@ -563,23 +558,24 @@ impl MirrorFS {
             // Replace only the first occurrence of old_path with new_path
             let new_key = re.replace(&key, to_path).to_string();
             // Rename the key in Redis
-            let _ = conn.rename::<_,()>(key, new_key); 
+            //let _ = conn.rename::<_,()>(key, new_key);
+            let _ = self.data_store.rename(&key, &new_key)
+            .await
+            .map_err(|_| nfsstat3::NFS3ERR_IO);
         } 
-
-
-
-        //<<<<<<<<<<<<<<<<<<<Rename entries in sorted set (_nodes)>>>>>>>>>>>>>>>>>>
-        //**************************************************************************
-
+        //Rename entries in sorted set (_nodes)
         let key = format!("{}/{}_nodes", hash_tag, user_id);
 
         // Retrieve all members of the sorted set with their scores
-        let members_result = conn.zrange_withscores(&key, 0, -1);
+        //let members_result = conn.zrange_withscores(&key, 0, -1);
+        let members_result = self.data_store.zrange_withscores(&key, 0, -1)
+        .await
+        .map_err(|_| nfsstat3::NFS3ERR_IO);
+
         let members: Vec<(String, f64)> = match members_result {
             Ok(k) => k,
-            Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
+            Err(_) => return Err(nfsstat3::NFS3ERR_IO),
         };
-
 
         // Regex to ensure only the first occurrence of old_path is replaced
         let re = Regex::new(&regex::escape(from_path)).unwrap();
@@ -592,11 +588,21 @@ impl MirrorFS {
                 let new_score: f64 = to_path.matches('/').count() as f64 + 1.0; 
 
                 // The entry is the directory itself, just replace it
-                let zrem_result = conn.zrem::<_,_,()>(&key, &directory_path);
+                //let zrem_result = conn.zrem::<_,_,()>(&key, &directory_path);
+                let zrem_result = self.data_store.zrem(&key, &directory_path)
+                .await
+                .map_err(|_| nfsstat3::NFS3ERR_IO);
+
                 if zrem_result.is_err() {
                     return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
                 }
-                let zadd_result = conn.zadd::<_,_,_,()>(&key, to_path, new_score.to_string());
+                //let zadd_result = conn.zadd::<_,_,_,()>(&key, to_path, new_score.to_string());
+                let zadd_result = self.data_store.zadd(
+                    &key,
+                    to_path,
+                    new_score
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
                 if zadd_result.is_err() {
                     return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
                 }
@@ -613,31 +619,40 @@ impl MirrorFS {
                 if new_directory_path != directory_path {
                     
                     // If the new path doesn't exist, update it
-                    let zrem_result = conn.zrem::<_,_,()>(&key, &directory_path);
+                    //let zrem_result = conn.zrem::<_,_,()>(&key, &directory_path);
+                    let zrem_result = self.data_store.zrem(&key, &directory_path)
+                    .await
+                    .map_err(|_| nfsstat3::NFS3ERR_IO);
+
                     if zrem_result.is_err() {
-                        return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                        return Err(nfsstat3::NFS3ERR_IO);
                     }
-                    let zadd_result = conn.zadd::<_,_,_,()>(&key, &new_directory_path, new_score.to_string());
+                    //let zadd_result = conn.zadd::<_,_,_,()>(&key, &new_directory_path, new_score.to_string());
+                    let zadd_result = self.data_store.zadd(
+                        &key,
+                        &new_directory_path,
+                        new_score
+                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
                     if zadd_result.is_err() {
-                        return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                        return Err(nfsstat3::NFS3ERR_IO);  
                     }
                 }
             }
         }
-
-
-
-        //<<<<<<<<<<<<<<<<<<< Rename entries in path_to_id and id_to_path hash >>>>>>>>>>>>>>>>>>
-        //**********************************************************************
-
+        //Rename entries in path_to_id and id_to_path hash
         let path_to_id_key = format!("{}/{}_path_to_id", hash_tag, user_id);
         let id_to_path_key = format!("{}/{}_id_to_path", hash_tag, user_id);
 
         // Retrieve all the members of path_to_id hash
-        let fields_result = conn.hgetall(&path_to_id_key);
+        //let fields_result = conn.hgetall(&path_to_id_key);
+        let fields_result = self.data_store.hgetall(&path_to_id_key)
+        .await
+        .map_err(|_| nfsstat3::NFS3ERR_IO);
+
         let fields: Vec<(String, String)> = match fields_result {
             Ok(k) => k,
-            Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
+            Err(_) => return Err(nfsstat3::NFS3ERR_IO),  
         };
 
 
@@ -645,16 +660,6 @@ impl MirrorFS {
         let re = Regex::new(&regex::escape(from_path)).unwrap();
 
         for (directory_path, value) in fields {
-
-            // //create new fileid
-            // let new_file_id: fileid3 = match conn.incr(format!("{}/{}_next_fileid", hash_tag, user_id), 1) {
-            //     Ok(id) => id,
-            //     Err(redis_error) => {
-            //         // Handle the RedisError and convert it to nfsstat3
-            //         return Err(nfsstat3::NFS3ERR_IO); // You can choose the appropriate nfsstat3 error here
-            //     }
-            // };
-
             let system_time = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap();
@@ -662,92 +667,64 @@ impl MirrorFS {
             let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
 
             if directory_path == to_path {
+                //let hdel_result_id_to_path = conn.hdel::<_,_,()>(&id_to_path_key, value.clone());
+                let hdel_result_id_to_path = self.data_store.hdel(
+                    &id_to_path_key,
+                    &value
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
-                let hdel_result_id_to_path = conn.hdel::<_,_,()>(&id_to_path_key, value.clone());
                 if hdel_result_id_to_path.is_err() {
-                    return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                    return Err(nfsstat3::NFS3ERR_IO);
                 }
-
             }
 
             if directory_path == from_path {
+                // The entry is the directory itself, just replace it      
+                //let hdel_result_path_to_id = conn.hdel::<_,_,()>(&path_to_id_key, &directory_path);
+                let hdel_result_path_to_id = self.data_store.hdel(
+                    &path_to_id_key,
+                    &directory_path
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
-               
-                // The entry is the directory itself, just replace it
-                    
-                let hdel_result_path_to_id = conn.hdel::<_,_,()>(&path_to_id_key, &directory_path);
                 if hdel_result_path_to_id.is_err() {
-                    return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                    return Err(nfsstat3::NFS3ERR_IO); 
                 }
 
-                // let hset_result_path_to_id = conn.hset::<_,_,_,()>(&path_to_id_key, to_path, new_file_id);
-                let hset_result_path_to_id = conn.hset::<_,_,_,()>(&path_to_id_key, to_path, value.to_string());
+                //let hset_result_path_to_id = conn.hset::<_,_,_,()>(&path_to_id_key, to_path, value.to_string());
+                let hset_result_path_to_id = self.data_store.hset(
+                    &path_to_id_key,
+                    to_path,
+                    &value.to_string()
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
                 if hset_result_path_to_id.is_err() {
-                    return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                    return Err(nfsstat3::NFS3ERR_IO); 
                 }
 
-                let hdel_result_id_to_path = conn.hdel::<_,_,()>(&id_to_path_key, value.clone());
+                //let hdel_result_id_to_path = conn.hdel::<_,_,()>(&id_to_path_key, value.clone());
+                let hdel_result_id_to_path = self.data_store.hdel(
+                    &id_to_path_key,
+                    &value
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                 if hdel_result_id_to_path.is_err() {
-                    return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                    return Err(nfsstat3::NFS3ERR_IO); 
                 }
 
+                //let hset_result_id_to_path = conn.hset::<_,_,_,()>(&id_to_path_key, value.to_string(), to_path);
+                let hset_result_id_to_path = self.data_store.hset(
+                    &id_to_path_key,
+                    &value.to_string(),
+                    to_path
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
-                // let hset_result_id_to_path = conn.hset::<_,_,_,()>(&id_to_path_key, new_file_id, to_path);
-                let hset_result_id_to_path = conn.hset::<_,_,_,()>(&id_to_path_key, value.to_string(), to_path);
                 if hset_result_id_to_path.is_err() {
-                    return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                    return Err(nfsstat3::NFS3ERR_IO);
                 }
 
                 
-                let _ = conn.hset_multiple::<_,_,_,()>(format!("{}{}", hash_tag, to_path), 
+                //let _ = conn.hset_multiple::<_,_,_,()>(format!("{}{}", hash_tag, to_path), 
+                let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, to_path),
                     &[
-                    ("change_time_secs", &epoch_seconds.to_string()),
-                    ("change_time_nsecs", &epoch_nseconds.to_string()),
-                    ("modification_time_secs", &epoch_seconds.to_string()),
-                    ("modification_time_nsecs", &epoch_nseconds.to_string()),
-                    ("access_time_secs", &epoch_seconds.to_string()),
-                    ("access_time_nsecs", &epoch_nseconds.to_string()),
-                    // ("fileid", &new_file_id.to_string())
-                    ("fileid", &value.to_string())
-                    ]);
-                
-                
-                //let _ = conn.hset::<_,_,_,()>(format!("{}{}", hash_tag, to_path), "fileid", new_file_id);
-                
-            } else if directory_path.starts_with(&(from_path.to_owned() + "/")) {
-                
-                // The entry is a subdirectory or file
-
-                let new_directory_path = re.replace(&directory_path, to_path).to_string();
-
-                // Check if the new path already exists in the path_to_id hash
-                if new_directory_path != directory_path {
-                    
-                    // If the new path doesn't exist, update it
-                    let hdel_result_path_to_id = conn.hdel::<_,_,()>(&path_to_id_key, &directory_path);
-                    if hdel_result_path_to_id.is_err() {
-                        return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
-                    }
-
-                    // let hset_result_path_to_id = conn.hset::<_,_,_,()>(&path_to_id_key, &new_directory_path, new_file_id);
-                    let hset_result_path_to_id = conn.hset::<_,_,_,()>(&path_to_id_key, &new_directory_path, value.to_string());
-                    if hset_result_path_to_id.is_err() {
-                        return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
-                    }
-
-                    let hdel_result_id_to_path = conn.hdel::<_,_,()>(&id_to_path_key, value.clone());
-                    if hdel_result_id_to_path.is_err() {
-                        return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
-                    }
-
-                    // let hset_result_id_to_path = conn.hset::<_,_,_,()>(&id_to_path_key, new_file_id, &new_directory_path);
-                    let hset_result_id_to_path = conn.hset::<_,_,_,()>(&id_to_path_key, value.to_string(), &new_directory_path);
-                    if hset_result_id_to_path.is_err() {
-                        return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
-                    }
-
-                    let _ = conn.hset_multiple::<_,_,_,()>(format!("{}{}", hash_tag, new_directory_path), 
-                        &[
                         ("change_time_secs", &epoch_seconds.to_string()),
                         ("change_time_nsecs", &epoch_nseconds.to_string()),
                         ("modification_time_secs", &epoch_seconds.to_string()),
@@ -756,16 +733,76 @@ impl MirrorFS {
                         ("access_time_nsecs", &epoch_nseconds.to_string()),
                         // ("fileid", &new_file_id.to_string())
                         ("fileid", &value.to_string())
-                        ]);
+                    ])
+                .await.map_err(|_| nfsstat3::NFS3ERR_IO);
+                
+            } else if directory_path.starts_with(&(from_path.to_owned() + "/")) {            
+                // The entry is a subdirectory or file
+                let new_directory_path = re.replace(&directory_path, to_path).to_string();
 
-                    //let _ = conn.hset::<_,_,_,()>(format!("{}{}", hash_tag, new_directory_path), "fileid", new_file_id);
+                // Check if the new path already exists in the path_to_id hash
+                if new_directory_path != directory_path {
+                    
+                    // If the new path doesn't exist, update it
+                    //let hdel_result_path_to_id = conn.hdel::<_,_,()>(&path_to_id_key, &directory_path);
+                    let hdel_result_path_to_id = self.data_store.hdel(
+                        &path_to_id_key,
+                        &directory_path
+                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
+                    if hdel_result_path_to_id.is_err() {
+                        return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                    }
+
+                    //let hset_result_path_to_id = conn.hset::<_,_,_,()>(&path_to_id_key, &new_directory_path, value.to_string());
+                    let hset_result_path_to_id = self.data_store.hset(
+                        &path_to_id_key,
+                        &new_directory_path,
+                        &value.to_string()
+                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
+                    if hset_result_path_to_id.is_err() {
+                        return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                    }
+
+                    //let hdel_result_id_to_path = conn.hdel::<_,_,()>(&id_to_path_key, value.clone());
+                    let hdel_result_id_to_path = self.data_store.hdel(
+                        &id_to_path_key,
+                        &value
+                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
+                    if hdel_result_id_to_path.is_err() {
+                        return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                    }
+
+                    //let hset_result_id_to_path = conn.hset::<_,_,_,()>(&id_to_path_key, value.to_string(), &new_directory_path);
+                    let hset_result_id_to_path = self.data_store.hset(
+                        &id_to_path_key,
+                        &value.to_string(),
+                        &new_directory_path
+                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
+                    if hset_result_id_to_path.is_err() {
+                        return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
+                    }
+
+                    //let _ = conn.hset_multiple::<_,_,_,()>(format!("{}{}", hash_tag, new_directory_path), 
+                    let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, new_directory_path),
+                        &[
+                            ("change_time_secs", &epoch_seconds.to_string()),
+                            ("change_time_nsecs", &epoch_nseconds.to_string()),
+                            ("modification_time_secs", &epoch_seconds.to_string()),
+                            ("modification_time_nsecs", &epoch_nseconds.to_string()),
+                            ("access_time_secs", &epoch_seconds.to_string()),
+                            ("access_time_nsecs", &epoch_nseconds.to_string()),
+                            // ("fileid", &new_file_id.to_string())
+                            ("fileid", &value.to_string())
+                        ])
+                    .await.map_err(|_| nfsstat3::NFS3ERR_IO);
                 }
             }
         }
-
-
-        Ok(())
-       
+        Ok(())   
     }
 
     async fn get_data(&self, path: &str) -> Vec<u8> {
