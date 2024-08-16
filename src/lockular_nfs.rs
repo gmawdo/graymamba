@@ -182,15 +182,6 @@ impl MirrorFS {
         }
     }
 
-    /// Helper function to convert a file/directory path to a Redis key
-    /* 
-    fn path_to_key(path: &[Symbol]) -> String {
-        path.iter()
-            .map(|sym| format!("{:?}", sym)) // Use Debug formatting
-            .collect::<Vec<_>>()
-            .join("/")
-    }*/
-
     fn mode_unmask_setattr(mode: u32) -> u32 {
         let mode = mode | 0x80;
         let permissions = std::fs::Permissions::from_mode(mode);
@@ -356,12 +347,6 @@ impl MirrorFS {
     async fn create_node(&self, node_type: &str, fileid: fileid3, path: &str) -> RedisResult<()> {
        
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-
-        //let key = format!("{}{}", hash_tag, path);
-        
-        // let mut pipeline = redis::pipe();
-       
-        //let mut pipeline = r2d2_redis_cluster::redis_cluster_rs::pipe();
       
         let size = 0;
         let permissions = 777;
@@ -373,7 +358,6 @@ impl MirrorFS {
         let epoch_seconds = system_time.as_secs();
         let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
         
-        //let _ = conn.zadd::<_,_,_,()>(format!("{}/{}_nodes", hash_tag, user_id), path, score.to_string());
         let _ = self.data_store.zadd(
             &format!("{}/{}_nodes", hash_tag, user_id),
             &path,
@@ -398,12 +382,9 @@ impl MirrorFS {
         ]).await.map_err(|_| nfsstat3::NFS3ERR_IO);
         
         if node_type == "1" {
-            //let _ = conn.hset::<_,_,_,()>(format!("{}{}", hash_tag, path), "data", "");
             let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "").await.map_err(|_| nfsstat3::NFS3ERR_IO);
             }
-        //let _ = conn.hset::<_,_,_,()>(format!("{}/{}_path_to_id", hash_tag, user_id), path, fileid);
         let _ = self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string()).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-        //let _ = conn.hset::<_,_,_,()>(format!("{}/{}_id_to_path", hash_tag, user_id), fileid, path);
         let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path).await.map_err(|_| nfsstat3::NFS3ERR_IO);
     
         
