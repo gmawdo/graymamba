@@ -392,14 +392,11 @@ impl MirrorFS {
             
     }
     
-    async fn create_file_node(&self, node_type: &str, fileid: fileid3, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>, setattr: sattr3,) -> RedisResult<()> {
+    async fn create_file_node(&self, node_type: &str, fileid: fileid3, path: &str, setattr: sattr3,) -> RedisResult<()> {
        
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-
-        //let key = format!("{}{}", hash_tag, path);
       
         let size = 0;
-        //let permissions = 777;
         let score: f64 = path.matches('/').count() as f64 + 1.0;  
         
         let system_time = SystemTime::now()
@@ -408,10 +405,14 @@ impl MirrorFS {
         let epoch_seconds = system_time.as_secs();
         let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
         
-        let _ = conn.zadd::<_,_,_,()>(format!("{}/{}_nodes", hash_tag, user_id), path, score.to_string());
-       
-        let _ = conn.hset_multiple::<_,_,_,()>(format!("{}{}", hash_tag, path), 
-            &[
+        let _ = self.data_store.zadd(
+            &format!("{}/{}_nodes", hash_tag, user_id),
+            &path,
+            score
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
+        let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path), 
+    &[
             ("ftype", node_type),
             ("size", &size.to_string()),
             //("permissions", &permissions.to_string()),
@@ -424,22 +425,23 @@ impl MirrorFS {
             ("birth_time_secs", &epoch_seconds.to_string()),
             ("birth_time_nsecs", &epoch_nseconds.to_string()),
             ("fileid", &fileid.to_string())
-            ]);
+            ]).await.map_err(|_| nfsstat3::NFS3ERR_IO);
             if let set_mode3::mode(mode) = setattr.mode {
                 debug!(" -- set permissions {:?} {:?}", path, mode);
                 let mode_value = Self::mode_unmask_setattr(mode);
     
-                // Update the permissions metadata of the file in Redis
-                let _ = conn.hset::<_, _, _, ()>(
-                    format!("{}{}", hash_tag, path),
+                // Update the permissions metadata of the file
+                let _ = self.data_store.hset(
+                    &format!("{}{}", hash_tag, path),
                     "permissions",
-                    &mode_value.to_string(),
-                );
+                    &mode_value.to_string()
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                 
             }
-        let _ = conn.hset::<_,_,_,()>(format!("{}{}", hash_tag, path), "data", "");
-        let _ = conn.hset::<_,_,_,()>(format!("{}/{}_path_to_id", hash_tag, user_id), path, fileid);
-        let _ = conn.hset::<_,_,_,()>(format!("{}/{}_id_to_path", hash_tag, user_id), fileid, path);
+        let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "").await.map_err(|_| nfsstat3::NFS3ERR_IO);
+        let _ = self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string()).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+        let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
         
         Ok(())
             
@@ -1323,7 +1325,7 @@ impl NFSFileSystem for MirrorFS {
             }
 
 
-            let _ = self.create_file_node("1", new_file_id, &new_file_path, &mut conn, setattr).await;
+            let _ = self.create_file_node("1", new_file_id, &new_file_path, setattr).await;
 
             let metadata = self.get_metadata_from_id(new_file_id).await?;
             
