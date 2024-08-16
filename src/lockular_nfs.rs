@@ -28,7 +28,7 @@ use lockular_nfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities}
 
 use crate::nfs_module::NFSModule;
 
-use lockular_nfs::data_store::DataStore;
+use lockular_nfs::data_store::{DataStore,DataStoreError};
 use lockular_nfs::redis_data_store::RedisDataStore;
 
 use lockular_nfs::redis_pool;
@@ -50,14 +50,9 @@ use secretsharing::{disassemble, reassemble};
 use config::{Config, File as ConfigFile};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-lazy_static::lazy_static! {
-    //static ref USER_ID: Mutex<String> = Mutex::new(String::new());
-    static ref USER_ID: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
-}
+lazy_static::lazy_static! {static ref USER_ID: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));}
 
-lazy_static::lazy_static! {
-    static ref HASH_TAG: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
-}
+lazy_static::lazy_static! {static ref HASH_TAG: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));}
 
 #[derive(Debug, Clone)]
 struct FileMetadata {
@@ -138,7 +133,6 @@ impl FileMetadata {
         })
     }
 }
-
 
 //#[derive(Debug)]
 // 
@@ -280,7 +274,6 @@ impl MirrorFS {
                 }
             }
         }
-
         Ok(direct_children)
     }
 
@@ -460,11 +453,7 @@ impl MirrorFS {
         Ok(ftype)
     }
 
-    async fn get_member_keys(
-            &self,
-            pattern: &str,
-            sorted_set_key: &str
-        ) -> Result<bool, nfsstat3> {
+    async fn get_member_keys(&self, pattern: &str, sorted_set_key: &str) -> Result<bool, nfsstat3> {
 
         match self.data_store.zscan_match(sorted_set_key, pattern).await {
             Ok(iter) => {
@@ -827,7 +816,7 @@ impl MirrorFS {
         
     }
 
-    async fn write_data(&self, path: &str, data: Vec<u8>, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<bool, RedisError> {
+    async fn write_data(&self, path: &str, data: Vec<u8>) -> Result<bool, DataStoreError> {
         
         // Acquire lock on HASH_TAG 
         let hash_tag = HASH_TAG.read().unwrap().clone();
@@ -845,16 +834,26 @@ impl MirrorFS {
             match disassemble(&base64_string).await {
                 Ok(shares) => {               
                     // Write the shares to Redis
-                    conn.hset(format!("{}{}", hash_tag, path), "data", shares)
+                    /*conn.hset(format!("{}{}", hash_tag, path), "data", shares)
                         .map(|_: i32| true) // Explicitly specify the type
                         .map_err(|e| {
                             eprintln!("Error writing to Redis: {}", e);
                             e
+                        })*/
+                        self.data_store.hset(
+                            &format!("{}{}", hash_tag, path),
+                            "data",
+                            &shares
+                        ).await
+                        .map(|_| true)
+                        .map_err(|_e| {
+                            //eprintln!("Error writing to DataStore: {}", e);
+                            DataStoreError::OperationFailed // Or use an appropriate error type
                         })
-                }
+                },
                 Err(e) => {
-                    eprintln!("Error during dis_assembly: {}", e);
-                    Err(RedisError::from((redis::ErrorKind::IoError, "Error during dis_assembly")))
+                    eprintln!("Error during disassembly: {}", e);
+                    Err(DataStoreError::OperationFailed)
                 }
             }
         }
@@ -868,7 +867,6 @@ impl MirrorFS {
     }
 }
 
-
 #[async_trait]
 impl NFSFileSystem for MirrorFS {
     fn root_dir(&self) -> fileid3 {
@@ -877,8 +875,7 @@ impl NFSFileSystem for MirrorFS {
     fn capabilities(&self) -> VFSCapabilities {
         VFSCapabilities::ReadWrite
     }
-
-    
+ 
     async fn lookup(&self, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3> {
         
         {           
@@ -909,7 +906,6 @@ impl NFSFileSystem for MirrorFS {
         }
     }
     
-    
     async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3> {
 
       
@@ -930,12 +926,7 @@ impl NFSFileSystem for MirrorFS {
         
     }
 
-    async fn read(
-        &self,
-        id: fileid3,
-        offset: u64,
-        count: u32,
-    ) -> Result<(Vec<u8>, bool), nfsstat3> {
+    async fn read(&self, id: fileid3, offset: u64, count: u32) -> Result<(Vec<u8>, bool), nfsstat3> {
 
         
         {
@@ -1003,12 +994,7 @@ impl NFSFileSystem for MirrorFS {
    
     }
 
-    async fn readdir(
-        &self,
-        dirid: fileid3,
-        start_after: fileid3,
-        max_entries: usize,
-    ) -> Result<ReadDirResult, nfsstat3> {
+    async fn readdir(&self, dirid: fileid3, start_after: fileid3, max_entries: usize) -> Result<ReadDirResult, nfsstat3> {
 
         
         {            
@@ -1178,6 +1164,7 @@ impl NFSFileSystem for MirrorFS {
 
             }
     }
+    
     async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {     
         let _lock = self.data_lock.lock().await;
         {
@@ -1197,11 +1184,9 @@ impl NFSFileSystem for MirrorFS {
 
             // Insert the new data into the contents vector
             contents.splice(offset as usize..offset as usize + data.len(), data.iter().copied());
-
-            //let data_write = self.write_data(&path, contents, &mut conn);
             
                     // Retrieve the existing data from Redis
-                    if self.write_data(&path, contents.clone(), &mut conn).await.unwrap_or(false) {
+                    if self.write_data(&path, contents.clone()).await.unwrap_or(false) {
                         let system_time = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
                             .unwrap();
@@ -1251,14 +1236,7 @@ impl NFSFileSystem for MirrorFS {
 
     }
 
-    
-
-    async fn create(
-        &self,
-        dirid: fileid3,
-        filename: &filename3,
-        setattr: sattr3,
-    ) -> Result<(fileid3, fattr3), nfsstat3> {
+    async fn create(&self, dirid: fileid3, filename: &filename3, setattr: sattr3) -> Result<(fileid3, fattr3), nfsstat3> {
 
 
         {
@@ -1336,11 +1314,7 @@ impl NFSFileSystem for MirrorFS {
         
     }
 
-    async fn create_exclusive(
-        &self,
-        dirid: fileid3,
-        filename: &filename3,
-    ) -> Result<fileid3, nfsstat3> {
+    async fn create_exclusive(&self, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3> {
 
 
         {
@@ -1426,7 +1400,6 @@ impl NFSFileSystem for MirrorFS {
         
     }
 
-   
     async fn remove(&self, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3> {
         {           
             let parent_path = format!("{}", self.get_path_from_id(dirid).await?);
@@ -1462,13 +1435,7 @@ impl NFSFileSystem for MirrorFS {
         }
     }
 
-    async fn rename(
-        &self,
-        from_dirid: fileid3,
-        from_filename: &filename3,
-        to_dirid: fileid3,
-        to_filename: &filename3,
-    ) -> Result<(), nfsstat3> {
+    async fn rename(&self, from_dirid: fileid3, from_filename: &filename3, to_dirid: fileid3, to_filename: &filename3) -> Result<(), nfsstat3> {
       
         
         {
@@ -1581,11 +1548,7 @@ impl NFSFileSystem for MirrorFS {
         }
     }
 
-    async fn mkdir(
-        &self,
-        dirid: fileid3,
-        dirname: &filename3,
-    ) -> Result<(fileid3, fattr3), nfsstat3> {
+    async fn mkdir(&self, dirid: fileid3, dirname: &filename3) -> Result<(fileid3, fattr3), nfsstat3> {
     
         {
         
@@ -1656,13 +1619,7 @@ impl NFSFileSystem for MirrorFS {
         
     }
 
-    async fn symlink(
-        &self,
-        dirid: fileid3,
-        linkname: &filename3,
-        symlink: &nfspath3,
-        attr: &sattr3,
-    ) -> Result<(fileid3, fattr3), nfsstat3> {
+    async fn symlink(&self, dirid: fileid3, linkname: &filename3, symlink: &nfspath3, attr: &sattr3) -> Result<(fileid3, fattr3), nfsstat3> {
         // Validate input parameters
     if linkname.is_empty() || symlink.is_empty() {
         return Err(nfsstat3::NFS3ERR_INVAL);
@@ -1760,7 +1717,6 @@ impl NFSFileSystem for MirrorFS {
         
     }
 
-
     async fn readlink(&self, id: fileid3) -> Result<nfspath3, nfsstat3> {
         
         let mut conn = self.pool.get_connection();  
@@ -1791,8 +1747,6 @@ impl NFSFileSystem for MirrorFS {
 
     }
 }
-
-
 const HOSTPORT: u32 = 2049;
 
 async fn start_ipfs_server() -> Result<(), Box<dyn std::error::Error>> {
