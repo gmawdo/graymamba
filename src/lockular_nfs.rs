@@ -779,7 +779,7 @@ impl MirrorFS {
        
     }
 
-    async fn get_data(&self, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Vec<u8> {
+    async fn get_data(&self, path: &str) -> Vec<u8> {
 
         // Acquire lock on HASH_TAG 
         let hash_tag = HASH_TAG.read().unwrap().clone();
@@ -799,7 +799,14 @@ impl MirrorFS {
             }
         } else {
             // Retrieve the current file content (Base64 encoded) from Redis
-            let redis_value: String = conn.hget(format!("{}{}", hash_tag, path), "data").unwrap_or_default();
+            //let redis_value: String = conn.hget(format!("{}{}", hash_tag, path), "data").unwrap_or_default();
+            let redis_value: String = match self.data_store.hget(
+                &format!("{}{}", hash_tag, path),
+                "data"
+            ).await {
+                Ok(value) => value,
+                Err(_) => String::default(), // or handle the error differently
+            };
             if !redis_value.is_empty() {
 
                 // let redis_data = "your data here";  // Define or replace with the correct variable
@@ -946,7 +953,7 @@ impl NFSFileSystem for MirrorFS {
            
          
             // Retrieve the existing data from Redis
-            let current_data= self.get_data(&path, &mut conn).await;
+            let current_data= self.get_data(&path).await;
             
 
 
@@ -1171,29 +1178,16 @@ impl NFSFileSystem for MirrorFS {
 
             }
     }
-    async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
-        
+    async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {     
         let _lock = self.data_lock.lock().await;
-
         {
-
             let mut conn = self.pool.get_connection();             
-
             let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-
-
             // Retrieve the path using the file ID
-            let path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), id.to_string()).unwrap_or_default();
-            
+            let path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), id.to_string()).unwrap_or_default();           
             let mut contents: Vec<u8>;
-
-                // Retrieve the existing data from Redis
-            contents = self.get_data(&path, &mut conn).await;
-            
-            
-
-            // Retrieve the current file content (Base64 encoded)
-            //let mut contents: Vec<u8> = self.get_data(&path, &mut conn).await;
+            // Retrieve the existing data
+            contents = self.get_data(&path).await;
 
             // Calculate the required new size
             let new_size = (offset + data.len() as u64) as usize;
