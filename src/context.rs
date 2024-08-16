@@ -9,8 +9,7 @@ pub struct RPCContext {
     pub client_addr: String,
     pub auth: crate::rpc::auth_unix,
     pub vfs: Arc<dyn NFSFileSystem + Send + Sync>,
-    pub mount_signal: Option<mpsc::Sender<bool>>,
-    //pub redis_pool: RedisClusterPool, // Add the Redis pool here
+    pub mount_signal: Option<mpsc::Sender<bool>>
 }
 
 impl fmt::Debug for RPCContext {

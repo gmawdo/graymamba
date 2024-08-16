@@ -1,17 +1,19 @@
 use std::sync::Arc;
 use r2d2_redis_cluster::Commands;
 use async_trait::async_trait;
-use r2d2_redis_cluster::RedisClusterConnectionManager;
-use r2d2::Pool;
 use crate::data_store::{DataStore, DataStoreError};
+
+use crate::RedisClusterPool;
 
 pub struct RedisDataStore {
     pool: Arc<r2d2::Pool<r2d2_redis_cluster::RedisClusterConnectionManager>>,
 }
 
 impl RedisDataStore {
-    pub fn new(pool: Pool<RedisClusterConnectionManager>) -> Self {
-        RedisDataStore { pool: Arc::new(pool) }
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let redis_pool = RedisClusterPool::from_config_file()?;
+        let inner_pool = Arc::new(redis_pool.pool.clone());
+        Ok(RedisDataStore { pool: inner_pool })
     }
 }
 

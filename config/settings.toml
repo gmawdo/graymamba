@@ -1,6 +1,7 @@
 # Settings.toml
 
-# Redis Clister Configuration
+# Redis Cluster Configuration
+# Redis is used as the share store currently
 cluster_nodes = ["redis://:0rangerY@127.0.0.1:6380", "redis://:0rangerY@127.0.0.1:6381", "redis://:0rangerY@127.0.0.1:6382"]
 
 #Substrate-Blockchain Configuration

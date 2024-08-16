@@ -16,7 +16,7 @@ mod portmap_handlers;
 pub mod nfs;
 mod nfs_handlers;
 
-pub use redis_pool::RedisClusterPool;
+pub use self::redis_pool::RedisClusterPool;
 pub mod data_store;
 pub mod redis_data_store;
 
@@ -24,9 +24,7 @@ pub mod redis_pool {
     use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
     use r2d2_redis_cluster::r2d2::Pool;
     use config::{Config, File as ConfigFile, ConfigError}; 
-    
-   
-    
+     
     pub struct RedisClusterPool {
         pub pool: Pool<RedisClusterConnectionManager>,
        
@@ -64,15 +62,8 @@ pub mod redis_pool {
     
             
             Ok(RedisClusterPool::new(redis_nodes))
-        }
-
-        
-        
-    
-        
+        }        
     }
-
-
 }
 
 pub mod nfs_module {

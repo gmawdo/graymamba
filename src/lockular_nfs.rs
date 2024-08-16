@@ -29,13 +29,8 @@ use lockular_nfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities}
 use crate::nfs_module::NFSModule;
 
 use lockular_nfs::data_store::{DataStore,DataStoreError};
-use lockular_nfs::redis_data_store::RedisDataStore;
 
-use lockular_nfs::redis_pool;
-use crate::redis_pool::RedisClusterPool;
-//use crate::redis::RedisError;
-//use r2d2_redis_cluster::redis_cluster_rs::redis::{self};
-//use r2d2_redis_cluster::Commands;
+use lockular_nfs::redis_data_store::RedisDataStore;
 use r2d2_redis_cluster::RedisResult;
 
 use wasmtime::*;
@@ -139,7 +134,6 @@ pub struct MirrorFS {
     intern: SymbolTable,
     #[allow(dead_code)]
     next_fileid: AtomicU64, // Atomic counter for generating unique IDs
-    //pool: Arc<RedisClusterPool>, // Wrap RedisClusterPool in Arc
     data_lock: Mutex<()>,
            // Add ShamirSecretSharing
     in_memory_hashmap: Arc<OtherRwLock<HashMap<String, String>>>, // In-Memory HashMap with RwLock for concurrency
@@ -150,13 +144,6 @@ pub struct MirrorFS {
 
 impl MirrorFS {
     pub fn new(data_store: Arc<dyn DataStore>, nfs_module: Arc<NFSModule>) -> MirrorFS {
-        // Initialize the Redis cluster pool from a configuration file
-        //let pool_result = RedisClusterPool::from_config_file()
-        //    .expect("Failed to create Redis cluster pool from the configuration file.");
-
-        // Wrap the pool in Arc to share across threads/operations
-        //let shared_pool = Arc::new(pool_result);
-
         // Create an empty in-memory HashMap wrapped in RwLock and then in Arc for safe concurrent access
         let in_memory_hashmap = Arc::new(OtherRwLock::new(HashMap::new()));
 
@@ -219,7 +206,7 @@ impl MirrorFS {
         //let hash_tag = HASH_TAG.lock().unwrap();
         let hash_tag = HASH_TAG.read().unwrap().clone();
         
-        // Construct the Redis key for metadata
+        // Construct the share store key for metadata
         let metadata_key = format!("{}{}", hash_tag, path);
 
         let metadata_vec = self.data_store.hgetall(&metadata_key).await
@@ -266,7 +253,7 @@ impl MirrorFS {
                 let id_result = self.get_id_from_path(&node).await;
                 match id_result {
                     Ok(id) => direct_children.push(id),
-                    Err(_) => return Err(nfsstat3::NFS3ERR_IO), // Assuming RedisError is your custom error type
+                    Err(_) => return Err(nfsstat3::NFS3ERR_IO),
                 }
             }
         }
@@ -538,7 +525,7 @@ impl MirrorFS {
         for key in keys {
             // Replace only the first occurrence of old_path with new_path
             let new_key = re.replace(&key, to_path).to_string();
-            // Rename the key in Redis
+            // Rename the key in the share store
             let _ = self.data_store.rename(&key, &new_key)
             .await
             .map_err(|_| nfsstat3::NFS3ERR_IO);
@@ -786,18 +773,16 @@ impl MirrorFS {
                 Vec::new() // Return an empty Vec<u8> if no data is found
             }
         } else {
-            // Retrieve the current file content (Base64 encoded) from Redis
-            let redis_value: String = match self.data_store.hget(
+            // Retrieve the current file content (Base64 encoded) from the share store
+            let sharestore_value: String = match self.data_store.hget(
                 &format!("{}{}", hash_tag, path),
                 "data"
             ).await {
                 Ok(value) => value,
                 Err(_) => String::default(), // or handle the error differently
             };
-            if !redis_value.is_empty() {
-
-                // let redis_data = "your data here";  // Define or replace with the correct variable
-                   match reassemble(&redis_value).await {
+            if !sharestore_value.is_empty() {
+                   match reassemble(&sharestore_value).await {
                     Ok(reconstructed_secret) => {
                         // Decode the base64 string to a byte array
                         match STANDARD.decode(&reconstructed_secret) {
@@ -831,13 +816,7 @@ impl MirrorFS {
             // Apply secret sharing to the secret
             match disassemble(&base64_string).await {
                 Ok(shares) => {               
-                    // Write the shares to Redis
-                    /*conn.hset(format!("{}{}", hash_tag, path), "data", shares)
-                        .map(|_: i32| true) // Explicitly specify the type
-                        .map_err(|e| {
-                            eprintln!("Error writing to Redis: {}", e);
-                            e
-                        })*/
+                    // Write the shares to share store
                         self.data_store.hset(
                             &format!("{}{}", hash_tag, path),
                             "data",
@@ -933,7 +912,7 @@ impl NFSFileSystem for MirrorFS {
             let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
 
-            // Get file path from Redis
+            // Get file path from the share store
             let path: String = self.data_store.hget(
                 &format!("{}/{}_id_to_path", hash_tag, user_id),
                 &id.to_string()
@@ -941,7 +920,7 @@ impl NFSFileSystem for MirrorFS {
                 //.unwrap_or_default();
 
             // Retrieve the current file content (Base64 encoded)
-            // Retrieve the existing data from Redis
+            // Retrieve the existing data from the share store
             let current_data= self.get_data(&path).await;
             // Check if the offset is beyond the current data length
             if offset as usize >= current_data.len() {
@@ -1057,7 +1036,7 @@ impl NFSFileSystem for MirrorFS {
 
             {
 
-            // Get file path from Redis
+            // Get file path from the share store
             let path: String = self.data_store.hget(
                 &format!("{}/{}_id_to_path", hash_tag, user_id),
                 &id.to_string()
@@ -1128,7 +1107,7 @@ impl NFSFileSystem for MirrorFS {
                 debug!(" -- set permissions {:?} {:?}", path, mode);
                 let mode_value = Self::mode_unmask_setattr(mode);
     
-                // Update the permissions metadata of the file in Redis
+                // Update the permissions metadata of the file in the share store
                 let _ = self.data_store.hset(
                     &format!("{}{}", hash_tag, path),
                     "permissions",
@@ -1140,7 +1119,7 @@ impl NFSFileSystem for MirrorFS {
             if let set_size3::size(size3) = setattr.size {
                 debug!(" -- set size {:?} {:?}", path, size3);
         
-                // Update the size metadata of the file in Redis
+                // Update the size metadata of the file in the share store
                 let _hset_result = self.data_store.hset(
                     &format!("{}{}", hash_tag, path),
                     "size",
@@ -1187,7 +1166,7 @@ impl NFSFileSystem for MirrorFS {
             // Insert the new data into the contents vector
             contents.splice(offset as usize..offset as usize + data.len(), data.iter().copied());
             
-                    // Retrieve the existing data from Redis
+                    // Retrieve the existing data from the share store
                     if self.write_data(&path, contents.clone()).await.unwrap_or(false) {
                         let system_time = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
@@ -1250,7 +1229,7 @@ impl NFSFileSystem for MirrorFS {
                 
                 let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
                 
-                // Get parent directory path from Redis
+                // Get parent directory path from the share store
                 let parent_path: String = self.data_store.hget(
                     &format!("{}/{}_id_to_path", hash_tag, user_id),
                     &dirid.to_string()
@@ -1342,7 +1321,7 @@ impl NFSFileSystem for MirrorFS {
                 
                 let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
                 
-                // Get parent directory path from Redis
+                // Get parent directory path from the share store
                 let parent_path: String = self.data_store.hget(
                     &format!("{}/{}_id_to_path", hash_tag, user_id),
                     &dirid.to_string()
@@ -1496,7 +1475,7 @@ impl NFSFileSystem for MirrorFS {
                     new_from_path = format!("{}/{}", from_path, objectname_osstr.to_str().unwrap_or(""));
                 }
 
-                    // Check if the source file exists in Redis
+                    // Check if the source file exists in the share store
                     let from_exists: bool = match self.data_store.zscore(
                         &format!("{}/{}_nodes", hash_tag, user_id),
                         &new_from_path
@@ -1555,7 +1534,7 @@ impl NFSFileSystem for MirrorFS {
                             ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
                             if let Err(_e) = result {
-                                //eprintln!("Error setting data in Redis: {}", e);
+                                //eprintln!("Error setting data in the share store: {}", e);
                             }
                         }
                         Err(e) => {
@@ -1611,7 +1590,7 @@ impl NFSFileSystem for MirrorFS {
         
                 let key1 = format!("{}/{}_id_to_path", hash_tag, user_id);
 
-                // Get parent directory path from Redis
+                // Get parent directory path from the share store
                 let parent_path: String = self.data_store.hget(
                     &key1,
                     &dirid.to_string()
@@ -1747,7 +1726,7 @@ impl NFSFileSystem for MirrorFS {
         }
     };
 
-    // Begin a Redis transaction to ensure atomicity
+    // Begin a share store transaction to ensure atomicity
 
     let score = (symlink_path.matches('/').count() as f64) + 1.0;
     let _ = self.data_store.zadd(
@@ -1778,7 +1757,7 @@ impl NFSFileSystem for MirrorFS {
                 //debug!(" -- set permissions {:?} {:?}", symlink_path, mode);
                 let mode_value = Self::mode_unmask_setattr(mode);
     
-                // Update the permissions metadata of the file in Redis
+                // Update the permissions metadata of the file in the share store
                 let _ = self.data_store.hset(
                     &format!("{}{}", hash_tag, symlink_path),
                     "permissions",
@@ -1911,9 +1890,7 @@ async fn main() {
         return;
     }
     
-    let redis_pool = Arc::new(RedisClusterPool::from_config_file().expect("Failed to create Redis cluster pool"));
-    let inner_pool = redis_pool.pool.clone();
-    let redis_data_store = Arc::new(RedisDataStore::new(inner_pool));
+    let redis_data_store = Arc::new(RedisDataStore::new().expect("Failed to create a share store interface"));
     let nfs_module = match NFSModule::new().await {
         Ok(module) => Arc::new(module),
         Err(e) => {
