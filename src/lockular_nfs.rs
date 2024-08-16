@@ -32,12 +32,8 @@ use lockular_nfs::data_store::{DataStore,DataStoreError};
 use lockular_nfs::redis_data_store::RedisDataStore;
 
 use lockular_nfs::redis_pool;
-
 use crate::redis_pool::RedisClusterPool;
 use crate::redis::RedisError;
-
-use r2d2_redis_cluster::RedisClusterConnectionManager;
-use r2d2::PooledConnection;
 use r2d2_redis_cluster::redis_cluster_rs::redis::{self};
 use r2d2_redis_cluster::Commands;
 use r2d2_redis_cluster::RedisResult;
@@ -531,7 +527,7 @@ impl MirrorFS {
         
     }
     
-    async fn rename_directory_file(&self, from_path: &str, to_path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> { 
+    async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Result<(), nfsstat3> { 
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
         //Rename the metadata hashkey
         //let _ = conn.rename::<_,()>(format!("{}{}", hash_tag, from_path), format!("{}{}", hash_tag, to_path));
@@ -545,7 +541,11 @@ impl MirrorFS {
         let pattern = format!("{}{}{}", hash_tag, from_path, "/*");
         
         // Retrieve all keys matching the pattern
-        let keys_result = conn.keys(pattern);
+        //let keys_result = conn.keys(pattern);
+        let keys_result = self.data_store.keys(&pattern)
+            .await
+            .map_err(|_| nfsstat3::NFS3ERR_IO);
+
         let keys: Vec<String> = match keys_result {
             Ok(k) => k,
             Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
@@ -1570,9 +1570,9 @@ impl NFSFileSystem for MirrorFS {
             match ftype_result {
                 Ok(ftype) => {
                     if ftype == "0" {
-                        self.rename_directory_file(&new_from_path, &new_to_path, &mut conn).await?;
+                        self.rename_directory_file(&new_from_path, &new_to_path).await?;
                     } else if ftype == "1" || ftype == "2"{
-                        self.rename_directory_file(&new_from_path, &new_to_path, &mut conn).await?;
+                        self.rename_directory_file(&new_from_path, &new_to_path).await?;
                     } else {
                         return Err(nfsstat3::NFS3ERR_IO);
                     }
