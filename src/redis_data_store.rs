@@ -90,4 +90,11 @@ impl DataStore for RedisDataStore {
         conn.hset_multiple::<_, _, _, ()>(key, fields).map_err(|_| DataStoreError::OperationFailed)?;
         Ok(())
     }
+    async fn zscan_match(&self, key: &str, pattern: &str) -> Result<Vec<String>, DataStoreError> {
+        let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
+        let results: Vec<(String, f64)> = conn.zscan_match(key, pattern)
+            .map_err(|_| DataStoreError::OperationFailed)?
+            .collect();
+        Ok(results.into_iter().map(|(member, _)| member).collect())
+    }
 }

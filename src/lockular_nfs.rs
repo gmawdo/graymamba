@@ -41,7 +41,6 @@ use r2d2::PooledConnection;
 use r2d2_redis_cluster::redis_cluster_rs::redis::{self};
 use r2d2_redis_cluster::Commands;
 use r2d2_redis_cluster::RedisResult;
-use redis::Iter;
 
 use wasmtime::*;
 
@@ -447,12 +446,13 @@ impl MirrorFS {
             
     }
     
-    async fn get_ftype(&self, path: String, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<String, nfsstat3> {
+    async fn get_ftype(&self, path: String) -> Result<String, nfsstat3> {
         // Acquire lock on HASH_TAG
         let hash_tag = HASH_TAG.read().unwrap().clone();
         let key = format!("{}{}", hash_tag, path.clone());
 
-        let ftype_result = conn.hget(key, "ftype");
+        //let ftype_result = conn.hget(key, "ftype");
+        let ftype_result = self.data_store.hget(&key, "ftype").await.map_err(|_| nfsstat3::NFS3ERR_IO);
         let ftype: String = match ftype_result {
             Ok(k) => k,
             Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
@@ -463,81 +463,80 @@ impl MirrorFS {
     async fn get_member_keys(
             &self,
             pattern: &str,
-            sorted_set_key: &str,
-            conn: &mut PooledConnection<RedisClusterConnectionManager>,
+            sorted_set_key: &str
         ) -> Result<bool, nfsstat3> {
 
-        let result: Result<Iter<'_, Vec<u8>>, RedisError> =
-            conn.zscan_match(sorted_set_key, pattern);
-    
-            match result {
-                Ok(iter) => {
-                    let matching_keys: Vec<_> = iter
-                        .map(|key| String::from_utf8_lossy(&key).to_string())
-                        .collect();
+        match self.data_store.zscan_match(sorted_set_key, pattern).await {
+            Ok(iter) => {
+                // Process the iterator
+                // This part depends on what type your zscan_match returns
+                let matching_keys: Vec<String> = iter
+                .into_iter()
+                .map(|key| key)
+                .collect();
         
-                    if !matching_keys.is_empty() {
-        
-                        return Ok(true);
-                    }
-                }
-                Err(_e) => {
-                    
-                    return Err(nfsstat3::NFS3ERR_IO);
+                if !matching_keys.is_empty() {
+                    return Ok(true);
                 }
             }
+            Err(_) => return Err(nfsstat3::NFS3ERR_IO),
+        }
     
         Ok(false)
     }
     
-    async fn remove_directory_file(&self, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<(), nfsstat3> {
+    async fn remove_directory_file(&self, path: &str) -> Result<(), nfsstat3> {
             
-            //let (user_id, hash_tag, key1, key2) = {
-                let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-    
-                //let key1 = format!("{}/{}_id_to_path", hash_tag, user_id);
-                //let key2 = format!("{}/{}_path_to_id", hash_tag, user_id);
-               
-    
-            //    (user_id, hash_tag, key1, key2) // Return the values needed outside the scope
-            //};
-    
-            
+            let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
             let pattern = format!("{}/*", path);
-
             let sorted_set_key = format!("{}/{}_nodes", hash_tag, user_id);
-
-            
-            let match_found = self.get_member_keys(&pattern, &sorted_set_key, conn).await?;
-
+            let match_found = self.get_member_keys(&pattern, &sorted_set_key).await?;
             if match_found {
                 return Err(nfsstat3::NFS3ERR_NOTEMPTY);
             }
-
-                                 
-            let dir_id = conn.hget(format!("{}/{}_path_to_id", hash_tag, user_id), path);
+                             
+            /*let dir_id = conn.hget(format!("{}/{}_path_to_id", hash_tag, user_id), path);
             let value: String = match dir_id {
                 Ok(k) => k,
                 Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
-            };
+            };*/
 
-            // Remove the directory
-            //let key = format!("{}/{}_nodes", hash_tag, user_id);
-            //let node_key = format!("{}{}", hash_tag, path);
-                    
+            let dir_id = self.data_store.hget(
+                &format!("{}/{}_path_to_id", hash_tag, user_id),
+                path
+            ).await;
+            
+            let value: String = match dir_id {
+                Ok(k) => k,
+                Err(_) => return Err(nfsstat3::NFS3ERR_IO),
+            };
+            // Remove the directory         
             // Remove the node from the sorted set
-            let _ = conn.zrem::<&str, &str, i64>(&format!("{}/{}_nodes", hash_tag, user_id), path);
+            //let _ = conn.zrem::<&str, &str, i64>(&format!("{}/{}_nodes", hash_tag, user_id), path);
+            let _ = self.data_store.zrem(
+                &format!("{}/{}_nodes", hash_tag, user_id),
+                path
+            ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                     
             // Delete the metadata hash associated with the node
-            let _ = conn.del::<&str, ()>(&format!("{}{}", hash_tag, path));
+            //let _ = conn.del::<&str, ()>(&format!("{}{}", hash_tag, path));
+            let _ = self.data_store.delete(&format!("{}{}", hash_tag, path))
+                .await
+                .map_err(|_| nfsstat3::NFS3ERR_IO);
                  
             // Remove the directory from the path-to-id mapping
-            let _ = conn.hdel::<&str, &str, ()>(&format!("{}/{}_path_to_id", hash_tag, user_id), path);
+            //let _ = conn.hdel::<&str, &str, ()>(&format!("{}/{}_path_to_id", hash_tag, user_id), path);
+            let _ = self.data_store.hdel(
+                &format!("{}/{}_path_to_id", hash_tag, user_id),
+                path
+            ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
             
             // Remove the directory from the id-to-path mapping
-            let _ = conn.hdel::<&str, String, ()>(&format!("{}/{}_id_to_path", hash_tag, user_id), value);
-                    
-        
+            //let _ = conn.hdel::<&str, String, ()>(&format!("{}/{}_id_to_path", hash_tag, user_id), value);
+            let _ = self.data_store.hdel(
+                &format!("{}/{}_id_to_path", hash_tag, user_id),
+                &value
+            ).await.map_err(|_| nfsstat3::NFS3ERR_IO);             
              
             Ok(())
         
@@ -1435,18 +1434,9 @@ impl NFSFileSystem for MirrorFS {
 
    
     async fn remove(&self, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3> {
-
-        
-        {
-
-            let mut conn = self.pool.get_connection();             
-
-           //let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-
+        {           
             let parent_path = format!("{}", self.get_path_from_id(dirid).await?);
-
-            let objectname_osstr = OsStr::from_bytes(filename).to_os_string();
-            
+            let objectname_osstr = OsStr::from_bytes(filename).to_os_string();           
             let new_dir_path: String;
 
             // Construct the full path of the file/directory
@@ -1455,27 +1445,17 @@ impl NFSFileSystem for MirrorFS {
             } else {
                 new_dir_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
             }
-
-            
-            
-           let ftype_result = self.get_ftype(new_dir_path.clone(), &mut conn).await;
-            
-            // Get the current local date and time
-            //let local_date_time: DateTime<Local> = Local::now();
-
-            // Format the date and time using the specified pattern
-            //let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-
-            // Send the event with the formatted creation time, event type, path, and user ID
+    
+           let ftype_result = self.get_ftype(new_dir_path.clone()).await;
             
            match ftype_result {
             Ok(ftype) => {
                 if ftype == "0" {
-                    self.remove_directory_file(&new_dir_path, &mut conn).await?;
+                    self.remove_directory_file(&new_dir_path).await?;
                 } else if ftype == "1" || ftype == "2"{
-                    self.remove_directory_file(&new_dir_path, &mut conn).await?;
+                    self.remove_directory_file(&new_dir_path).await?;
                 } else if ftype == "2"{
-                    self.remove_directory_file(&new_dir_path, &mut conn).await?;
+                    self.remove_directory_file(&new_dir_path).await?;
                 }
                 else {
                     return Err(nfsstat3::NFS3ERR_IO);
@@ -1484,8 +1464,6 @@ impl NFSFileSystem for MirrorFS {
             Err(_) => return Err(nfsstat3::NFS3ERR_IO),
             }
                 
-            
-
             Ok(())
         }
     }
@@ -1580,7 +1558,7 @@ impl NFSFileSystem for MirrorFS {
             
             
 
-            let ftype_result = self.get_ftype(new_from_path.clone(), &mut conn).await;
+            let ftype_result = self.get_ftype(new_from_path.clone()).await;
             
             // Get the current local date and time
             //let local_date_time: DateTime<Local> = Local::now();
