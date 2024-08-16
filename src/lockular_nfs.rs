@@ -33,9 +33,9 @@ use lockular_nfs::redis_data_store::RedisDataStore;
 
 use lockular_nfs::redis_pool;
 use crate::redis_pool::RedisClusterPool;
-use crate::redis::RedisError;
-use r2d2_redis_cluster::redis_cluster_rs::redis::{self};
-use r2d2_redis_cluster::Commands;
+//use crate::redis::RedisError;
+//use r2d2_redis_cluster::redis_cluster_rs::redis::{self};
+//use r2d2_redis_cluster::Commands;
 use r2d2_redis_cluster::RedisResult;
 
 use wasmtime::*;
@@ -139,7 +139,7 @@ pub struct MirrorFS {
     intern: SymbolTable,
     #[allow(dead_code)]
     next_fileid: AtomicU64, // Atomic counter for generating unique IDs
-    pool: Arc<RedisClusterPool>, // Wrap RedisClusterPool in Arc
+    //pool: Arc<RedisClusterPool>, // Wrap RedisClusterPool in Arc
     data_lock: Mutex<()>,
            // Add ShamirSecretSharing
     in_memory_hashmap: Arc<OtherRwLock<HashMap<String, String>>>, // In-Memory HashMap with RwLock for concurrency
@@ -151,11 +151,11 @@ pub struct MirrorFS {
 impl MirrorFS {
     pub fn new(data_store: Arc<dyn DataStore>, nfs_module: Arc<NFSModule>) -> MirrorFS {
         // Initialize the Redis cluster pool from a configuration file
-        let pool_result = RedisClusterPool::from_config_file()
-            .expect("Failed to create Redis cluster pool from the configuration file.");
+        //let pool_result = RedisClusterPool::from_config_file()
+        //    .expect("Failed to create Redis cluster pool from the configuration file.");
 
         // Wrap the pool in Arc to share across threads/operations
-        let shared_pool = Arc::new(pool_result);
+        //let shared_pool = Arc::new(pool_result);
 
         // Create an empty in-memory HashMap wrapped in RwLock and then in Arc for safe concurrent access
         let in_memory_hashmap = Arc::new(OtherRwLock::new(HashMap::new()));
@@ -164,7 +164,7 @@ impl MirrorFS {
             data_store,
             intern: SymbolTable::new(),
             next_fileid: AtomicU64::new(1),
-            pool: shared_pool,
+            //pool: shared_pool,
             data_lock: Mutex::new(()),
             in_memory_hashmap,
             nfs_module,
@@ -283,9 +283,6 @@ impl MirrorFS {
         // let mut conn = pool_guard.get_connection();
         
         if subpath == "/" {
-            // // If the subpath is the root, return nodes with a score of ROOT_DIRECTORY_SCORE
-            // let nodes: Vec<String> = conn.zrangebyscore(key, 2, 2).map_err(|_| nfsstat3::NFS3ERR_IO)?;
-            // ok(nodes)
             // If the subpath is the root, return nodes with a score of ROOT_DIRECTORY_SCORE
             // Await the async operation and then transform the Ok value
             let nodes_result: Vec<String> = self.data_store.zrangebyscore(&key, 2.0, 2.0).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
@@ -296,9 +293,6 @@ impl MirrorFS {
             let start_score = subpath.split("/").count() as f64;
             let end_score = start_score + 1.0;
 
-            // // Retrieve nodes at the specified hierarchy level
-            // let nodes: Vec<String> = conn.zrangebyscore(key, end_score, end_score).map_err(|_| nfsstat3::NFS3ERR_IO)?;
-            // ok(nodes)
             // Retrieve nodes at the specified hierarchy level
             // Await the async operation and then transform the Ok value
             let nodes_result: Vec<String> = self.data_store.zrangebyscore(&key, end_score, end_score).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
@@ -440,7 +434,6 @@ impl MirrorFS {
         let hash_tag = HASH_TAG.read().unwrap().clone();
         let key = format!("{}{}", hash_tag, path.clone());
 
-        //let ftype_result = conn.hget(key, "ftype");
         let ftype_result = self.data_store.hget(&key, "ftype").await.map_err(|_| nfsstat3::NFS3ERR_IO);
         let ftype: String = match ftype_result {
             Ok(k) => k,
@@ -479,12 +472,6 @@ impl MirrorFS {
             if match_found {
                 return Err(nfsstat3::NFS3ERR_NOTEMPTY);
             }
-                             
-            /*let dir_id = conn.hget(format!("{}/{}_path_to_id", hash_tag, user_id), path);
-            let value: String = match dir_id {
-                Ok(k) => k,
-                Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
-            };*/
 
             let dir_id = self.data_store.hget(
                 &format!("{}/{}_path_to_id", hash_tag, user_id),
@@ -497,27 +484,23 @@ impl MirrorFS {
             };
             // Remove the directory         
             // Remove the node from the sorted set
-            //let _ = conn.zrem::<&str, &str, i64>(&format!("{}/{}_nodes", hash_tag, user_id), path);
             let _ = self.data_store.zrem(
                 &format!("{}/{}_nodes", hash_tag, user_id),
                 path
             ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                     
             // Delete the metadata hash associated with the node
-            //let _ = conn.del::<&str, ()>(&format!("{}{}", hash_tag, path));
             let _ = self.data_store.delete(&format!("{}{}", hash_tag, path))
                 .await
                 .map_err(|_| nfsstat3::NFS3ERR_IO);
                  
             // Remove the directory from the path-to-id mapping
-            //let _ = conn.hdel::<&str, &str, ()>(&format!("{}/{}_path_to_id", hash_tag, user_id), path);
             let _ = self.data_store.hdel(
                 &format!("{}/{}_path_to_id", hash_tag, user_id),
                 path
             ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
             
             // Remove the directory from the id-to-path mapping
-            //let _ = conn.hdel::<&str, String, ()>(&format!("{}/{}_id_to_path", hash_tag, user_id), value);
             let _ = self.data_store.hdel(
                 &format!("{}/{}_id_to_path", hash_tag, user_id),
                 &value
@@ -530,7 +513,6 @@ impl MirrorFS {
     async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Result<(), nfsstat3> { 
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
         //Rename the metadata hashkey
-        //let _ = conn.rename::<_,()>(format!("{}{}", hash_tag, from_path), format!("{}{}", hash_tag, to_path));
         let _ = self.data_store.rename(
             &format!("{}{}", hash_tag, from_path),
             &format!("{}{}", hash_tag, to_path)
@@ -541,7 +523,6 @@ impl MirrorFS {
         let pattern = format!("{}{}{}", hash_tag, from_path, "/*");
         
         // Retrieve all keys matching the pattern
-        //let keys_result = conn.keys(pattern);
         let keys_result = self.data_store.keys(&pattern)
             .await
             .map_err(|_| nfsstat3::NFS3ERR_IO);
@@ -558,7 +539,6 @@ impl MirrorFS {
             // Replace only the first occurrence of old_path with new_path
             let new_key = re.replace(&key, to_path).to_string();
             // Rename the key in Redis
-            //let _ = conn.rename::<_,()>(key, new_key);
             let _ = self.data_store.rename(&key, &new_key)
             .await
             .map_err(|_| nfsstat3::NFS3ERR_IO);
@@ -567,7 +547,6 @@ impl MirrorFS {
         let key = format!("{}/{}_nodes", hash_tag, user_id);
 
         // Retrieve all members of the sorted set with their scores
-        //let members_result = conn.zrange_withscores(&key, 0, -1);
         let members_result = self.data_store.zrange_withscores(&key, 0, -1)
         .await
         .map_err(|_| nfsstat3::NFS3ERR_IO);
@@ -588,7 +567,6 @@ impl MirrorFS {
                 let new_score: f64 = to_path.matches('/').count() as f64 + 1.0; 
 
                 // The entry is the directory itself, just replace it
-                //let zrem_result = conn.zrem::<_,_,()>(&key, &directory_path);
                 let zrem_result = self.data_store.zrem(&key, &directory_path)
                 .await
                 .map_err(|_| nfsstat3::NFS3ERR_IO);
@@ -596,7 +574,6 @@ impl MirrorFS {
                 if zrem_result.is_err() {
                     return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
                 }
-                //let zadd_result = conn.zadd::<_,_,_,()>(&key, to_path, new_score.to_string());
                 let zadd_result = self.data_store.zadd(
                     &key,
                     to_path,
@@ -619,7 +596,6 @@ impl MirrorFS {
                 if new_directory_path != directory_path {
                     
                     // If the new path doesn't exist, update it
-                    //let zrem_result = conn.zrem::<_,_,()>(&key, &directory_path);
                     let zrem_result = self.data_store.zrem(&key, &directory_path)
                     .await
                     .map_err(|_| nfsstat3::NFS3ERR_IO);
@@ -627,7 +603,6 @@ impl MirrorFS {
                     if zrem_result.is_err() {
                         return Err(nfsstat3::NFS3ERR_IO);
                     }
-                    //let zadd_result = conn.zadd::<_,_,_,()>(&key, &new_directory_path, new_score.to_string());
                     let zadd_result = self.data_store.zadd(
                         &key,
                         &new_directory_path,
@@ -645,7 +620,6 @@ impl MirrorFS {
         let id_to_path_key = format!("{}/{}_id_to_path", hash_tag, user_id);
 
         // Retrieve all the members of path_to_id hash
-        //let fields_result = conn.hgetall(&path_to_id_key);
         let fields_result = self.data_store.hgetall(&path_to_id_key)
         .await
         .map_err(|_| nfsstat3::NFS3ERR_IO);
@@ -667,7 +641,6 @@ impl MirrorFS {
             let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
 
             if directory_path == to_path {
-                //let hdel_result_id_to_path = conn.hdel::<_,_,()>(&id_to_path_key, value.clone());
                 let hdel_result_id_to_path = self.data_store.hdel(
                     &id_to_path_key,
                     &value
@@ -680,7 +653,6 @@ impl MirrorFS {
 
             if directory_path == from_path {
                 // The entry is the directory itself, just replace it      
-                //let hdel_result_path_to_id = conn.hdel::<_,_,()>(&path_to_id_key, &directory_path);
                 let hdel_result_path_to_id = self.data_store.hdel(
                     &path_to_id_key,
                     &directory_path
@@ -690,7 +662,6 @@ impl MirrorFS {
                     return Err(nfsstat3::NFS3ERR_IO); 
                 }
 
-                //let hset_result_path_to_id = conn.hset::<_,_,_,()>(&path_to_id_key, to_path, value.to_string());
                 let hset_result_path_to_id = self.data_store.hset(
                     &path_to_id_key,
                     to_path,
@@ -701,7 +672,6 @@ impl MirrorFS {
                     return Err(nfsstat3::NFS3ERR_IO); 
                 }
 
-                //let hdel_result_id_to_path = conn.hdel::<_,_,()>(&id_to_path_key, value.clone());
                 let hdel_result_id_to_path = self.data_store.hdel(
                     &id_to_path_key,
                     &value
@@ -710,7 +680,6 @@ impl MirrorFS {
                     return Err(nfsstat3::NFS3ERR_IO); 
                 }
 
-                //let hset_result_id_to_path = conn.hset::<_,_,_,()>(&id_to_path_key, value.to_string(), to_path);
                 let hset_result_id_to_path = self.data_store.hset(
                     &id_to_path_key,
                     &value.to_string(),
@@ -721,8 +690,6 @@ impl MirrorFS {
                     return Err(nfsstat3::NFS3ERR_IO);
                 }
 
-                
-                //let _ = conn.hset_multiple::<_,_,_,()>(format!("{}{}", hash_tag, to_path), 
                 let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, to_path),
                     &[
                         ("change_time_secs", &epoch_seconds.to_string()),
@@ -744,7 +711,6 @@ impl MirrorFS {
                 if new_directory_path != directory_path {
                     
                     // If the new path doesn't exist, update it
-                    //let hdel_result_path_to_id = conn.hdel::<_,_,()>(&path_to_id_key, &directory_path);
                     let hdel_result_path_to_id = self.data_store.hdel(
                         &path_to_id_key,
                         &directory_path
@@ -754,7 +720,6 @@ impl MirrorFS {
                         return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
                     }
 
-                    //let hset_result_path_to_id = conn.hset::<_,_,_,()>(&path_to_id_key, &new_directory_path, value.to_string());
                     let hset_result_path_to_id = self.data_store.hset(
                         &path_to_id_key,
                         &new_directory_path,
@@ -765,7 +730,6 @@ impl MirrorFS {
                         return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
                     }
 
-                    //let hdel_result_id_to_path = conn.hdel::<_,_,()>(&id_to_path_key, value.clone());
                     let hdel_result_id_to_path = self.data_store.hdel(
                         &id_to_path_key,
                         &value
@@ -775,7 +739,6 @@ impl MirrorFS {
                         return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
                     }
 
-                    //let hset_result_id_to_path = conn.hset::<_,_,_,()>(&id_to_path_key, value.to_string(), &new_directory_path);
                     let hset_result_id_to_path = self.data_store.hset(
                         &id_to_path_key,
                         &value.to_string(),
@@ -786,7 +749,6 @@ impl MirrorFS {
                         return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
                     }
 
-                    //let _ = conn.hset_multiple::<_,_,_,()>(format!("{}{}", hash_tag, new_directory_path), 
                     let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, new_directory_path),
                         &[
                             ("change_time_secs", &epoch_seconds.to_string()),
@@ -825,7 +787,6 @@ impl MirrorFS {
             }
         } else {
             // Retrieve the current file content (Base64 encoded) from Redis
-            //let redis_value: String = conn.hget(format!("{}{}", hash_tag, path), "data").unwrap_or_default();
             let redis_value: String = match self.data_store.hget(
                 &format!("{}{}", hash_tag, path),
                 "data"
@@ -967,26 +928,21 @@ impl NFSFileSystem for MirrorFS {
 
         
         {
-            let mut conn = self.pool.get_connection();             
+            //let mut conn = self.pool.get_connection();             
 
             let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
 
             // Get file path from Redis
-            let path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), id.to_string()).unwrap_or_default();
+            let path: String = self.data_store.hget(
+                &format!("{}/{}_id_to_path", hash_tag, user_id),
+                &id.to_string()
+            ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+                //.unwrap_or_default();
 
             // Retrieve the current file content (Base64 encoded)
-            //let current_data_encoded: String = conn.hget(format!("{}{}", hash_tag, path), "data").unwrap_or_default();
-            //let current_data = STANDARD.decode(&current_data_encoded).unwrap_or_default();
-           
-         
             // Retrieve the existing data from Redis
             let current_data= self.get_data(&path).await;
-            
-
-
-            
-
             // Check if the offset is beyond the current data length
             if offset as usize >= current_data.len() {
                 return Ok((vec![], true)); // Return an empty vector and EOF as true
@@ -1095,14 +1051,18 @@ impl NFSFileSystem for MirrorFS {
        
             {
 
-            let mut conn = self.pool.get_connection();             
+            //let mut conn = self.pool.get_connection();             
 
             let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
             {
 
             // Get file path from Redis
-            let path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), id.to_string()).unwrap_or_default();
+            let path: String = self.data_store.hget(
+                &format!("{}/{}_id_to_path", hash_tag, user_id),
+                &id.to_string()
+            ).await
+                .unwrap_or_else(|_| String::new());
 
             match setattr.atime {
                 set_atime::SET_TO_SERVER_TIME => {
@@ -1113,23 +1073,23 @@ impl NFSFileSystem for MirrorFS {
                     let epoch_nseconds = system_time.subsec_nanos();
             
                     // Update the atime metadata of the file
-                    let _ = conn.hset_multiple::<_, _, _, ()>(
-                        format!("{}{}", hash_tag, path),
+                    let _ = self.data_store.hset_multiple(
+                        &format!("{}{}", hash_tag, path),
                         &[
                             ("access_time_secs", &epoch_seconds.to_string()),
                             ("access_time_nsecs", &epoch_nseconds.to_string()),
-                        ],
-                    );
+                        ]
+                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                 }
                 set_atime::SET_TO_CLIENT_TIME(nfstime3 { seconds, nseconds }) => {
                     // Update the atime metadata of the file with client-provided time
-                    let _ = conn.hset_multiple::<_, _, _, ()>(
-                        format!("{}{}", hash_tag, path),
+                    let _ = self.data_store.hset_multiple(
+                        &format!("{}{}", hash_tag, path),
                         &[
                             ("access_time_secs", &seconds.to_string()),
                             ("access_time_nsecs", &nseconds.to_string()),
-                        ],
-                    );
+                        ]
+                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                 }
                 _ => {}
             };
@@ -1143,23 +1103,23 @@ impl NFSFileSystem for MirrorFS {
                     let epoch_nseconds = system_time.subsec_nanos();
             
                     // Update the atime metadata of the file
-                    let _ = conn.hset_multiple::<_, _, _, ()>(
-                        format!("{}{}", hash_tag, path),
+                    let _ = self.data_store.hset_multiple(
+                        &format!("{}{}", hash_tag, path),
                         &[
                             ("modification_time_secs", &epoch_seconds.to_string()),
                             ("modification_time_nsecs", &epoch_nseconds.to_string()),
                         ],
-                    );
+                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                 }
                 set_mtime::SET_TO_CLIENT_TIME(nfstime3 { seconds, nseconds }) => {
                     // Update the atime metadata of the file with client-provided time
-                    let _ = conn.hset_multiple::<_, _, _, ()>(
-                        format!("{}{}", hash_tag, path),
+                    let _ = self.data_store.hset_multiple(
+                        &format!("{}{}", hash_tag, path),
                         &[
                             ("modification_time_secs", &seconds.to_string()),
                             ("modification_time_nsecs", &nseconds.to_string()),
                         ],
-                    );
+                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                 }
                 _ => {}
             };
@@ -1169,11 +1129,11 @@ impl NFSFileSystem for MirrorFS {
                 let mode_value = Self::mode_unmask_setattr(mode);
     
                 // Update the permissions metadata of the file in Redis
-                let _ = conn.hset::<_, _, _, ()>(
-                    format!("{}{}", hash_tag, path),
+                let _ = self.data_store.hset(
+                    &format!("{}{}", hash_tag, path),
                     "permissions",
-                    &mode_value.to_string(),
-                );
+                    &mode_value.to_string()
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                 
             }
 
@@ -1181,11 +1141,11 @@ impl NFSFileSystem for MirrorFS {
                 debug!(" -- set size {:?} {:?}", path, size3);
         
                 // Update the size metadata of the file in Redis
-                let _ = conn.hset::<_, _, _, ()>(
-                    format!("{}{}", hash_tag, path),
+                let _hset_result = self.data_store.hset(
+                    &format!("{}{}", hash_tag, path),
                     "size",
-                    &size3.to_string(),
-                );
+                    &size3.to_string()
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
             }
             
 
@@ -1205,10 +1165,15 @@ impl NFSFileSystem for MirrorFS {
     async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {     
         let _lock = self.data_lock.lock().await;
         {
-            let mut conn = self.pool.get_connection();             
+            //let mut conn = self.pool.get_connection();             
             let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
             // Retrieve the path using the file ID
-            let path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), id.to_string()).unwrap_or_default();           
+            let path: String = self.data_store.hget(
+                &format!("{}/{}_id_to_path", hash_tag, user_id),
+                &id.to_string()
+            ).await
+                .unwrap_or_else(|_| String::new());
+
             let mut contents: Vec<u8>;
             // Retrieve the existing data
             contents = self.get_data(&path).await;
@@ -1229,17 +1194,18 @@ impl NFSFileSystem for MirrorFS {
                             .unwrap();
                         let epoch_seconds = system_time.as_secs();
                         let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
-            
-                        let _ = conn.hset_multiple::<_, _, _, ()>(format!("{}{}", hash_tag, path),
+
+                        let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path),
                             &[
-                                ("size", contents.len().to_string()),
-                                ("change_time_secs", epoch_seconds.to_string()),
-                                ("change_time_nsecs", epoch_nseconds.to_string()),
-                                ("modification_time_secs", epoch_seconds.to_string()),
-                                ("modification_time_nsecs", epoch_nseconds.to_string()),
-                                ("access_time_secs", epoch_seconds.to_string()),
-                                ("access_time_nsecs", epoch_nseconds.to_string()),
-                            ]);
+                                ("size", &contents.len().to_string()),
+                                ("change_time_secs", &epoch_seconds.to_string()),
+                                ("change_time_nsecs", &epoch_nseconds.to_string()),
+                                ("modification_time_secs", &epoch_seconds.to_string()),
+                                ("modification_time_nsecs", &epoch_nseconds.to_string()),
+                                ("access_time_secs", &epoch_seconds.to_string()),
+                                ("access_time_nsecs", &epoch_nseconds.to_string()),
+                            ]
+                        ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                     
                         // Get the current local date and time
                         let local_date_time: DateTime<Local> = Local::now();
@@ -1278,14 +1244,18 @@ impl NFSFileSystem for MirrorFS {
 
         {
             
-            let mut conn = self.pool.get_connection();             
+            //let mut conn = self.pool.get_connection();             
 
     //        let (user_id, hash_tag, new_file_path,new_file_id ) = {
                 
                 let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
                 
                 // Get parent directory path from Redis
-                let parent_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), dirid.to_string()).unwrap_or_default();
+                let parent_path: String = self.data_store.hget(
+                    &format!("{}/{}_id_to_path", hash_tag, user_id),
+                    &dirid.to_string()
+                ).await
+                    .unwrap_or_else(|_| String::new());
                 
 
                 if parent_path.is_empty() {
@@ -1303,21 +1273,31 @@ impl NFSFileSystem for MirrorFS {
                 }
 
                 // Check if file already exists
-                let exists: bool = match conn.zscore::<String, &String, Option<f64>>(format!("{}/{}_nodes", hash_tag, user_id), &new_file_path) {
-                    Ok(score) => score.is_some(),
-                    Err(_) => false,
+                let exists: bool = match self.data_store.zscore(
+                    &format!("{}/{}_nodes", hash_tag, user_id),
+                    &new_file_path
+                ).await {
+                    Ok(Some(_)) => true,
+                    Ok(None) => false,
+                    Err(e) => {
+                        eprintln!("Error checking if file exists: {:?}", e);
+                        false
+                    }
                 };
+            
                 
                 if exists {
                     return Err(nfsstat3::NFS3ERR_EXIST);
                 }
 
                 // Create new file ID
-                let new_file_id: fileid3 = match conn.incr(format!("{}/{}_next_fileid", hash_tag, user_id), 1) {
-                    Ok(id) => id,
-                    Err(_redis_error) => {
-                        // Handle the RedisError and convert it to nfsstat3
-                        return Err(nfsstat3::NFS3ERR_IO); // You can choose the appropriate nfsstat3 error here
+                let new_file_id: fileid3 = match self.data_store.incr(
+                    &format!("{}/{}_next_fileid", hash_tag, user_id)
+                ).await {
+                    Ok(id) => id.try_into().unwrap(),
+                    Err(e) => {
+                        eprintln!("Error incrementing file ID: {:?}", e);
+                        return Err(nfsstat3::NFS3ERR_IO);
                     }
                 };
 
@@ -1356,14 +1336,18 @@ impl NFSFileSystem for MirrorFS {
 
         {
 
-            let mut conn = self.pool.get_connection();             
+            //let mut conn = self.pool.get_connection();             
 
             //let (user_id, hash_tag, new_file_path,new_file_id ) = {
                 
                 let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
                 
                 // Get parent directory path from Redis
-                let parent_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), dirid.to_string()).unwrap_or_default();
+                let parent_path: String = self.data_store.hget(
+                    &format!("{}/{}_id_to_path", hash_tag, user_id),
+                    &dirid.to_string()
+                ).await
+                    .map_err(|_| nfsstat3::NFS3ERR_IO)?;
             
                 // if parent_path.is_empty() {
                 //     return Err(nfsstat3::NFS3ERR_NOENT); // No such directory id exists
@@ -1379,18 +1363,28 @@ impl NFSFileSystem for MirrorFS {
                     new_file_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
                 }
 
-                let exists: bool = match conn.zscore::<String, &String, Option<f64>>(format!("{}/{}_nodes", hash_tag, user_id), &new_file_path) {
-                    Ok(score) => score.is_some(),
-                    Err(_) => false,
+                let exists: bool = match self.data_store.zscore(
+                    &format!("{}/{}_nodes", hash_tag, user_id),
+                    &new_file_path
+                ).await {
+                    Ok(Some(_)) => true,
+                    Ok(None) => false,
+                    Err(e) => {
+                        eprintln!("Error checking if file exists: {:?}", e);
+                        false
+                    }
                 };
                 
                 if exists {
 
-                    let fields_result = conn.hget(format!("{}/{}_path_to_id", hash_tag, user_id), &new_file_path);
+                    let fields_result = self.data_store.hget(
+                        &format!("{}/{}_path_to_id", hash_tag, user_id),
+                        &new_file_path
+                    ).await;
                     match fields_result {
                         Ok(value) => {
                             // File already exists, return the existing file ID
-                            return Ok(value);
+                            return Ok(value.parse::<u64>().map_err(|_| nfsstat3::NFS3ERR_IO)?);
                         }
                         Err(_) => {
                             // Handle the error case, e.g., return NFS3ERR_IO or any other appropriate error
@@ -1401,11 +1395,13 @@ impl NFSFileSystem for MirrorFS {
                 }
 
                 // Create new file ID
-                let new_file_id: fileid3 = match conn.incr(format!("{}/{}_next_fileid", hash_tag, user_id), 1) {
-                    Ok(id) => id,
-                    Err(_redis_error) => {
-                        // Handle the RedisError and convert it to nfsstat3
-                        return Err(nfsstat3::NFS3ERR_IO); // You can choose the appropriate nfsstat3 error here
+                let new_file_id: fileid3 = match self.data_store.incr(
+                    &format!("{}/{}_next_fileid", hash_tag, user_id)
+                ).await {
+                    Ok(id) => id.try_into().unwrap(),
+                    Err(e) => {
+                        eprintln!("Error incrementing file ID: {:?}", e);
+                        return Err(nfsstat3::NFS3ERR_IO);
                     }
                 };
 
@@ -1477,13 +1473,17 @@ impl NFSFileSystem for MirrorFS {
         
         {
            
-            let mut conn = self.pool.get_connection();             
+            //let mut conn = self.pool.get_connection();             
 
 //            let (user_id, hash_tag, new_from_path, new_to_path) = {
                 
                 let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
                 
-                let from_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), from_dirid.to_string()).unwrap_or_default();
+                let from_path: String = self.data_store.hget(
+                    &format!("{}/{}_id_to_path", hash_tag, user_id),
+                    &from_dirid.to_string()
+                ).await
+                    .map_err(|_| nfsstat3::NFS3ERR_IO)?;
                 
                 let objectname_osstr = OsStr::from_bytes(&from_filename).to_os_string();
             
@@ -1497,17 +1497,27 @@ impl NFSFileSystem for MirrorFS {
                 }
 
                     // Check if the source file exists in Redis
-
-                    let from_exists: bool = match conn.zscore::<String, &String, Option<f64>>(format!("{}/{}_nodes", hash_tag, user_id), &new_from_path) {
-                        Ok(score) => score.is_some(),
-                        Err(_) => false,
+                    let from_exists: bool = match self.data_store.zscore(
+                        &format!("{}/{}_nodes", hash_tag, user_id),
+                        &new_from_path
+                    ).await {
+                        Ok(Some(_)) => true,
+                        Ok(None) => false,
+                        Err(e) => {
+                            eprintln!("Error checking if source file exists: {:?}", e);
+                            false
+                        }
                     };
                     
                     if !from_exists {
                         return Err(nfsstat3::NFS3ERR_NOENT);
                     }
 
-                let to_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), to_dirid.to_string()).unwrap_or_default();
+                let to_path: String = self.data_store.hget(
+                    &format!("{}/{}_id_to_path", hash_tag, user_id),
+                    &to_dirid.to_string()
+                ).await
+                    .map_err(|_| nfsstat3::NFS3ERR_IO)?;
                 
                 let objectname_osstr = OsStr::from_bytes(&to_filename).to_os_string();
             
@@ -1538,9 +1548,14 @@ impl NFSFileSystem for MirrorFS {
                     match disassemble(&data).await {
                         Ok(shares) => {
                             // Use shares if dis_assembly was successful
-                            let result: Result<(), RedisError> = conn.hset(format!("{}{}", hash_tag, hash_path), "data", shares);
-                            if let Err(e) = result {
-                                eprintln!("Error setting data in Redis: {}", e);
+                            let result = self.data_store.hset(
+                                &format!("{}{}", hash_tag, hash_path),
+                                "data",
+                                &shares
+                            ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
+                            if let Err(_e) = result {
+                                //eprintln!("Error setting data in Redis: {}", e);
                             }
                         }
                         Err(e) => {
@@ -1589,7 +1604,7 @@ impl NFSFileSystem for MirrorFS {
     
         {
         
-            let mut conn = self.pool.get_connection();             
+            //let mut conn = self.pool.get_connection();             
 
         //    let (user_id, hash_tag, parent_path, new_dir_path, new_dir_id) = {
                 let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
@@ -1597,7 +1612,11 @@ impl NFSFileSystem for MirrorFS {
                 let key1 = format!("{}/{}_id_to_path", hash_tag, user_id);
 
                 // Get parent directory path from Redis
-                let parent_path: String = conn.hget(key1, dirid.to_string()).unwrap_or_default();
+                let parent_path: String = self.data_store.hget(
+                    &key1,
+                    &dirid.to_string()
+                ).await
+                    .map_err(|_| nfsstat3::NFS3ERR_IO)?;
         
                 if parent_path.is_empty() {
                     return Err(nfsstat3::NFS3ERR_NOENT); // No such directory id exists
@@ -1617,10 +1636,16 @@ impl NFSFileSystem for MirrorFS {
                 // let key2 = format!("{}/{}_path_to_id", hash_tag, user_id);
 
                 // Check if directory already exists
-                // let exists: bool = conn.hexists(key2, new_dir_path.clone()).unwrap_or(false);
-                let exists: bool = match conn.zscore::<String, &String, Option<f64>>(format!("{}/{}_nodes", hash_tag, user_id), &new_dir_path) {
-                    Ok(score) => score.is_some(),
-                    Err(_) => false,
+                let exists: bool = match self.data_store.zscore(
+                    &format!("{}/{}_nodes", hash_tag, user_id),
+                    &new_dir_path
+                ).await {
+                    Ok(Some(_)) => true,
+                    Ok(None) => false,
+                    Err(e) => {
+                        eprintln!("Error checking if directory exists: {:?}", e);
+                        false
+                    }
                 };
                 
                 if exists {
@@ -1631,15 +1656,14 @@ impl NFSFileSystem for MirrorFS {
 
                 let key = format!("{}/{}_next_fileid", hash_tag, user_id);
             
-                let new_dir_id: fileid3 = match conn.incr(key, 1) {
+                let new_dir_id: fileid3 = match self.data_store.incr(&key).await {
                     Ok(id) => {
                         //println!("New directory ID: {}", id);
-                        id
+                        id.try_into().unwrap()
                     }
-                    //Ok(id) => id,
-                    Err(_redis_error) => {
-                        // Handle the RedisError and convert it to nfsstat3
-                        return Err(nfsstat3::NFS3ERR_IO); // You can choose the appropriate nfsstat3 error here
+                    Err(e) => {
+                        eprintln!("Error incrementing directory ID: {:?}", e);
+                        return Err(nfsstat3::NFS3ERR_IO);
                     }
                 };
 
@@ -1663,7 +1687,7 @@ impl NFSFileSystem for MirrorFS {
     }
 
     
-    let mut conn = self.pool.get_connection();  
+    //let mut conn = self.pool.get_connection();  
 
     let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;   
 
@@ -1676,7 +1700,11 @@ impl NFSFileSystem for MirrorFS {
         
 
     // Get the directory path from the directory ID
-    let dir_path: String = conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), dirid.to_string()).unwrap_or_default();
+    let dir_path: String = self.data_store.hget(
+        &format!("{}/{}_id_to_path", hash_tag, user_id),
+        &dirid.to_string()
+    ).await
+        .map_err(|_| nfsstat3::NFS3ERR_IO)?;
 
     //Convert symlink to string
     let symlink_osstr = OsStr::from_bytes(symlink).to_os_string();
@@ -1692,61 +1720,90 @@ impl NFSFileSystem for MirrorFS {
             symlink_path = format!("{}/{}", dir_path, objectname_osstr.to_str().unwrap_or(""));
         }
 
-    let symlink_exists: bool = match conn.zscore::<String, &String, Option<f64>>(format!("{}/{}_nodes", hash_tag, user_id), &symlink_path) {
-        Ok(score) => score.is_some(),
-        Err(_) => false,
-    };
+        let symlink_exists: bool = match self.data_store.zscore(
+            &format!("{}/{}_nodes", hash_tag, user_id),
+            &symlink_path
+        ).await {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(e) => {
+                eprintln!("Error checking if symlink exists: {:?}", e);
+                false
+            }
+        };
 
     if symlink_exists {
         return Err(nfsstat3::NFS3ERR_EXIST);
     }
 
     // Generate a new file ID for the symlink
-    let symlink_id: fileid3 = match conn.incr(format!("{}/{}_next_fileid", hash_tag, user_id), 1) {
-        Ok(id) => id,
-        Err(_redis_error) => {
-            // Handle the RedisError and convert it to nfsstat3
-            return Err(nfsstat3::NFS3ERR_IO); // You can choose the appropriate nfsstat3 error here
+    let symlink_id: fileid3 = match self.data_store.incr(
+        &format!("{}/{}_next_fileid", hash_tag, user_id)
+    ).await {
+        Ok(id) => id.try_into().unwrap(),
+        Err(e) => {
+            eprintln!("Error incrementing symlink ID: {:?}", e);
+            return Err(nfsstat3::NFS3ERR_IO);
         }
     };
 
     // Begin a Redis transaction to ensure atomicity
 
-    let _ = conn.zadd::<_,_,_,()>(format!("{}/{}_nodes", hash_tag, user_id), &symlink_path, (symlink_path.matches('/').count() as i64 + 1).to_string());
+    let score = (symlink_path.matches('/').count() as f64) + 1.0;
+    let _ = self.data_store.zadd(
+        &format!("{}/{}_nodes", hash_tag, user_id),
+        &symlink_path,
+        score
+    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
     
-    let _ = conn.hset_multiple::<_,_,_,()>(format!("{}{}", hash_tag, &symlink_path), 
+        let _ = self.data_store.hset_multiple(
+            &format!("{}{}", hash_tag, &symlink_path),
             &[
-            ("ftype", 2),
-            ("size", symlink.len() as u64),
-            //("permissions", attr.mode as u64),
-            ("change_time_secs", epoch_seconds),
-            ("change_time_nsecs", epoch_nseconds.into()),
-            ("modification_time_secs", epoch_seconds),
-            ("modification_time_nsecs", epoch_nseconds.into()),
-            ("access_time_secs", epoch_seconds),
-            ("access_time_nsecs", epoch_nseconds.into()),
-            ("birth_time_secs", epoch_seconds),
-            ("birth_time_nsecs", epoch_nseconds.into()),
-            ("fileid", symlink_id)
-            ]);
+                ("ftype", "2"),
+                ("size", &symlink.len().to_string()),
+                //("permissions", attr.mode as u64),
+                ("change_time_secs", &epoch_seconds.to_string()),
+                ("change_time_nsecs", &epoch_nseconds.to_string()),
+                ("modification_time_secs", &epoch_seconds.to_string()),
+                ("modification_time_nsecs", &epoch_nseconds.to_string()),
+                ("access_time_secs", &epoch_seconds.to_string()),
+                ("access_time_nsecs", &epoch_nseconds.to_string()),
+                ("birth_time_secs", &epoch_seconds.to_string()),
+                ("birth_time_nsecs", &epoch_nseconds.to_string()),
+                ("fileid", &symlink_id.to_string())
+            ]
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
             if let set_mode3::mode(mode) = attr.mode {
                 //debug!(" -- set permissions {:?} {:?}", symlink_path, mode);
                 let mode_value = Self::mode_unmask_setattr(mode);
     
                 // Update the permissions metadata of the file in Redis
-                let _ = conn.hset::<_, _, _, ()>(
-                    format!("{}{}", hash_tag, symlink_path),
+                let _ = self.data_store.hset(
+                    &format!("{}{}", hash_tag, symlink_path),
                     "permissions",
-                    &mode_value.to_string(),
-                );
+                    &mode_value.to_string()
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                 
             }
 
-        let _ = conn.hset::<_,_,_,()>(format!("{}{}", hash_tag, symlink_path), "symlink_target", symlink_osstr.to_str());
+        let _ = self.data_store.hset(
+            &format!("{}{}", hash_tag, symlink_path),
+            "symlink_target",
+            symlink_osstr.to_str().unwrap_or_default()
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
         
-        let _ = conn.hset::<_,_,_,()>(format!("{}/{}_path_to_id", hash_tag, user_id), &symlink_path, symlink_id.to_string());
-        let _ = conn.hset::<_,_,_,()>(format!("{}/{}_id_to_path", hash_tag, user_id), symlink_id.to_string(), &symlink_path);
+        let _ = self.data_store.hset(
+            &format!("{}/{}_path_to_id", hash_tag, user_id),
+            &symlink_path,
+            &symlink_id.to_string()
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
+        let _ = self.data_store.hset(
+            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &symlink_id.to_string(),
+            &symlink_path
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
         let metadata = self.get_metadata_from_id(symlink_id).await?;
 
@@ -1754,34 +1811,38 @@ impl NFSFileSystem for MirrorFS {
         
     }
 
-    async fn readlink(&self, id: fileid3) -> Result<nfspath3, nfsstat3> {
-        
-        let mut conn = self.pool.get_connection();  
-        
+    async fn readlink(&self, id: fileid3) -> Result<nfsstring, nfsstat3> {
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-
-        // Retrieve the path from the file ID
-        let path: Option<String> = match conn.hget(format!("{}/{}_id_to_path", hash_tag, user_id), id.to_string()) {
-            Ok(path) => path,
-            Err(_) => return Err(nfsstat3::NFS3ERR_STALE), // File ID does not exist
-        };
     
-        let path = match path {
-            Some(path) => path,
-            None => return Err(nfsstat3::NFS3ERR_STALE), // File ID does not map to a path
+        // Retrieve the path from the file ID
+        let path: String = match self.data_store.hget(
+            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &id.to_string()
+        ).await {
+            Ok(path) => path,
+            Err(e) => {
+                eprintln!("Error retrieving path for ID {}: {:?}", id, e);
+                return Err(nfsstat3::NFS3ERR_STALE);
+            }
         };
     
         // Retrieve the symlink target using the path
-        let symlink_target: Option<String> = match conn.hget(format!("{}{}", hash_tag, path), "symlink_target") {
+        let symlink_target: String = match self.data_store.hget(
+            &format!("{}{}", hash_tag, path),
+            "symlink_target"
+        ).await {
             Ok(target) => target,
-            Err(_) => return Err(nfsstat3::NFS3ERR_IO), // Error retrieving the symlink target
+            Err(e) => {
+                eprintln!("Error retrieving symlink target: {:?}", e);
+                return Err(nfsstat3::NFS3ERR_IO);
+            }
         };
-
-        match symlink_target {
-            Some(target) => Ok(nfsstring::from(target.into_bytes())),
-            None => Err(nfsstat3::NFS3ERR_INVAL), // Path exists but isn't a symlink (or missing target)
+    
+        if symlink_target.is_empty() {
+            Err(nfsstat3::NFS3ERR_INVAL) // Path exists but isn't a symlink (or missing target)
+        } else {
+            Ok(nfsstring::from(symlink_target.into_bytes()))
         }
-
     }
 }
 const HOSTPORT: u32 = 2049;

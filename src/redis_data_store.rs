@@ -97,4 +97,9 @@ impl DataStore for RedisDataStore {
             .collect();
         Ok(results.into_iter().map(|(member, _)| member).collect())
     }
+
+    async fn zscore(&self, key: &str, member: &str) -> Result<Option<f64>, DataStoreError> {
+        let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
+        conn.zscore(key, member).map_err(|_| DataStoreError::OperationFailed)
+    }
 }
