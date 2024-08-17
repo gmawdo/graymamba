@@ -1,6 +1,5 @@
 use crate::context::RPCContext;
 use crate::mount::*;
-use crate::nfs::nfsstat3;
 use crate::rpc::*;
 use crate::xdr::*;
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -118,20 +117,15 @@ pub async fn mountproc3_mnt(
     }
 
     // Authenticate user
-    let mut utf8path = String::new();
-    if let Some(ref user_key) = user_key {
+    let utf8path = if let Some(ref user_key) = user_key {
         match authenticate_user(user_key) {
             KeyType::Usual => {
                 println!("Authenticated as a usual user key: {}", user_key);
-                // Set the default mount directory
-                utf8path = format!("/{}", user_key);
-                
+                format!("/{}", user_key)
             }
             KeyType::Special => {
                 println!("Authenticated as a special user key: {}", user_key);
-                // Set the default mount directory for special key
-                utf8path = String::from("/");
-                
+                String::from("/")
             }
             KeyType::None => {
                 make_failure_reply(xid).serialize(output)?;
@@ -141,7 +135,7 @@ pub async fn mountproc3_mnt(
     } else {
         make_failure_reply(xid).serialize(output)?;
         return Err(anyhow::anyhow!("User key not provided"));
-    }
+    };
 
     // Initialize the mount directory
     let _ = init_user_directory(&utf8path);
@@ -180,127 +174,6 @@ pub async fn mountproc3_mnt(
         Ok(())
     }
 }
-
-// pub async fn mountproc3_mnt(
-//     xid: u32,
-//     input: &mut impl Read,
-//     output: &mut impl Write,
-//     context: &RPCContext,
-// ) -> Result<(), anyhow::Error> {
-//     let mut path = dirpath::new();
-//     path.deserialize(input)?;
-
-   
-//     // Parse options from the input stream
-
-//     let path = std::str::from_utf8(&path).unwrap_or_default();
-
-//     // println!("path: {:?}", path);
-
-//     // Parse user_key from the input stream
-//     let mut user_key = None;
-
-//     let options: Vec<&str> = path.split('/').collect();
-
-//     for option in options {
-//         if option.starts_with("user_key=") {
-//             user_key = Some(option.trim_start_matches("user_key=").to_string());
-//         }
-//     }
-
-//     // println!("user_key: {:?}", user_key);
-    
-//     // Authenticate user
-//     if let Some(ref user_key) = user_key {
-//         if !authenticate_user(&user_key) {
-//             make_failure_reply(xid).serialize(output)?;
-//             return Err(anyhow::anyhow!("Authentication failed"));
-//         }
-//     } else {
-//         make_failure_reply(xid).serialize(output)?;
-//         return Err(anyhow::anyhow!("User key not provided"));
-//     }
-
-//      //Set the default mount directory
-//     let mut utf8path = String::from("/");
-//     if let Some(ref key) = user_key {
-//         //println!("user_key: {}", key);
-//         utf8path.push_str(key);
-//     }
-
-   
-//    //println!("utfpath: {}", utf8path);
-
-//     // Initialize the mount directory
-//     let _ = init_user_directory(&utf8path);
-    
-//     // Set-up redis pool for the cluster and get the connection
-//     let pool_result = RedisClusterPool::from_config_file();
-//     {
-//         let pool = pool_result.unwrap();
-//         let mut conn = pool.get_connection();
-
-//     debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
-//     if let Ok(fileid) = context.vfs.get_id_from_path(&utf8path, &mut conn).await {
-//         //println!("File ID: {:?}", fileid);
-//         //println!("FHandle: {:?}", context.vfs.id_to_fh(fileid).data);
-//         let response = mountres3_ok {
-//             fhandle: context.vfs.id_to_fh(fileid).data,
-//             auth_flavors: vec![
-//                 auth_flavor::AUTH_NULL.to_u32().unwrap(),
-//                 auth_flavor::AUTH_UNIX.to_u32().unwrap(),
-//             ],
-//         };
-//         debug!("{:?} --> {:?}", xid, response);
-        
-//         if let Some(ref chan) = context.mount_signal {
-//             let _ = chan.send(true).await;
-//         }
-//         make_success_reply(xid).serialize(output)?;
-//         mountstat3::MNT3_OK.serialize(output)?;
-//         response.serialize(output)?;
-//     } else {
-//         debug!("{:?} --> MNT3ERR_NOENT", xid);
-//         make_success_reply(xid).serialize(output)?;
-//         mountstat3::MNT3ERR_NOENT.serialize(output)?;
-//     }
-//     Ok(())
-//     }
-// }
-
-/*
-  exports MOUNTPROC3_EXPORT(void) = 5;
-
-  typedef struct groupnode *groups;
-
-  struct groupnode {
-       name     gr_name;
-       groups   gr_next;
-  };
-
-  typedef struct exportnode *exports;
-
-  struct exportnode {
-       dirpath  ex_dir;
-       groups   ex_groups;
-       exports  ex_next;
-  };
-
-DESCRIPTION
-
-  Procedure EXPORT returns a list of all the exported file
-  systems and which clients are allowed to mount each one.
-  The names in the group list are implementation-specific
-  and cannot be directly interpreted by clients. These names
-  can represent hosts or groups of hosts.
-
-IMPLEMENTATION
-
-  This procedure generally returns the contents of a list of
-  shared or exported file systems. These are the file
-  systems which are made available to NFS version 3 protocol
-  clients.
- */
 
 pub fn mountproc3_export(
     xid: u32,

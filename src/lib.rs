@@ -16,17 +16,15 @@ mod portmap_handlers;
 pub mod nfs;
 mod nfs_handlers;
 
-pub use redis_pool::RedisClusterPool;
-
-
+pub use self::redis_pool::RedisClusterPool;
+pub mod data_store;
+pub mod redis_data_store;
 
 pub mod redis_pool {
     use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
     use r2d2_redis_cluster::r2d2::Pool;
     use config::{Config, File as ConfigFile, ConfigError}; 
-    
-   
-    
+     
     pub struct RedisClusterPool {
         pub pool: Pool<RedisClusterConnectionManager>,
        
@@ -64,61 +62,28 @@ pub mod redis_pool {
     
             
             Ok(RedisClusterPool::new(redis_nodes))
-        }
-
-        
-        
-    
-        
+        }        
     }
-
-
 }
 
 pub mod nfs_module {
     use config::{Config, ConfigError, File};
-    use subxt::blocks;
+    
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::thread;
-    use subxt::{
-        PolkadotConfig,
-        utils::{AccountId32, MultiAddress},
-        OnlineClient, blocks::{Block, BlocksClient}, 
-    };
-    use tokio::sync::Mutex;
-    use subxt_signer::sr25519::{dev, Keypair};
+    use subxt::{PolkadotConfig,utils::AccountId32,OnlineClient};
+    
+    use subxt_signer::sr25519::Keypair;
+    use subxt_signer::sr25519::dev;
     use tokio::runtime::Runtime;
-    use subxt::backend::{legacy::LegacyRpcMethods, rpc::RpcClient};
-    use subxt::config::DefaultExtrinsicParamsBuilder as Params;
+    use subxt::backend::legacy::LegacyRpcMethods;
+    use subxt::backend::rpc::RpcClient;
+    
 
     #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
     pub mod pallet_template {}
 
-    type MyConfig = PolkadotConfig;
-
-    // struct DisReAssemblyStorage;
-
-    // impl Address for DisReAssemblyStorage {
-    //     type Target = FSEvent;
-    //     type Keys = Vec<u8>;
-    //     type IsFetchable = subxt::utils::Yes;
-    //     type IsDefaultable = subxt::utils::Yes;
-    //     type IsIterable = subxt::utils::Yes;
-
-    //     fn pallet_name(&self) -> &str {
-    //         "PalletName"
-    //     }
-
-    //     fn entry_name(&self) -> &str {
-    //         "DisReAssembly"
-    //     }
-
-    //     fn append_entry_bytes(&self, _metadata: &Metadata, _bytes: &mut Vec<u8>) -> Result<(), subxt::ext::subxt_core::Error> {
-    //         // Add any additional bytes needed to dig into maps, if necessary
-    //         Ok(())
-    //     }
-    // }
-
+    #[allow(dead_code)]
     pub struct NFSModule {
         api: OnlineClient<PolkadotConfig>,
         account_id: AccountId32,
@@ -210,9 +175,9 @@ pub mod nfs_module {
 
         async fn send_event(
             api: &OnlineClient<PolkadotConfig>,
-            rpc: &LegacyRpcMethods<PolkadotConfig>,
+            _rpc: &LegacyRpcMethods<PolkadotConfig>,
             signer: &Keypair,
-            account_id: &AccountId32,
+            _account_id: &AccountId32,
             event: &Event,
         ) -> Result<(), Box<dyn std::error::Error>> {
             println!("Preparing to send event...");
@@ -222,14 +187,6 @@ pub mod nfs_module {
             let creation_time: Vec<u8> = event.creation_time.clone().into_bytes();
             let file_path: Vec<u8> = event.file_path.clone().into_bytes();
             let event_key: Vec<u8> = event.event_key.clone().into_bytes();
-        
-            // // Log the data for debugging
-            // println!("Event Type: {:?}", event_type);
-            // println!("Creation Time: {:?}", creation_time);
-            // println!("File Path: {:?}", file_path);
-            // println!("Event Key: {:?}", event_key);
-
-          
 
             if event.event_type == "disassembled" {
 
@@ -299,14 +256,6 @@ pub mod nfs_module {
 
     }
 }
-
-
-
-
-
-
-
-
 
 #[cfg(not(target_os = "windows"))]
 pub mod fs_util;
