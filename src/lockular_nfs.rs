@@ -1,12 +1,13 @@
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
 use std::sync::{Arc, RwLock};
-use tokio::sync::RwLock as OtherRwLock;
-use tokio::sync::Mutex;
+// use tokio::sync::RwLock as OtherRwLock;
+use tokio::sync::{Mutex, Semaphore};
+use tokio::time::{Duration, Instant};
 
 use std::ops::Bound;
 use std::os::unix::ffi::OsStrExt;
-use std::sync::atomic::AtomicU64;
+// use std::sync::atomic::AtomicU64;
 use regex::Regex;
 use chrono::{Local, DateTime};
 
@@ -16,7 +17,7 @@ use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
 //use futures::future::ok;
-use intaglio::osstr::SymbolTable;
+// use intaglio::osstr::SymbolTable;
 use tracing::debug;
 
 use lockular_nfs::nfs_module;
@@ -25,8 +26,10 @@ use lockular_nfs::nfs::*;
 use lockular_nfs::nfs::nfsstat3;
 use lockular_nfs::tcp::{NFSTcp, NFSTcpListener};
 use lockular_nfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
+use lockular_nfs::channel_buffer;
 
 use crate::nfs_module::NFSModule;
+use crate::channel_buffer::{ChannelBuffer, ActiveWrite};
 
 use lockular_nfs::data_store::{DataStore,DataStoreError};
 
@@ -127,35 +130,35 @@ impl FileMetadata {
 
 //#[derive(Debug)]
 // 
-
+#[derive(Clone)]
 pub struct MirrorFS {
     data_store: Arc<dyn DataStore>,
-    #[allow(dead_code)]
-    intern: SymbolTable,
-    #[allow(dead_code)]
-    next_fileid: AtomicU64, // Atomic counter for generating unique IDs
-    data_lock: Mutex<()>,
-           // Add ShamirSecretSharing
-    in_memory_hashmap: Arc<OtherRwLock<HashMap<String, String>>>, // In-Memory HashMap with RwLock for concurrency
     nfs_module: Arc<NFSModule>, // Add NFSModule wrapped in Arc
-   
+    active_writes: Arc<Mutex<HashMap<fileid3, ActiveWrite>>>,
+    commit_semaphore: Arc<Semaphore>,
     
 }
 
 impl MirrorFS {
     pub fn new(data_store: Arc<dyn DataStore>, nfs_module: Arc<NFSModule>) -> MirrorFS {
-        // Create an empty in-memory HashMap wrapped in RwLock and then in Arc for safe concurrent access
-        let in_memory_hashmap = Arc::new(OtherRwLock::new(HashMap::new()));
+        // Create shared components for active writes
+        let active_writes = Arc::new(Mutex::new(HashMap::new()));
+        let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
 
-        MirrorFS {
+        let mirror_fs = MirrorFS {
             data_store,
-            intern: SymbolTable::new(),
-            next_fileid: AtomicU64::new(1),
-            //pool: shared_pool,
-            data_lock: Mutex::new(()),
-            in_memory_hashmap,
             nfs_module,
-        }
+            active_writes: active_writes.clone(),
+            commit_semaphore: commit_semaphore.clone(),
+        };
+
+        // Start the background task to monitor active writes
+        let mirror_fs_clone = mirror_fs.clone();
+        tokio::spawn(async move {
+            mirror_fs_clone.monitor_active_writes().await;
+        });
+
+        mirror_fs
     }
 
     fn mode_unmask_setattr(mode: u32) -> u32 {
@@ -350,9 +353,9 @@ impl MirrorFS {
             ("fileid", &fileid.to_string())
         ]).await.map_err(|_| nfsstat3::NFS3ERR_IO);
         
-        if node_type == "1" {
-            let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "").await.map_err(|_| nfsstat3::NFS3ERR_IO);
-            }
+        // if node_type == "1" {
+        //     let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "").await.map_err(|_| nfsstat3::NFS3ERR_IO);
+        //     }
         let _ = self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string()).await.map_err(|_| nfsstat3::NFS3ERR_IO);
         let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path).await.map_err(|_| nfsstat3::NFS3ERR_IO);
     
@@ -407,7 +410,7 @@ impl MirrorFS {
                 ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                 
             }
-        let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "").await.map_err(|_| nfsstat3::NFS3ERR_IO);
+        // let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "").await.map_err(|_| nfsstat3::NFS3ERR_IO);
         let _ = self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string()).await.map_err(|_| nfsstat3::NFS3ERR_IO);
         let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
@@ -754,94 +757,299 @@ impl MirrorFS {
         Ok(())   
     }
 
-    async fn get_data(&self, path: &str) -> Vec<u8> {
+    // async fn get_data(&self, path: &str) -> Vec<u8> {
 
-        // Acquire lock on HASH_TAG 
-        let hash_tag = HASH_TAG.read().unwrap().clone();
+    //     // Acquire lock on HASH_TAG 
+    //     let hash_tag = HASH_TAG.read().unwrap().clone();
 
-        if path.contains(".git/objects/pack/tmp_pack") {
-            // Retrieve the existing data from the in-memory hashmap
-            let hashmap = self.in_memory_hashmap.read().await;
-            let data = hashmap.get(path).cloned().unwrap_or_default(); // This is initially a String
-            if !data.is_empty() {
-                // Directly decode the base64 string to a byte array
-                match STANDARD.decode(&data) {
-                    Ok(byte_array) => byte_array, // Use the Vec<u8> byte array as needed
-                    Err(_) => Vec::new(), // Handle decoding error by returning an empty Vec<u8>
-                }
-            } else {
-                Vec::new() // Return an empty Vec<u8> if no data is found
-            }
-        } else {
-            // Retrieve the current file content (Base64 encoded) from the share store
-            let sharestore_value: String = match self.data_store.hget(
-                &format!("{}{}", hash_tag, path),
-                "data"
-            ).await {
-                Ok(value) => value,
-                Err(_) => String::default(), // or handle the error differently
-            };
-            if !sharestore_value.is_empty() {
-                   match reassemble(&sharestore_value).await {
-                    Ok(reconstructed_secret) => {
-                        // Decode the base64 string to a byte array
-                        match STANDARD.decode(&reconstructed_secret) {
-                            Ok(byte_array) => byte_array, // Use the Vec<u8> byte array as needed
-                            Err(_) => Vec::new(), // Handle decoding error by returning an empty Vec<u8>
-                        }
-                    }
-                    Err(_) => Vec::new(), // Handle the re_assembly error by returning an empty Vec<u8>
-                }
-            } else {
-                Vec::new() // Return an empty Vec<u8> if no data is found
-            }
-        }
+    //     if path.contains(".git/objects/pack/tmp_pack") {
+    //         // Retrieve the existing data from the in-memory hashmap
+    //         let hashmap = self.in_memory_hashmap.read().await;
+    //         let data = hashmap.get(path).cloned().unwrap_or_default(); // This is initially a String
+    //         if !data.is_empty() {
+    //             // Directly decode the base64 string to a byte array
+    //             match STANDARD.decode(&data) {
+    //                 Ok(byte_array) => byte_array, // Use the Vec<u8> byte array as needed
+    //                 Err(_) => Vec::new(), // Handle decoding error by returning an empty Vec<u8>
+    //             }
+    //         } else {
+    //             Vec::new() // Return an empty Vec<u8> if no data is found
+    //         }
+    //     } else {
+    //         // Retrieve the current file content (Base64 encoded) from the share store
+    //         let sharestore_value: String = match self.data_store.hget(
+    //             &format!("{}{}", hash_tag, path),
+    //             "data"
+    //         ).await {
+    //             Ok(value) => value,
+    //             Err(_) => String::default(), // or handle the error differently
+    //         };
+    //         if !sharestore_value.is_empty() {
+    //                match reassemble(&sharestore_value).await {
+    //                 Ok(reconstructed_secret) => {
+    //                     // Decode the base64 string to a byte array
+    //                     match STANDARD.decode(&reconstructed_secret) {
+    //                         Ok(byte_array) => byte_array, // Use the Vec<u8> byte array as needed
+    //                         Err(_) => Vec::new(), // Handle decoding error by returning an empty Vec<u8>
+    //                     }
+    //                 }
+    //                 Err(_) => Vec::new(), // Handle the re_assembly error by returning an empty Vec<u8>
+    //             }
+    //         } else {
+    //             Vec::new() // Return an empty Vec<u8> if no data is found
+    //         }
+    //     }
         
-    }
+    // }
 
-    async fn write_data(&self, path: &str, data: Vec<u8>) -> Result<bool, DataStoreError> {
+    // async fn write_data(&self, path: &str, data: Vec<u8>) -> Result<bool, DataStoreError> {
         
-        // Acquire lock on HASH_TAG 
-        let hash_tag = HASH_TAG.read().unwrap().clone();
+    //     // Acquire lock on HASH_TAG 
+    //     let hash_tag = HASH_TAG.read().unwrap().clone();
 
-        let base64_string = STANDARD.encode(&data); // Convert byte array (Vec<u8>) to a base64 encoded string
+    //     let base64_string = STANDARD.encode(&data); // Convert byte array (Vec<u8>) to a base64 encoded string
 
-        if path.contains(".git/objects/pack/tmp_pack") {
-            // Retrieve the existing data from the in-memory hashmap
-            let mut data_block = self.in_memory_hashmap.write().await;
-            data_block.insert(path.to_owned(), base64_string);
-            Ok(true) // Operation successful
-        } else {
+    //     if path.contains(".git/objects/pack/tmp_pack") {
+    //         // Retrieve the existing data from the in-memory hashmap
+    //         let mut data_block = self.in_memory_hashmap.write().await;
+    //         data_block.insert(path.to_owned(), base64_string);
+    //         Ok(true) // Operation successful
+    //     } else {
 
-            // Apply secret sharing to the secret
-            match disassemble(&base64_string).await {
-                Ok(shares) => {               
-                    // Write the shares to share store
-                        self.data_store.hset(
-                            &format!("{}{}", hash_tag, path),
-                            "data",
-                            &shares
-                        ).await
-                        .map(|_| true)
-                        .map_err(|_e| {
-                            //eprintln!("Error writing to DataStore: {}", e);
-                            DataStoreError::OperationFailed // Or use an appropriate error type
-                        })
-                },
-                Err(e) => {
-                    eprintln!("Error during disassembly: {}", e);
-                    Err(DataStoreError::OperationFailed)
-                }
-            }
-        }
+    //         // Apply secret sharing to the secret
+    //         match disassemble(&base64_string).await {
+    //             Ok(shares) => {               
+    //                 // Write the shares to share store
+    //                     self.data_store.hset(
+    //                         &format!("{}{}", hash_tag, path),
+    //                         "data",
+    //                         &shares
+    //                     ).await
+    //                     .map(|_| true)
+    //                     .map_err(|_e| {
+    //                         //eprintln!("Error writing to DataStore: {}", e);
+    //                         DataStoreError::OperationFailed // Or use an appropriate error type
+    //                     })
+    //             },
+    //             Err(e) => {
+    //                 eprintln!("Error during disassembly: {}", e);
+    //                 Err(DataStoreError::OperationFailed)
+    //             }
+    //         }
+    //     }
         
-    }
+    // }
 
     async fn get_user_id_and_hash_tag() -> (String, String) {
         let user_id = USER_ID.read().unwrap().clone();
         let hash_tag = HASH_TAG.read().unwrap().clone();
         (user_id, hash_tag)
     }
+
+    async fn get_data(&self, path: &str) -> Vec<u8> {
+     
+        let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+
+        // Retrieve the current file content (Base64 encoded) from Redis
+        let redis_value: String = match self.data_store.hget(
+                &format!("{}{}", hash_tag, path),
+                "data"
+            ).await {
+                Ok(value) => value,
+                Err(_) => String::default(), // or handle the error differently
+            };
+        if !redis_value.is_empty() {
+            match reassemble(&redis_value).await {
+                Ok(reconstructed_secret) => {
+                    // Decode the base64 string to a byte array
+                    match STANDARD.decode(&reconstructed_secret) {
+                        Ok(byte_array) => byte_array, // Use the Vec<u8> byte array as needed
+                        Err(_) => Vec::new(), // Handle decoding error by returning an empty Vec<u8>
+                    }
+                }
+                Err(_) => Vec::new(), // Handle the re_assembly error by returning an empty Vec<u8>
+            }
+        } else {
+            Vec::new() // Return an empty Vec<u8> if no data is found
+        }
+    }
+
+    async fn load_existing_content(&self, id: fileid3, channel: &Arc<ChannelBuffer>) -> Result<(), nfsstat3> {
+        
+        if channel.is_empty().await {
+            
+            let path_result = self.get_path_from_id(id).await;
+            let path: String = match path_result {
+                Ok(k) => k,
+                Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
+            };
+
+            let contents = self.get_data(&path).await;
+
+            
+            channel.write(0, &contents).await;
+        }
+
+        Ok(())
+    }
+
+
+    async fn monitor_active_writes(&self) {
+        println!("Starting active writes monitor");
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            
+            let to_commit: Vec<fileid3> = {
+                let active_writes = self.active_writes.lock().await;
+                let mut to_commit = Vec::new();
+    
+                for (&id, write) in active_writes.iter() {
+                    if write.channel.is_write_complete() && write.channel.time_since_last_write().await > Duration::from_secs(10) {
+                        to_commit.push(id);
+                    }
+                }
+    
+                to_commit
+            };
+
+            for id in to_commit {
+                // println!("Attempting to commit write for file ID: {}", id);
+                match self.commit_write(id).await {
+                    Ok(()) => {
+                        debug!("Successfully committed write for file ID: {}", id);
+                    },
+                    Err(e) => {
+                        debug!("Error committing write for file ID: {}: {:?}", id, e);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn commit_write(&self, id: fileid3) -> Result<(), DataStoreError> {
+
+        debug!("Starting commit process for file ID: {}", id);
+
+        let _permit = self.commit_semaphore.acquire().await.map_err(|_| DataStoreError::OperationFailed);
+
+        let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+
+
+        let channel = {
+
+            let mut active_writes = self.active_writes.lock().await;
+
+            match active_writes.remove(&id) {
+
+                Some(write) => write.channel,
+
+                None => {
+
+                    debug!("Commit called for non-existent write ID: {}", id);
+
+                    return Ok(());
+                }
+            }
+        };
+
+        let path_result = self.get_path_from_id(id).await;
+        let path: String = match path_result {
+            Ok(k) => k,
+            Err(_) => return Err(DataStoreError::OperationFailed),  // Replace with appropriate nfsstat3 error
+        };   
+
+        let contents = channel.read_all().await;
+
+
+        let base64_contents = STANDARD.encode(&contents.to_vec()); // Convert byte array (Vec<u8>) to a base64 encoded string
+        
+
+        match disassemble(&base64_contents).await {
+            Ok(shares) => {
+                // Attempt to write the shares to the data store
+                match self
+                    .data_store
+                    .hset(&format!("{}{}", hash_tag, path), "data", &shares)
+                    .await
+                {
+                    Ok(_) => {
+                        // Update file metadata upon successful storage
+                        self.update_file_metadata(&path).await?;
+
+                        // Clear the buffer contents after a successful commit
+                        channel.clear().await;
+
+                        Ok(())
+                    }
+                    Err(_e) => {
+                        debug!("Error setting data in Redis");
+                        Err(DataStoreError::OperationFailed)
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Shamir disassembly failed: {:?}", e);
+                Err(DataStoreError::OperationFailed)
+            }
+        }
+
+            
+       
+    }
+
+    async fn update_file_metadata(&self, path: &str) -> Result<(), DataStoreError> {
+        let system_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let epoch_seconds = system_time.as_secs();
+        let epoch_nseconds = system_time.subsec_nanos();
+        let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+
+        let update_result = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path),
+            &[
+                ("change_time_secs", &epoch_seconds.to_string()),
+                ("change_time_nsecs", &epoch_nseconds.to_string()),
+                ("modification_time_secs", &epoch_seconds.to_string()),
+                ("modification_time_nsecs", &epoch_nseconds.to_string()),
+                ("access_time_secs", &epoch_seconds.to_string()),
+                ("access_time_nsecs", &epoch_nseconds.to_string()),
+            ]).await;
+            
+            match update_result {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    eprintln!("Error updating file metadata in Redis: {:?}", e);
+                    Err(DataStoreError::OperationFailed)
+                }
+            }
+            
+    }
+
+    async fn is_likely_last_write(&self, id: fileid3, offset: u64, data_len: usize) -> Result<bool, nfsstat3> {
+
+        let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+
+        let path_result = self.get_path_from_id(id).await;
+        let path: String = match path_result {
+            Ok(k) => k,
+            Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
+        };
+
+        let current_size_result = self.data_store.hget(&format!("{}{}", hash_tag, path), "size").await;
+        let current_size: u64 = match current_size_result {
+            Ok(k) => k.parse::<u64>().map_err(|_| nfsstat3::NFS3ERR_IO)?,
+            Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
+        };
+            
+        Ok(offset + data_len as u64 >= current_size)
+    }
+
+    async fn mark_write_as_complete(&self, id: fileid3) -> Result<(), nfsstat3> {
+        let mut active_writes = self.active_writes.lock().await;
+        if let Some(write) = active_writes.get_mut(&id) {
+            write.channel.set_complete();
+        }
+        Ok(())
+    }
+
 }
 
 #[async_trait]
@@ -1140,83 +1348,153 @@ impl NFSFileSystem for MirrorFS {
 
             }
     }
+
+    async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
+
+        // println!("Starting write operation for file ID: {}, offset: {}, data length: {}", id, offset, data.len());
+
+        let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+
+        let path_result = self.get_path_from_id(id).await;
+        let path: String = match path_result {
+            Ok(k) => k,
+            Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
+        };
+
+        let _is_complete = {
+
+        let mut active_writes = self.active_writes.lock().await;
+        let write = active_writes.entry(id).or_insert_with(|| ActiveWrite {
+            channel: ChannelBuffer::new(),
+            last_activity: Instant::now(),
+        });
     
-    async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {     
-        let _lock = self.data_lock.lock().await;
-        {
-            //let mut conn = self.pool.get_connection();             
-            let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-            // Retrieve the path using the file ID
-            let path: String = self.data_store.hget(
-                &format!("{}/{}_id_to_path", hash_tag, user_id),
-                &id.to_string()
-            ).await
-                .unwrap_or_else(|_| String::new());
+        
 
-            let mut contents: Vec<u8>;
-            // Retrieve the existing data
-            contents = self.get_data(&path).await;
+        if write.channel.is_empty().await && offset > 0 {
+            self.load_existing_content(id, &write.channel).await?;
+        }
 
-            // Calculate the required new size
-            let new_size = (offset + data.len() as u64) as usize;
-            if new_size > contents.len() {
-                contents.resize(new_size, 0);
-            }
+        //Perform the write operation
+        write.channel.write(offset, data).await;
 
-            // Insert the new data into the contents vector
-            contents.splice(offset as usize..offset as usize + data.len(), data.iter().copied());
-            
-                    // Retrieve the existing data from the share store
-                    if self.write_data(&path, contents.clone()).await.unwrap_or(false) {
-                        let system_time = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap();
-                        let epoch_seconds = system_time.as_secs();
-                        let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
+        write.last_activity = Instant::now();
+        // write.last_activity = std::time::Instant::now().into();
+        
+        let total_size = write.channel.total_size();
+       
 
-                        let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path),
-                            &[
-                                ("size", &contents.len().to_string()),
-                                ("change_time_secs", &epoch_seconds.to_string()),
-                                ("change_time_nsecs", &epoch_nseconds.to_string()),
-                                ("modification_time_secs", &epoch_seconds.to_string()),
-                                ("modification_time_nsecs", &epoch_nseconds.to_string()),
-                                ("access_time_secs", &epoch_seconds.to_string()),
-                                ("access_time_nsecs", &epoch_nseconds.to_string()),
-                            ]
-                        ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-                    
-                        // Get the current local date and time
-                        let local_date_time: DateTime<Local> = Local::now();
+       let _  = self.data_store.hset(&format!("{}{}", hash_tag, path), "size", &total_size.to_string()).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
-                        // Format the date and time using the specified pattern
-                        let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
+        };
 
-                        let mut user = "";
+        
+        // Check if this might be the last write
+        if self.is_likely_last_write(id, offset, data.len()).await? {
 
-                        let parts: Vec<&str> = path.split('/').collect();
-
-                            if parts.len() > 2 {
-                                user = parts[1];
-                            }
-
-                        let _ = self.nfs_module.trigger_event(&creation_time, "disassembled", &path, &user);
-
-                        
-                      
-                        let metadata = self.get_metadata_from_id(id).await?;
-                        let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
-                        Ok(fattr)
-                        
-
-                    } else {
-                        return Err(nfsstat3::NFS3ERR_IO);
-                    }
-                
+            self.mark_write_as_complete(id).await?;
 
         }
 
+        // Get the current local date and time
+        let local_date_time: DateTime<Local> = Local::now();
+
+        // Format the date and time using the specified pattern
+        let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
+
+        let mut user = "";
+
+            let parts: Vec<&str> = path.split('/').collect();
+
+                if parts.len() > 2 {
+                    user = parts[1];
+                }
+
+        let _ = self.nfs_module.trigger_event(&creation_time, "disassembled", &path, &user);
+
+        let metadata = self.get_metadata_from_id(id).await?;
+
+        let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
+
+        Ok(fattr)
     }
+    
+    // async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {     
+        
+    //     {
+    //         //let mut conn = self.pool.get_connection();             
+    //         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+    //         // Retrieve the path using the file ID
+    //         let path: String = self.data_store.hget(
+    //             &format!("{}/{}_id_to_path", hash_tag, user_id),
+    //             &id.to_string()
+    //         ).await
+    //             .unwrap_or_else(|_| String::new());
+
+    //         let mut contents: Vec<u8>;
+    //         // Retrieve the existing data
+    //         contents = self.get_data(&path).await;
+
+    //         // Calculate the required new size
+    //         let new_size = (offset + data.len() as u64) as usize;
+    //         if new_size > contents.len() {
+    //             contents.resize(new_size, 0);
+    //         }
+
+    //         // Insert the new data into the contents vector
+    //         contents.splice(offset as usize..offset as usize + data.len(), data.iter().copied());
+            
+    //                 // Retrieve the existing data from the share store
+    //                 if self.write_data(&path, contents.clone()).await.unwrap_or(false) {
+    //                     let system_time = SystemTime::now()
+    //                         .duration_since(UNIX_EPOCH)
+    //                         .unwrap();
+    //                     let epoch_seconds = system_time.as_secs();
+    //                     let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
+
+    //                     let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path),
+    //                         &[
+    //                             ("size", &contents.len().to_string()),
+    //                             ("change_time_secs", &epoch_seconds.to_string()),
+    //                             ("change_time_nsecs", &epoch_nseconds.to_string()),
+    //                             ("modification_time_secs", &epoch_seconds.to_string()),
+    //                             ("modification_time_nsecs", &epoch_nseconds.to_string()),
+    //                             ("access_time_secs", &epoch_seconds.to_string()),
+    //                             ("access_time_nsecs", &epoch_nseconds.to_string()),
+    //                         ]
+    //                     ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+                    
+    //                     // Get the current local date and time
+    //                     let local_date_time: DateTime<Local> = Local::now();
+
+    //                     // Format the date and time using the specified pattern
+    //                     let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
+
+    //                     let mut user = "";
+
+    //                     let parts: Vec<&str> = path.split('/').collect();
+
+    //                         if parts.len() > 2 {
+    //                             user = parts[1];
+    //                         }
+
+    //                     let _ = self.nfs_module.trigger_event(&creation_time, "disassembled", &path, &user);
+
+                        
+                      
+    //                     let metadata = self.get_metadata_from_id(id).await?;
+    //                     let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
+    //                     Ok(fattr)
+                        
+
+    //                 } else {
+    //                     return Err(nfsstat3::NFS3ERR_IO);
+    //                 }
+                
+
+    //     }
+
+    // }
 
     async fn create(&self, dirid: fileid3, filename: &filename3, setattr: sattr3) -> Result<(fileid3, fattr3), nfsstat3> {
 
@@ -1283,13 +1561,13 @@ impl NFSFileSystem for MirrorFS {
 //                (user_id, hash_tag, new_file_path, new_file_id) // Return the values needed outside the scope
 //            };
 
-            if new_file_path.contains(".git/objects/pack/tmp_pack") {
-                // Redirect to HashMap
-                let mut hashmap = self.in_memory_hashmap.write().await;
-                hashmap.clear();
-                hashmap.insert(new_file_path.clone(), String::new());
+            // if new_file_path.contains(".git/objects/pack/tmp_pack") {
+            //     // Redirect to HashMap
+            //     let mut hashmap = self.in_memory_hashmap.write().await;
+            //     hashmap.clear();
+            //     hashmap.insert(new_file_path.clone(), String::new());
                 
-            }
+            // }
 
 
             let _ = self.create_file_node("1", new_file_id, &new_file_path, setattr).await;
@@ -1387,13 +1665,13 @@ impl NFSFileSystem for MirrorFS {
             //    (user_id, hash_tag, new_file_path, new_file_id) // Return the values needed outside the scope
             //};
 
-            if new_file_path.contains(".git/objects/pack/tmp_pack") {
-                // Redirect to HashMap
-                let mut hashmap = self.in_memory_hashmap.write().await;
-                hashmap.clear();
-                hashmap.insert(new_file_path.clone(), String::new());
+            // if new_file_path.contains(".git/objects/pack/tmp_pack") {
+            //     // Redirect to HashMap
+            //     let mut hashmap = self.in_memory_hashmap.write().await;
+            //     hashmap.clear();
+            //     hashmap.insert(new_file_path.clone(), String::new());
                 
-            }
+            // }
 
             
             let _ = self.create_node("1", new_file_id, &new_file_path).await;
@@ -1515,38 +1793,38 @@ impl NFSFileSystem for MirrorFS {
     //        };
 
 
-            if new_from_path.contains(".git/objects/pack/tmp_pack") {
-                // Redirect to HashMap
-                let hashmap = self.in_memory_hashmap.read().await;
+            // if new_from_path.contains(".git/objects/pack/tmp_pack") {
+            //     // Redirect to HashMap
+            //     let hashmap = self.in_memory_hashmap.read().await;
              
-                if let Some(key) = hashmap.keys().next() {
-                    let hash_path = key.to_string();  // Store the key in a String variable
-                    let data = hashmap.get(&hash_path).cloned().unwrap_or_default();  // This is initially a String
+            //     if let Some(key) = hashmap.keys().next() {
+            //         let hash_path = key.to_string();  // Store the key in a String variable
+            //         let data = hashmap.get(&hash_path).cloned().unwrap_or_default();  // This is initially a String
             
-                    // Disassemble the data
-                    match disassemble(&data).await {
-                        Ok(shares) => {
-                            // Use shares if dis_assembly was successful
-                            let result = self.data_store.hset(
-                                &format!("{}{}", hash_tag, hash_path),
-                                "data",
-                                &shares
-                            ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+            //         // Disassemble the data
+            //         match disassemble(&data).await {
+            //             Ok(shares) => {
+            //                 // Use shares if dis_assembly was successful
+            //                 let result = self.data_store.hset(
+            //                     &format!("{}{}", hash_tag, hash_path),
+            //                     "data",
+            //                     &shares
+            //                 ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
-                            if let Err(_e) = result {
-                                //eprintln!("Error setting data in the share store: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            // Handle the error from dis_assembly
-                            eprintln!("Error disassembling data: {}", e);
-                        }
-                    }
-                }
-                drop(hashmap);
-                let mut hashmap = self.in_memory_hashmap.write().await;
-                hashmap.clear();
-            }
+            //                 if let Err(_e) = result {
+            //                     //eprintln!("Error setting data in the share store: {}", e);
+            //                 }
+            //             }
+            //             Err(e) => {
+            //                 // Handle the error from dis_assembly
+            //                 eprintln!("Error disassembling data: {}", e);
+            //             }
+            //         }
+            //     }
+            //     drop(hashmap);
+            //     let mut hashmap = self.in_memory_hashmap.write().await;
+            //     hashmap.clear();
+            // }
             
             
 

@@ -4,15 +4,21 @@ use crate::rpc::*;
 use crate::xdr::*;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::{FromPrimitive, ToPrimitive};
-use r2d2_redis_cluster::redis_cluster_rs::redis;
 use std::io::{Read, Write};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tracing::debug;
-use crate::redis_pool::RedisClusterPool;
 
-use r2d2_redis_cluster::RedisResult;
+use r2d2::PooledConnection;
+use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
+use r2d2_redis_cluster::r2d2::Pool;
+use config::{Config, File as ConfigFile};
+use anyhow::{Result, Error};
+// use r2d2_redis_cluster::RedisResult;
 use r2d2_redis_cluster::Commands; 
+use r2d2_redis_cluster::redis_cluster_rs::redis;
+use redis::RedisError;
+
 
 
 /*
@@ -46,6 +52,12 @@ enum KeyType {
     Usual,
     Special,
     None,
+}
+
+impl From<RedisError> for crate::nfs::nfsstat3 {
+    fn from(_: RedisError) -> Self {
+        crate::nfs::nfsstat3::NFS3ERR_IO // or another appropriate nfsstat3 variant
+    }
 }
 
 pub async fn handle_mount(
@@ -116,16 +128,25 @@ pub async fn mountproc3_mnt(
         }
     }
 
+    // Set-up redis pool for the cluster and get the connection
+    let pool = create_redis_cluster_pool()?;
+    let mut conn = pool.get()?;
+
     // Authenticate user
-    let utf8path = if let Some(ref user_key) = user_key {
-        match authenticate_user(user_key) {
+    // let mut utf8path = String::new();
+    let utf8path: String = if let Some(ref user_key) = user_key {
+        match authenticate_user(user_key, &mut conn) {
             KeyType::Usual => {
                 println!("Authenticated as a usual user key: {}", user_key);
+                // Set the default mount directory
                 format!("/{}", user_key)
+                
             }
             KeyType::Special => {
                 println!("Authenticated as a special user key: {}", user_key);
+                // Set the default mount directory for special key
                 String::from("/")
+                
             }
             KeyType::None => {
                 make_failure_reply(xid).serialize(output)?;
@@ -137,16 +158,13 @@ pub async fn mountproc3_mnt(
         return Err(anyhow::anyhow!("User key not provided"));
     };
 
+    
+
     // Initialize the mount directory
-    let _ = init_user_directory(&utf8path);
+    let _ = init_user_directory(&utf8path, &pool);
     
     {
-        // Set-up redis pool for the cluster and get the connection
-        let pool_result = RedisClusterPool::from_config_file();
-    
-        let pool = pool_result.unwrap();
-        let mut conn = pool.get_connection();
-
+        
         debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
         if let Ok(fileid) = context.vfs.get_id_from_path(&utf8path, &mut conn).await {
             //println!("File ID: {:?}", fileid);
@@ -174,6 +192,129 @@ pub async fn mountproc3_mnt(
         Ok(())
     }
 }
+
+// pub async fn mountproc3_mnt(
+//     xid: u32,
+//     input: &mut impl Read,
+//     output: &mut impl Write,
+//     context: &RPCContext,
+// ) -> Result<(), anyhow::Error> {
+//     let mut path = dirpath::new();
+//     path.deserialize(input)?;
+
+   
+//     // Parse options from the input stream
+
+//     let path = std::str::from_utf8(&path).unwrap_or_default();
+
+//     //println!("path: {:?}", path);
+
+//     // Parse user_key from the input stream
+
+//     let mut user_key = None;
+
+//     let options: Vec<&str> = path.split('/').collect();
+
+//     for option in options {
+//         if option.starts_with("user_key=") {
+//             user_key = Some(option.trim_start_matches("user_key=").to_string());
+//         }
+//     }
+
+//     //println!("user_key: {:?}", user_key);
+
+//     // Authenticate user
+//     if let Some(user_key) = user_key {
+//         if !authenticate_user(&user_key) {
+//             make_failure_reply(xid).serialize(output)?;
+//             return Err(anyhow::anyhow!("Authentication failed"));
+//         }
+//     } else {
+//         make_failure_reply(xid).serialize(output)?;
+//         return Err(anyhow::anyhow!("User key not provided"));
+//     }
+
+
+//     //Set the default directory
+//     let utf8path = "/";
+
+//     let _ = init_user_directory();
+    
+//     // Convert utf8path to byte vector
+//     let utf8path_bytes = utf8path.as_bytes();
+    
+//     let redis_path = b"lockular".to_vec();
+
+//     // Concatenate utf8path_bytes with redis_path
+//     let prefixed_path = [utf8path_bytes, &redis_path].concat();
+
+//     let pool_result = RedisClusterPool::from_config_file();
+//     {
+//         let pool = pool_result.unwrap();
+//         let mut conn = pool.get_connection();
+
+//     debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
+//     //if let Ok(fileid) = context.vfs.path_to_id(&prefixed_path).await {
+//     if let Ok(fileid) = context.vfs.get_id_from_path(&utf8path, &mut conn).await {
+//         //println!("File ID: {:?}", fileid);
+//         //println!("FHandle: {:?}", context.vfs.id_to_fh(fileid).data);
+//         let response = mountres3_ok {
+//             fhandle: context.vfs.id_to_fh(fileid).data,
+//             auth_flavors: vec![
+//                 auth_flavor::AUTH_NULL.to_u32().unwrap(),
+//                 auth_flavor::AUTH_UNIX.to_u32().unwrap(),
+//             ],
+//         };
+//         debug!("{:?} --> {:?}", xid, response);
+        
+//         if let Some(ref chan) = context.mount_signal {
+//             let _ = chan.send(true).await;
+//         }
+//         make_success_reply(xid).serialize(output)?;
+//         mountstat3::MNT3_OK.serialize(output)?;
+//         response.serialize(output)?;
+//     } else {
+//         debug!("{:?} --> MNT3ERR_NOENT", xid);
+//         make_success_reply(xid).serialize(output)?;
+//         mountstat3::MNT3ERR_NOENT.serialize(output)?;
+//     }
+//     Ok(())
+//     }
+// }
+
+/*
+  exports MOUNTPROC3_EXPORT(void) = 5;
+
+  typedef struct groupnode *groups;
+
+  struct groupnode {
+       name     gr_name;
+       groups   gr_next;
+  };
+
+  typedef struct exportnode *exports;
+
+  struct exportnode {
+       dirpath  ex_dir;
+       groups   ex_groups;
+       exports  ex_next;
+  };
+
+DESCRIPTION
+
+  Procedure EXPORT returns a list of all the exported file
+  systems and which clients are allowed to mount each one.
+  The names in the group list are implementation-specific
+  and cannot be directly interpreted by clients. These names
+  can represent hosts or groups of hosts.
+
+IMPLEMENTATION
+
+  This procedure generally returns the contents of a list of
+  shared or exported file systems. These are the file
+  systems which are made available to NFS version 3 protocol
+  clients.
+ */
 
 pub fn mountproc3_export(
     xid: u32,
@@ -225,19 +366,28 @@ pub async fn mountproc3_umnt_all(
     Ok(())
 }
 
-fn init_user_directory(mount_path: &str) -> RedisResult<()> {
-    // Initialize Redis cluster pool from config file
-    let pool_result = RedisClusterPool::from_config_file();
-    {
-    let pool = pool_result.unwrap();
-    let mut conn = pool.get_connection();
+pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConnectionManager>) -> Result<(), crate::nfs::nfsstat3> {
     
+    
+    {
+
+    
+    // Get a connection from the pool
+    let mut conn: PooledConnection<RedisClusterConnectionManager> = match pool.get() {
+        Ok(connection) => connection,
+        Err(e) => {
+            eprintln!("Failed to get a connection from the pool: {}", e);
+            return Err(crate::nfs::nfsstat3::NFS3ERR_IO);
+        }
+    };
+
     let hash_tag = "{lockular}";
 
     let path = format!("/{}", "lockular");
     //let key = format!("{{{}}}:{}", hash_tag, path);
     //let key = format!("{}:{}_nodes", hash_tag, path);
     let key = format!("{}:{}", hash_tag, mount_path);
+    //let mut pipeline = redis::pipe();
     let mut pipeline = redis::pipe();
     let exists_response: bool = conn.exists(key).unwrap_or(false);
     
@@ -262,7 +412,7 @@ fn init_user_directory(mount_path: &str) -> RedisResult<()> {
             Ok(id) => id,
             Err(_) => {
                 //eprintln!("Error incrementing key: {:?}", err);
-                return Err(redis::RedisError::from((redis::ErrorKind::IoError, "NFS3ERR_IO")));
+                return Err(crate::nfs::nfsstat3::NFS3ERR_IO);
             }
         }
     } else {
@@ -328,18 +478,15 @@ fn init_user_directory(mount_path: &str) -> RedisResult<()> {
         }
         
         pipeline.query(&mut *conn)?;
-    
+        
         Ok(())
     }
 }
 }
 
-fn authenticate_user(userkey: &str) -> KeyType {
+fn authenticate_user(userkey: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> KeyType {
     // Initialize Redis cluster pool from config file
     {
-        let pool_result = RedisClusterPool::from_config_file();
-        let pool = pool_result.unwrap();
-        let mut conn = pool.get_connection();
 
         // Check if userkey exists for normal access
         let user_exists: Result<bool, _> = conn.sismember("LOCKULAR_NFS_USERS", userkey);
@@ -362,22 +509,25 @@ fn authenticate_user(userkey: &str) -> KeyType {
     KeyType::None
 }
 
-// fn authenticate_user(user_key: &str) -> bool {
-//     // Initialize Redis cluster pool from config file
-//     {
-//         let pool_result = RedisClusterPool::from_config_file();
+pub fn create_redis_cluster_pool() -> Result<Pool<RedisClusterConnectionManager>, Error> {
+    // Load settings from the configuration file
+    let mut settings = Config::default();
+    settings.merge(ConfigFile::with_name("config/settings.toml"))?;
 
-//         let pool = pool_result.unwrap();
+    // Retrieve Redis cluster nodes from the configuration
+    let redis_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
+    let redis_nodes: Vec<&str> = redis_nodes.iter().map(|s| s.as_str()).collect();
 
-//         let mut conn = pool.get_connection();
+    // Create a RedisClusterConnectionManager
+    let manager = RedisClusterConnectionManager::new(redis_nodes.clone())
+        .map_err(|e| Error::new(e))?;
 
-//                 let exists: Result<bool, _> = conn.sismember("LOCKULAR_NFS_USERS", user_key);
-//                 if let Ok(exists) = exists {
-//                     return exists;
-//                 }
-        
-//     }
+    // Create a pool with 3 connections
+    let pool = r2d2::Pool::builder()
+        .max_size(2)
+        .build(manager)
+        .map_err(|e| Error::new(e))?;
 
-//     false
+    Ok(pool)
+}
 
-// }
