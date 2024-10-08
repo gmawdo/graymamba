@@ -850,16 +850,16 @@ impl MirrorFS {
      
         let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
-        // Retrieve the current file content (Base64 encoded) from Redis
-        let redis_value: String = match self.data_store.hget(
+        // Retrieve the current file content (Base64 encoded) from store
+        let store_value: String = match self.data_store.hget(
                 &format!("{}{}", hash_tag, path),
                 "data"
             ).await {
                 Ok(value) => value,
                 Err(_) => String::default(), // or handle the error differently
             };
-        if !redis_value.is_empty() {
-            match reassemble(&redis_value).await {
+        if !store_value.is_empty() {
+            match reassemble(&store_value).await {
                 Ok(reconstructed_secret) => {
                     // Decode the base64 string to a byte array
                     match STANDARD.decode(&reconstructed_secret) {
@@ -982,7 +982,7 @@ impl MirrorFS {
                         Ok(())
                     }
                     Err(_e) => {
-                        debug!("Error setting data in Redis");
+                        debug!("Error setting data in DataStore");
                         Err(DataStoreError::OperationFailed)
                     }
                 }
@@ -1016,7 +1016,7 @@ impl MirrorFS {
             match update_result {
                 Ok(_) => Ok(()),
                 Err(e) => {
-                    eprintln!("Error updating file metadata in Redis: {:?}", e);
+                    eprintln!("Error updating file metadata in DataStore: {:?}", e);
                     Err(DataStoreError::OperationFailed)
                 }
             }
@@ -2171,7 +2171,7 @@ async fn main() {
         return;
     }
     
-    let redis_data_store = Arc::new(RedisDataStore::new().expect("Failed to create a share store interface"));
+    let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a share store interface"));
     let nfs_module = match NFSModule::new().await {
         Ok(module) => Arc::new(module),
         Err(e) => {
@@ -2179,7 +2179,7 @@ async fn main() {
             return;
         }
     };
-    let fs = MirrorFS::new(redis_data_store, nfs_module);
+    let fs = MirrorFS::new(data_store, nfs_module);
 
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), fs)
         .await
