@@ -1054,6 +1054,9 @@ impl MirrorFS {
 
 #[async_trait]
 impl NFSFileSystem for MirrorFS {
+    fn data_store(&self) -> &dyn DataStore {
+        &*self.data_store
+    }
     fn root_dir(&self) -> fileid3 {
         0
     }
