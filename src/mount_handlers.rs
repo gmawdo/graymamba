@@ -12,12 +12,12 @@ use tracing::debug;
 use r2d2::PooledConnection;
 use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
 use r2d2_redis_cluster::r2d2::Pool;
-use config::{Config, File as ConfigFile};
-use anyhow::{Result, Error};
-// use r2d2_redis_cluster::RedisResult;
 use r2d2_redis_cluster::Commands; 
 use r2d2_redis_cluster::redis_cluster_rs::redis;
 use redis::RedisError;
+
+use config::{Config, File as ConfigFile};
+use anyhow::{Result, Error};
 
 
 
@@ -128,7 +128,7 @@ pub async fn mountproc3_mnt(
         }
     }
 
-    // Set-up redis pool for the cluster and get the connection
+    // Set-up data storage engine pool for the cluster and get the connection
     let pool = create_redis_cluster_pool()?;
     let mut conn = pool.get()?;
 
@@ -283,7 +283,7 @@ pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConne
     //let key = format!("{{{}}}:{}", hash_tag, path);
     //let key = format!("{}:{}_nodes", hash_tag, path);
     let key = format!("{}:{}", hash_tag, mount_path);
-    //let mut pipeline = redis::pipe();
+
     let mut pipeline = redis::pipe();
     let exists_response: bool = conn.exists(key).unwrap_or(false);
     
@@ -381,7 +381,7 @@ pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConne
 }
 
 fn authenticate_user(userkey: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> KeyType {
-    // Initialize Redis cluster pool from config file
+    // Initialize storage cluster pool from config file
     {
 
         // Check if userkey exists for normal access
@@ -410,12 +410,12 @@ pub fn create_redis_cluster_pool() -> Result<Pool<RedisClusterConnectionManager>
     let mut settings = Config::default();
     settings.merge(ConfigFile::with_name("config/settings.toml"))?;
 
-    // Retrieve Redis cluster nodes from the configuration
-    let redis_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
-    let redis_nodes: Vec<&str> = redis_nodes.iter().map(|s| s.as_str()).collect();
+    // Retrieve storage cluster nodes from the configuration
+    let storage_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
+    let storage_nodes: Vec<&str> = storage_nodes.iter().map(|s| s.as_str()).collect();
 
-    // Create a RedisClusterConnectionManager
-    let manager = RedisClusterConnectionManager::new(redis_nodes.clone())
+    // Create a ClusterConnectionManager
+    let manager = RedisClusterConnectionManager::new(storage_nodes.clone())
         .map_err(|e| Error::new(e))?;
 
     // Create a pool with 3 connections
