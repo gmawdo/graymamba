@@ -2,8 +2,41 @@ use std::sync::Arc;
 use r2d2_redis_cluster::Commands;
 use async_trait::async_trait;
 use crate::data_store::{DataStore, DataStoreError};
+use config::{Config, File as ConfigFile, ConfigError};
 
-use crate::RedisClusterPool;
+use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
+
+pub struct RedisClusterPool {
+    pub pool: r2d2::Pool<RedisClusterConnectionManager>,
+}
+
+impl RedisClusterPool {
+    pub fn new(redis_urls: Vec<&str>, max_size: u32) -> Result<RedisClusterPool, Box<dyn std::error::Error>> {
+        let manager = RedisClusterConnectionManager::new(redis_urls.clone())
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+        let pool = r2d2::Pool::builder()
+            .max_size(max_size)
+            .build(manager)
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+        
+        Ok(RedisClusterPool { pool })
+    }
+
+    pub fn from_config_file() -> Result<RedisClusterPool, ConfigError> {
+        let mut settings = Config::default();
+        settings.merge(ConfigFile::with_name("config/settings.toml"))?;
+        
+        let redis_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
+        let redis_nodes: Vec<&str> = redis_nodes.iter().map(|s| s.as_str()).collect();
+        
+        let max_size: u32 = settings.get("redis_pool_max_size").unwrap_or(1000);
+
+        RedisClusterPool::new(redis_nodes, max_size).map_err(|e| {
+            ConfigError::Message(e.to_string())
+        })
+    }
+}
 
 pub struct RedisDataStore {
     pool: Arc<r2d2::Pool<r2d2_redis_cluster::RedisClusterConnectionManager>>,
@@ -12,7 +45,7 @@ pub struct RedisDataStore {
 impl RedisDataStore {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let redis_pool = RedisClusterPool::from_config_file()?;
-        let inner_pool = Arc::new(redis_pool.pool.clone());
+        let inner_pool = Arc::new(redis_pool.pool);
         Ok(RedisDataStore { pool: inner_pool })
     }
 }
