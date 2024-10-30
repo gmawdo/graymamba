@@ -31,10 +31,7 @@ use lockular_nfs::channel_buffer;
 use crate::nfs_module::NFSModule;
 use crate::channel_buffer::{ChannelBuffer, ActiveWrite};
 
-use lockular_nfs::data_store::{DataStore,DataStoreError};
-
-use lockular_nfs::redis_data_store::RedisDataStore;
-use r2d2_redis_cluster::RedisResult;
+use lockular_nfs::data_store::{DataStore,DataStoreError,DataStoreResult};
 
 use wasmtime::*;
 
@@ -316,10 +313,9 @@ impl MirrorFS {
         }
     }
 
-    async fn create_node(&self, node_type: &str, fileid: fileid3, path: &str) -> RedisResult<()> {
-       
+    async fn create_node(&self, node_type: &str, fileid: fileid3, path: &str) -> DataStoreResult<()> {
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-      
+        
         let size = 0;
         let permissions = 777;
         let score: f64 = path.matches('/').count() as f64 + 1.0;  
@@ -330,15 +326,13 @@ impl MirrorFS {
         let epoch_seconds = system_time.as_secs();
         let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
         
-        let _ = self.data_store.zadd(
+        self.data_store.zadd(
             &format!("{}/{}_nodes", hash_tag, user_id),
             &path,
             score
-        ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-
-       
-       
-        let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path), &[
+        ).await?;
+    
+        self.data_store.hset_multiple(&format!("{}{}", hash_tag, path), &[
             ("ftype", node_type),
             ("size", &size.to_string()),
             ("permissions", &permissions.to_string()),
@@ -351,20 +345,15 @@ impl MirrorFS {
             ("birth_time_secs", &epoch_seconds.to_string()),
             ("birth_time_nsecs", &epoch_nseconds.to_string()),
             ("fileid", &fileid.to_string())
-        ]).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+        ]).await?;
         
-        // if node_type == "1" {
-        //     let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "").await.map_err(|_| nfsstat3::NFS3ERR_IO);
-        //     }
-        let _ = self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string()).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-        let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-    
+        self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string()).await?;
+        self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path).await?;
         
         Ok(())
-            
     }
     
-    async fn create_file_node(&self, node_type: &str, fileid: fileid3, path: &str, setattr: sattr3,) -> RedisResult<()> {
+    async fn create_file_node(&self, node_type: &str, fileid: fileid3, path: &str, setattr: sattr3,) -> DataStoreResult<()> {
        
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
       
@@ -850,16 +839,16 @@ impl MirrorFS {
      
         let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
 
-        // Retrieve the current file content (Base64 encoded) from Redis
-        let redis_value: String = match self.data_store.hget(
+        // Retrieve the current file content (Base64 encoded) from store
+        let store_value: String = match self.data_store.hget(
                 &format!("{}{}", hash_tag, path),
                 "data"
             ).await {
                 Ok(value) => value,
                 Err(_) => String::default(), // or handle the error differently
             };
-        if !redis_value.is_empty() {
-            match reassemble(&redis_value).await {
+        if !store_value.is_empty() {
+            match reassemble(&store_value).await {
                 Ok(reconstructed_secret) => {
                     // Decode the base64 string to a byte array
                     match STANDARD.decode(&reconstructed_secret) {
@@ -982,7 +971,7 @@ impl MirrorFS {
                         Ok(())
                     }
                     Err(_e) => {
-                        debug!("Error setting data in Redis");
+                        debug!("Error setting data in DataStore");
                         Err(DataStoreError::OperationFailed)
                     }
                 }
@@ -1016,7 +1005,7 @@ impl MirrorFS {
             match update_result {
                 Ok(_) => Ok(()),
                 Err(e) => {
-                    eprintln!("Error updating file metadata in Redis: {:?}", e);
+                    eprintln!("Error updating file metadata in DataStore: {:?}", e);
                     Err(DataStoreError::OperationFailed)
                 }
             }
@@ -1054,6 +1043,9 @@ impl MirrorFS {
 
 #[async_trait]
 impl NFSFileSystem for MirrorFS {
+    fn data_store(&self) -> &dyn DataStore {
+        &*self.data_store
+    }
     fn root_dir(&self) -> fileid3 {
         0
     }
@@ -2168,7 +2160,9 @@ async fn main() {
         return;
     }
     
-    let redis_data_store = Arc::new(RedisDataStore::new().expect("Failed to create a share store interface"));
+    use lockular_nfs::redis_data_store::RedisDataStore;
+    let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
+
     let nfs_module = match NFSModule::new().await {
         Ok(module) => Arc::new(module),
         Err(e) => {
@@ -2176,7 +2170,7 @@ async fn main() {
             return;
         }
     };
-    let fs = MirrorFS::new(redis_data_store, nfs_module);
+    let fs = MirrorFS::new(data_store, nfs_module);
 
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), fs)
         .await

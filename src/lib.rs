@@ -16,70 +16,8 @@ mod portmap_handlers;
 pub mod nfs;
 mod nfs_handlers;
 
-pub use self::redis_pool::RedisClusterPool;
 pub mod data_store;
 pub mod redis_data_store;
-
-pub mod redis_pool {
-    use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
-    use r2d2_redis_cluster::r2d2::Pool;
-    use config::{Config, File as ConfigFile, ConfigError}; 
-    
-   
-    
-    pub struct RedisClusterPool {
-        pub pool: Pool<RedisClusterConnectionManager>,
-       
-    }
-    
-    impl RedisClusterPool {
-        pub fn new(redis_urls: Vec<&str>, max_size: u32) -> Result<RedisClusterPool, Box<dyn std::error::Error>> {
-            //let manager = RedisClusterConnectionManager::new(redis_urls.clone()).unwrap();
-            let manager = RedisClusterConnectionManager::new(redis_urls.clone())
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?; // Convert the error into a Box<dyn std::error::Error>
-
-            let pool = r2d2::Pool::builder()
-                .max_size(max_size) // Set the maximum number of connections in the pool
-                .build(manager)
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?; // Convert the error into a Box<dyn std::error::Error>
-            
-            Ok(RedisClusterPool { pool })
-            
-        }
-
-        pub fn get_connection(&self) -> r2d2::PooledConnection<RedisClusterConnectionManager> {
-            // self.pool.get().unwrap()
-            self.pool.get().expect("Failed to get Redis Connection")
-        }
-
-    
-        pub fn from_config_file() -> Result<RedisClusterPool, ConfigError> {
-            // Load settings from the configuration file
-            let mut settings = Config::default();
-            settings
-                .merge(ConfigFile::with_name("config/settings.toml"))?;
-            
-            // Retrieve Redis cluster nodes from the configuration
-            let redis_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
-            let redis_nodes: Vec<&str> = redis_nodes.iter().map(|s| s.as_str()).collect();
-            
-            // Read max_size from the config file
-            let max_size: u32 = settings.get("redis_pool_max_size")
-                .unwrap_or(1000); // Default to 1000 if not specified
-    
-            // Create RedisClusterPool and handle the Result
-            RedisClusterPool::new(redis_nodes, max_size).map_err(|e| {
-                
-                ConfigError::Message(e.to_string())  // Assuming ConfigError has this variant; adjust as needed
-            })
-            
-        }
-
-        
-    }
-
-
-}
 
 pub mod nfs_module {
     use config::{Config, ConfigError, File};

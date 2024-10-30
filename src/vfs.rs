@@ -1,13 +1,11 @@
 use crate::nfs::*;
 use async_trait::async_trait;
-use r2d2::PooledConnection;
+
 use std::cmp::Ordering;
 use std::sync::Once;
 use std::time::SystemTime;
 
-
-
-use r2d2_redis_cluster::{Commands, RedisClusterConnectionManager}; 
+use crate::data_store::DataStore;
 
 #[derive(Default, Debug)]
 pub struct DirEntry {
@@ -72,6 +70,7 @@ pub enum VFSCapabilities {
 ///
 #[async_trait]
 pub trait NFSFileSystem: Sync {
+    fn data_store(&self) -> &dyn DataStore;
     /// Returns the set of capabilities supported
     fn capabilities(&self) -> VFSCapabilities;
     /// Returns the ID the of the root directory "/"
@@ -88,8 +87,6 @@ pub trait NFSFileSystem: Sync {
     /// Returns the attributes of an id.
     /// This method should be fast as it is used very frequently.
     async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3>;
-    //async fn getattr(&self, conn: &mut PooledConnection<RedisClusterConnectionManager>, path: &str) -> Result<fattr3, nfsstat3>;
-
 
     /// Sets the attributes of an id
     /// this should return Err(nfsstat3::NFS3ERR_ROFS) if readonly
@@ -220,27 +217,18 @@ pub trait NFSFileSystem: Sync {
         Ok(fid)
     }
 
-
-    /// Get the ID for a given file/directory path
-    async fn get_id_from_path(&self, path: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> Result<fileid3, nfsstat3> {
-       
+    async fn get_id_from_path(&self, path: &str, data_store: &dyn DataStore) -> Result<fileid3, nfsstat3> {
         let user_id = "lockular".to_string();
-
-        let mut hash_tag = String::new();
-
-        // Use the format! macro to format the string
-        hash_tag.push_str(&format!("{{{}}}", user_id));
-
+        let hash_tag = format!("{{{}}}", user_id);
         let key = format!("{}:/{}_path_to_id", hash_tag, user_id);
-
-        //println!("Key--------{}", key);
-       
-        let id: fileid3 = conn
-            .hget(key, path)
+    
+        let id_str = data_store.hget(&key, path)
+            .await
             .map_err(|_| nfsstat3::NFS3ERR_IO)?;
-        
-        //println!("Key Value--------{}", id);
-
+    
+        let id: fileid3 = id_str.parse()
+            .map_err(|_| nfsstat3::NFS3ERR_IO)?;
+    
         Ok(id)
     }
 

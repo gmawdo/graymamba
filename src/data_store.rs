@@ -27,3 +27,5 @@ pub enum DataStoreError {
     KeyNotFound,
     OperationFailed,
 }
+
+pub type DataStoreResult<T> = Result<T, DataStoreError>;

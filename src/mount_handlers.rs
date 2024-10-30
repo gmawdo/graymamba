@@ -12,12 +12,12 @@ use tracing::debug;
 use r2d2::PooledConnection;
 use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
 use r2d2_redis_cluster::r2d2::Pool;
-use config::{Config, File as ConfigFile};
-use anyhow::{Result, Error};
-// use r2d2_redis_cluster::RedisResult;
 use r2d2_redis_cluster::Commands; 
 use r2d2_redis_cluster::redis_cluster_rs::redis;
 use redis::RedisError;
+
+use config::{Config, File as ConfigFile};
+use anyhow::{Result, Error};
 
 
 
@@ -128,7 +128,7 @@ pub async fn mountproc3_mnt(
         }
     }
 
-    // Set-up redis pool for the cluster and get the connection
+    // Set-up data storage engine pool for the cluster and get the connection
     let pool = create_redis_cluster_pool()?;
     let mut conn = pool.get()?;
 
@@ -166,7 +166,7 @@ pub async fn mountproc3_mnt(
     {
         
         debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
-        if let Ok(fileid) = context.vfs.get_id_from_path(&utf8path, &mut conn).await {
+        if let Ok(fileid) = context.vfs.get_id_from_path(&utf8path, context.vfs.data_store()).await {
             //println!("File ID: {:?}", fileid);
             //println!("FHandle: {:?}", context.vfs.id_to_fh(fileid).data);
             let response = mountres3_ok {
@@ -193,112 +193,8 @@ pub async fn mountproc3_mnt(
     }
 }
 
-// pub async fn mountproc3_mnt(
-//     xid: u32,
-//     input: &mut impl Read,
-//     output: &mut impl Write,
-//     context: &RPCContext,
-// ) -> Result<(), anyhow::Error> {
-//     let mut path = dirpath::new();
-//     path.deserialize(input)?;
-
-   
-//     // Parse options from the input stream
-
-//     let path = std::str::from_utf8(&path).unwrap_or_default();
-
-//     //println!("path: {:?}", path);
-
-//     // Parse user_key from the input stream
-
-//     let mut user_key = None;
-
-//     let options: Vec<&str> = path.split('/').collect();
-
-//     for option in options {
-//         if option.starts_with("user_key=") {
-//             user_key = Some(option.trim_start_matches("user_key=").to_string());
-//         }
-//     }
-
-//     //println!("user_key: {:?}", user_key);
-
-//     // Authenticate user
-//     if let Some(user_key) = user_key {
-//         if !authenticate_user(&user_key) {
-//             make_failure_reply(xid).serialize(output)?;
-//             return Err(anyhow::anyhow!("Authentication failed"));
-//         }
-//     } else {
-//         make_failure_reply(xid).serialize(output)?;
-//         return Err(anyhow::anyhow!("User key not provided"));
-//     }
-
-
-//     //Set the default directory
-//     let utf8path = "/";
-
-//     let _ = init_user_directory();
-    
-//     // Convert utf8path to byte vector
-//     let utf8path_bytes = utf8path.as_bytes();
-    
-//     let redis_path = b"lockular".to_vec();
-
-//     // Concatenate utf8path_bytes with redis_path
-//     let prefixed_path = [utf8path_bytes, &redis_path].concat();
-
-//     let pool_result = RedisClusterPool::from_config_file();
-//     {
-//         let pool = pool_result.unwrap();
-//         let mut conn = pool.get_connection();
-
-//     debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
-//     //if let Ok(fileid) = context.vfs.path_to_id(&prefixed_path).await {
-//     if let Ok(fileid) = context.vfs.get_id_from_path(&utf8path, &mut conn).await {
-//         //println!("File ID: {:?}", fileid);
-//         //println!("FHandle: {:?}", context.vfs.id_to_fh(fileid).data);
-//         let response = mountres3_ok {
-//             fhandle: context.vfs.id_to_fh(fileid).data,
-//             auth_flavors: vec![
-//                 auth_flavor::AUTH_NULL.to_u32().unwrap(),
-//                 auth_flavor::AUTH_UNIX.to_u32().unwrap(),
-//             ],
-//         };
-//         debug!("{:?} --> {:?}", xid, response);
-        
-//         if let Some(ref chan) = context.mount_signal {
-//             let _ = chan.send(true).await;
-//         }
-//         make_success_reply(xid).serialize(output)?;
-//         mountstat3::MNT3_OK.serialize(output)?;
-//         response.serialize(output)?;
-//     } else {
-//         debug!("{:?} --> MNT3ERR_NOENT", xid);
-//         make_success_reply(xid).serialize(output)?;
-//         mountstat3::MNT3ERR_NOENT.serialize(output)?;
-//     }
-//     Ok(())
-//     }
-// }
 
 /*
-  exports MOUNTPROC3_EXPORT(void) = 5;
-
-  typedef struct groupnode *groups;
-
-  struct groupnode {
-       name     gr_name;
-       groups   gr_next;
-  };
-
-  typedef struct exportnode *exports;
-
-  struct exportnode {
-       dirpath  ex_dir;
-       groups   ex_groups;
-       exports  ex_next;
-  };
 
 DESCRIPTION
 
@@ -387,7 +283,7 @@ pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConne
     //let key = format!("{{{}}}:{}", hash_tag, path);
     //let key = format!("{}:{}_nodes", hash_tag, path);
     let key = format!("{}:{}", hash_tag, mount_path);
-    //let mut pipeline = redis::pipe();
+
     let mut pipeline = redis::pipe();
     let exists_response: bool = conn.exists(key).unwrap_or(false);
     
@@ -485,7 +381,7 @@ pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConne
 }
 
 fn authenticate_user(userkey: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> KeyType {
-    // Initialize Redis cluster pool from config file
+    // Initialize storage cluster pool from config file
     {
 
         // Check if userkey exists for normal access
@@ -514,12 +410,12 @@ pub fn create_redis_cluster_pool() -> Result<Pool<RedisClusterConnectionManager>
     let mut settings = Config::default();
     settings.merge(ConfigFile::with_name("config/settings.toml"))?;
 
-    // Retrieve Redis cluster nodes from the configuration
-    let redis_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
-    let redis_nodes: Vec<&str> = redis_nodes.iter().map(|s| s.as_str()).collect();
+    // Retrieve storage cluster nodes from the configuration
+    let storage_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
+    let storage_nodes: Vec<&str> = storage_nodes.iter().map(|s| s.as_str()).collect();
 
-    // Create a RedisClusterConnectionManager
-    let manager = RedisClusterConnectionManager::new(redis_nodes.clone())
+    // Create a ClusterConnectionManager
+    let manager = RedisClusterConnectionManager::new(storage_nodes.clone())
         .map_err(|e| Error::new(e))?;
 
     // Create a pool with 3 connections
