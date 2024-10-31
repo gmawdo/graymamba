@@ -20,7 +20,7 @@ use async_trait::async_trait;
 // use intaglio::osstr::SymbolTable;
 use tracing::debug;
 
-use lockular_nfs::nfs_module;
+use lockular_nfs::blockchain_audit::BlockchainAudit;
 //use lockular_nfs::fs_util::*;
 use lockular_nfs::nfs::*;
 use lockular_nfs::nfs::nfsstat3;
@@ -28,7 +28,6 @@ use lockular_nfs::tcp::{NFSTcp, NFSTcpListener};
 use lockular_nfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 use lockular_nfs::channel_buffer;
 
-use crate::nfs_module::NFSModule;
 use crate::channel_buffer::{ChannelBuffer, ActiveWrite};
 
 use lockular_nfs::data_store::{DataStore,DataStoreError,DataStoreResult};
@@ -130,21 +129,21 @@ impl FileMetadata {
 #[derive(Clone)]
 pub struct MirrorFS {
     data_store: Arc<dyn DataStore>,
-    nfs_module: Arc<NFSModule>, // Add NFSModule wrapped in Arc
+    blockchain_audit: Option<Arc<BlockchainAudit>>, // Add NFSModule wrapped in Arc
     active_writes: Arc<Mutex<HashMap<fileid3, ActiveWrite>>>,
     commit_semaphore: Arc<Semaphore>,
     
 }
 
 impl MirrorFS {
-    pub fn new(data_store: Arc<dyn DataStore>, nfs_module: Arc<NFSModule>) -> MirrorFS {
+    pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<BlockchainAudit>>) -> MirrorFS {
         // Create shared components for active writes
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
 
         let mirror_fs = MirrorFS {
             data_store,
-            nfs_module,
+            blockchain_audit,
             active_writes: active_writes.clone(),
             commit_semaphore: commit_semaphore.clone(),
         };
@@ -315,7 +314,7 @@ impl MirrorFS {
 
     async fn create_node(&self, node_type: &str, fileid: fileid3, path: &str) -> DataStoreResult<()> {
         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-        
+      
         let size = 0;
         let permissions = 777;
         let score: f64 = path.matches('/').count() as f64 + 1.0;  
@@ -345,11 +344,11 @@ impl MirrorFS {
             ("birth_time_secs", &epoch_seconds.to_string()),
             ("birth_time_nsecs", &epoch_nseconds.to_string()),
             ("fileid", &fileid.to_string())
-        ]).await?;
+            ]).await?;
         
-        self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string()).await?;
-        self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path).await?;
-        
+            self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string()).await?;
+            self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path).await?;
+            
         Ok(())
     }
     
@@ -841,15 +840,15 @@ impl MirrorFS {
 
         // Retrieve the current file content (Base64 encoded) from store
         let store_value: String = match self.data_store.hget(
-                &format!("{}{}", hash_tag, path),
-                "data"
-            ).await {
-                Ok(value) => value,
-                Err(_) => String::default(), // or handle the error differently
-            };
-        if !store_value.is_empty() {
-            match reassemble(&store_value).await {
-                Ok(reconstructed_secret) => {
+            &format!("{}{}", hash_tag, path),
+            "data"
+        ).await {
+            Ok(value) => value,
+            Err(_) => String::default(), // or handle the error differently
+        };
+    if !store_value.is_empty() {
+        match reassemble(&store_value).await {
+            Ok(reconstructed_secret) => {
                     // Decode the base64 string to a byte array
                     match STANDARD.decode(&reconstructed_secret) {
                         Ok(byte_array) => byte_array, // Use the Vec<u8> byte array as needed
@@ -1154,7 +1153,9 @@ impl NFSFileSystem for MirrorFS {
 
             
 
-            let _ = self.nfs_module.trigger_event(&creation_time, "reassembled", &path, &user);
+            if let Some(blockchain_audit) = &self.blockchain_audit {
+                let _ = blockchain_audit.trigger_event(&creation_time, "reassembled", &path, &user);
+            }
 
             
                 
@@ -1402,7 +1403,9 @@ impl NFSFileSystem for MirrorFS {
                     user = parts[1];
                 }
 
-        let _ = self.nfs_module.trigger_event(&creation_time, "disassembled", &path, &user);
+        if let Some(blockchain_audit) = &self.blockchain_audit {
+            let _ = blockchain_audit.trigger_event(&creation_time, "disassembled", &path, &user);
+        }
 
         let metadata = self.get_metadata_from_id(id).await?;
 
@@ -1410,83 +1413,6 @@ impl NFSFileSystem for MirrorFS {
 
         Ok(fattr)
     }
-    
-    // async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {     
-        
-    //     {
-    //         //let mut conn = self.pool.get_connection();             
-    //         let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
-    //         // Retrieve the path using the file ID
-    //         let path: String = self.data_store.hget(
-    //             &format!("{}/{}_id_to_path", hash_tag, user_id),
-    //             &id.to_string()
-    //         ).await
-    //             .unwrap_or_else(|_| String::new());
-
-    //         let mut contents: Vec<u8>;
-    //         // Retrieve the existing data
-    //         contents = self.get_data(&path).await;
-
-    //         // Calculate the required new size
-    //         let new_size = (offset + data.len() as u64) as usize;
-    //         if new_size > contents.len() {
-    //             contents.resize(new_size, 0);
-    //         }
-
-    //         // Insert the new data into the contents vector
-    //         contents.splice(offset as usize..offset as usize + data.len(), data.iter().copied());
-            
-    //                 // Retrieve the existing data from the share store
-    //                 if self.write_data(&path, contents.clone()).await.unwrap_or(false) {
-    //                     let system_time = SystemTime::now()
-    //                         .duration_since(UNIX_EPOCH)
-    //                         .unwrap();
-    //                     let epoch_seconds = system_time.as_secs();
-    //                     let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
-
-    //                     let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path),
-    //                         &[
-    //                             ("size", &contents.len().to_string()),
-    //                             ("change_time_secs", &epoch_seconds.to_string()),
-    //                             ("change_time_nsecs", &epoch_nseconds.to_string()),
-    //                             ("modification_time_secs", &epoch_seconds.to_string()),
-    //                             ("modification_time_nsecs", &epoch_nseconds.to_string()),
-    //                             ("access_time_secs", &epoch_seconds.to_string()),
-    //                             ("access_time_nsecs", &epoch_nseconds.to_string()),
-    //                         ]
-    //                     ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-                    
-    //                     // Get the current local date and time
-    //                     let local_date_time: DateTime<Local> = Local::now();
-
-    //                     // Format the date and time using the specified pattern
-    //                     let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-
-    //                     let mut user = "";
-
-    //                     let parts: Vec<&str> = path.split('/').collect();
-
-    //                         if parts.len() > 2 {
-    //                             user = parts[1];
-    //                         }
-
-    //                     let _ = self.nfs_module.trigger_event(&creation_time, "disassembled", &path, &user);
-
-                        
-                      
-    //                     let metadata = self.get_metadata_from_id(id).await?;
-    //                     let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
-    //                     Ok(fattr)
-                        
-
-    //                 } else {
-    //                     return Err(nfsstat3::NFS3ERR_IO);
-    //                 }
-                
-
-    //     }
-
-    // }
 
     async fn create(&self, dirid: fileid3, filename: &filename3, setattr: sattr3) -> Result<(fileid3, fattr3), nfsstat3> {
 
@@ -2163,14 +2089,18 @@ async fn main() {
     use lockular_nfs::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
-    let nfs_module = match NFSModule::new().await {
-        Ok(module) => Arc::new(module),
-        Err(e) => {
-            eprintln!("Failed to create NFSModule: {}", e);
-            return;
+    let blockchain_audit = if settings.get("enable_blockchain").unwrap_or(false) {
+        match BlockchainAudit::new().await {
+            Ok(module) => Some(Arc::new(module)),
+            Err(e) => {
+                eprintln!("Failed to create BlockchainAudit: {}", e);
+                None
+            }
         }
+    } else {
+        None
     };
-    let fs = MirrorFS::new(data_store, nfs_module);
+    let fs = MirrorFS::new(data_store, blockchain_audit);
 
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), fs)
         .await

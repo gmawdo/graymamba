@@ -19,17 +19,18 @@ mod nfs_handlers;
 pub mod data_store;
 pub mod redis_data_store;
 
-pub mod nfs_module {
+pub mod blockchain_audit {
+    use subxt::backend::legacy::LegacyRpcMethods;
+    use subxt::OnlineClient;
     use config::{Config, ConfigError, File};
     
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::thread;
-    use subxt::{PolkadotConfig,utils::AccountId32,OnlineClient};
+    use subxt::{PolkadotConfig,utils::AccountId32};
     
     use subxt_signer::sr25519::Keypair;
     use subxt_signer::sr25519::dev;
     use tokio::runtime::Runtime;
-    use subxt::backend::legacy::LegacyRpcMethods;
     use subxt::backend::rpc::RpcClient;
     
 
@@ -37,7 +38,7 @@ pub mod nfs_module {
     pub mod pallet_template {}
 
     #[allow(dead_code)]
-    pub struct NFSModule {
+    pub struct BlockchainAudit {
         api: OnlineClient<PolkadotConfig>,
         account_id: AccountId32,
         signer: Keypair,
@@ -54,8 +55,8 @@ pub mod nfs_module {
         event_key: String,
     }
 
-    impl NFSModule {
-        pub async fn new() -> Result<NFSModule, ConfigError> {
+    impl BlockchainAudit {
+        pub async fn new() -> Result<BlockchainAudit, ConfigError> {
             let mut settings = Config::default();
             settings.merge(File::with_name("config/settings.toml"))?;
 
@@ -72,8 +73,6 @@ pub mod nfs_module {
 
             // Create the API client
             let api = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client).await.expect("Failed to create BlockChain Connection");
-                
-            // let api = OnlineClient::<MyConfig>::from_url(ws_url).await.expect("Failed to create BlockChain Connection");
 
             println!("Connection with BlockChain Node established.");
 
@@ -94,11 +93,11 @@ pub mod nfs_module {
                 let rt = Runtime::new().unwrap();
                 rt.block_on(async move {
                     //NFSModule::event_handler(tx_receiver, api_clone, signer_clone, account_id_clone).await;
-                    NFSModule::event_handler(tx_receiver, api_clone, rpc_clone ,signer_clone, account_id_clone).await;
+                    BlockchainAudit::event_handler(tx_receiver, api_clone, rpc_clone ,signer_clone, account_id_clone).await;
                 });
             });
 
-            Ok(NFSModule {
+            Ok(BlockchainAudit {
                 api,
                 account_id,
                 signer,
@@ -117,7 +116,7 @@ pub mod nfs_module {
         ) {
             while let Ok(event) = rx.recv() {
                 // match NFSModule::send_event(&api, &signer, &account_id, &event).await {
-                match NFSModule::send_event(&api, &rpc, &signer, &account_id, &event).await {
+                match BlockchainAudit::send_event(&api, &rpc, &signer, &account_id, &event).await {
                     Ok(_) => println!("............................"),
                     Err(e) => println!("Failed to send event: {:?}", e),
                 }
