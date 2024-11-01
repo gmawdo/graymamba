@@ -11,29 +11,11 @@ use tracing::debug;
 
 use r2d2::PooledConnection;
 use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
-use r2d2_redis_cluster::r2d2::Pool;
 use r2d2_redis_cluster::Commands; 
 use r2d2_redis_cluster::redis_cluster_rs::redis;
 use redis::RedisError;
 
-use config::{Config, File as ConfigFile};
-use anyhow::{Result, Error};
-
-
-
-/*
-From RFC 1813 Appendix I
-program MOUNT_PROGRAM {
- version MOUNT_V3 {
-    void      MOUNTPROC3_NULL(void)    = 0;
-    mountres3 MOUNTPROC3_MNT(dirpath)  = 1;
-    mountlist MOUNTPROC3_DUMP(void)    = 2;
-    void      MOUNTPROC3_UMNT(dirpath) = 3;
-    void      MOUNTPROC3_UMNTALL(void) = 4;
-    exports   MOUNTPROC3_EXPORT(void)  = 5;
- } = 3;
-} = 100005;
-*/
+use anyhow::Result;
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
@@ -129,7 +111,7 @@ pub async fn mountproc3_mnt(
     }
 
     // Set-up data storage engine pool for the cluster and get the connection
-    let pool = create_redis_cluster_pool()?;
+    let pool = crate::redis_data_store::get_redis_cluster_pool().unwrap();
     let mut conn = pool.get()?;
 
     // Authenticate user
@@ -269,13 +251,7 @@ pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConne
 
     
     // Get a connection from the pool
-    let mut conn: PooledConnection<RedisClusterConnectionManager> = match pool.get() {
-        Ok(connection) => connection,
-        Err(e) => {
-            eprintln!("Failed to get a connection from the pool: {}", e);
-            return Err(crate::nfs::nfsstat3::NFS3ERR_IO);
-        }
-    };
+    let mut conn = pool.get().map_err(|_| crate::nfs::nfsstat3::NFS3ERR_IO)?;
 
     let hash_tag = "{lockular}";
 
@@ -403,27 +379,5 @@ fn authenticate_user(userkey: &str, conn: &mut PooledConnection<RedisClusterConn
     }
 
     KeyType::None
-}
-
-pub fn create_redis_cluster_pool() -> Result<Pool<RedisClusterConnectionManager>, Error> {
-    // Load settings from the configuration file
-    let mut settings = Config::default();
-    settings.merge(ConfigFile::with_name("config/settings.toml"))?;
-
-    // Retrieve storage cluster nodes from the configuration
-    let storage_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
-    let storage_nodes: Vec<&str> = storage_nodes.iter().map(|s| s.as_str()).collect();
-
-    // Create a ClusterConnectionManager
-    let manager = RedisClusterConnectionManager::new(storage_nodes.clone())
-        .map_err(|e| Error::new(e))?;
-
-    // Create a pool with 3 connections
-    let pool = r2d2::Pool::builder()
-        .max_size(2)
-        .build(manager)
-        .map_err(|e| Error::new(e))?;
-
-    Ok(pool)
 }
 

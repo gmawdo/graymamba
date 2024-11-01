@@ -1,4 +1,6 @@
 use std::sync::Arc;
+use r2d2::Pool;
+use std::error::Error as StdError;
 use r2d2_redis_cluster::Commands;
 use async_trait::async_trait;
 use crate::data_store::{DataStore, DataStoreError};
@@ -6,21 +8,38 @@ use config::{Config, File as ConfigFile, ConfigError};
 
 use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
 
+pub fn get_redis_cluster_pool() -> Result<Pool<RedisClusterConnectionManager>, Box<dyn StdError>> {
+    RedisClusterPool::get_redis_cluster_pool()
+}
+
 pub struct RedisClusterPool {
     pub pool: r2d2::Pool<RedisClusterConnectionManager>,
 }
 
 impl RedisClusterPool {
-    pub fn new(redis_urls: Vec<&str>, max_size: u32) -> Result<RedisClusterPool, Box<dyn std::error::Error>> {
-        let manager = RedisClusterConnectionManager::new(redis_urls.clone())
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-
-        let pool = r2d2::Pool::builder()
-            .max_size(max_size)
-            .build(manager)
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-        
+    pub fn new(_redis_urls: Vec<&str>, _max_size: u32) -> Result<RedisClusterPool, Box<dyn std::error::Error>> {
+        // Instead of creating a new pool directly, use the existing function
+        let pool = Self::get_redis_cluster_pool()?;
         Ok(RedisClusterPool { pool })
+    }
+
+    // Add a new function to get the pool:
+    pub fn get_redis_cluster_pool() -> Result<Pool<RedisClusterConnectionManager>, Box<dyn StdError>> {
+        let mut settings = Config::default();
+        settings.merge(ConfigFile::with_name("config/settings.toml"))?;
+
+        let storage_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
+        let storage_nodes: Vec<&str> = storage_nodes.iter().map(|s| s.as_str()).collect();
+
+        println!("Creating Redis cluster pool with nodes: {:?}", storage_nodes);
+        
+        let manager = RedisClusterConnectionManager::new(storage_nodes)
+            .map_err(|e| Box::new(e) as Box<dyn StdError>)?;
+
+        r2d2::Pool::builder()
+            .max_size(2)
+            .build(manager)
+            .map_err(|e| Box::new(e) as Box<dyn StdError>)
     }
 
     pub fn from_config_file() -> Result<RedisClusterPool, ConfigError> {
