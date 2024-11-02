@@ -105,8 +105,8 @@ pub async fn mountproc3_mnt(
     let options: Vec<&str> = path.split('/').collect();
 
     for option in options {
-        if option.starts_with("user_key=") {
-            user_key = Some(option.trim_start_matches("user_key=").to_string());
+        if option.ends_with("'s drive") {
+            user_key = Some(option.trim_end_matches("'s drive").to_string());
         }
     }
 
