@@ -127,7 +127,7 @@ impl FileMetadata {
 //#[derive(Debug)]
 // 
 #[derive(Clone)]
-pub struct MirrorFS {
+pub struct SharesFS {
     data_store: Arc<dyn DataStore>,
     blockchain_audit: Option<Arc<BlockchainAudit>>, // Add NFSModule wrapped in Arc
     active_writes: Arc<Mutex<HashMap<fileid3, ActiveWrite>>>,
@@ -135,13 +135,13 @@ pub struct MirrorFS {
     
 }
 
-impl MirrorFS {
-    pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<BlockchainAudit>>) -> MirrorFS {
+impl SharesFS {
+    pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<BlockchainAudit>>) -> SharesFS {
         // Create shared components for active writes
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
 
-        let mirror_fs = MirrorFS {
+        let mirror_fs = SharesFS {
             data_store,
             blockchain_audit,
             active_writes: active_writes.clone(),
@@ -165,7 +165,7 @@ impl MirrorFS {
 
     async fn get_path_from_id(&self, id: fileid3) -> Result<String, nfsstat3> {
 
-        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_id_to_path", hash_tag, user_id);
           
@@ -182,7 +182,7 @@ impl MirrorFS {
     /// Get the ID for a given file/directory path
     async fn get_id_from_path(&self, path: &str) -> Result<fileid3, nfsstat3> {
        
-        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_path_to_id", hash_tag, user_id);
 
@@ -261,7 +261,7 @@ impl MirrorFS {
 
     async fn get_nodes_in_subpath(&self, subpath: &str) -> Result<Vec<String>, nfsstat3> {
         
-        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
         let key = format!("{}/{}_nodes", hash_tag, user_id);
 
@@ -313,7 +313,7 @@ impl MirrorFS {
     }
 
     async fn create_node(&self, node_type: &str, fileid: fileid3, path: &str) -> DataStoreResult<()> {
-        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
       
         let size = 0;
         let permissions = 777;
@@ -354,7 +354,7 @@ impl MirrorFS {
     
     async fn create_file_node(&self, node_type: &str, fileid: fileid3, path: &str, setattr: sattr3,) -> DataStoreResult<()> {
        
-        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
       
         let size = 0;
         let score: f64 = path.matches('/').count() as f64 + 1.0;  
@@ -443,7 +443,7 @@ impl MirrorFS {
     
     async fn remove_directory_file(&self, path: &str) -> Result<(), nfsstat3> {
             
-            let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+            let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
             let pattern = format!("{}/*", path);
             let sorted_set_key = format!("{}/{}_nodes", hash_tag, user_id);
             let match_found = self.get_member_keys(&pattern, &sorted_set_key).await?;
@@ -489,7 +489,7 @@ impl MirrorFS {
     }
     
     async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Result<(), nfsstat3> { 
-        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
         //Rename the metadata hashkey
         let _ = self.data_store.rename(
             &format!("{}{}", hash_tag, from_path),
@@ -836,7 +836,7 @@ impl MirrorFS {
 
     async fn get_data(&self, path: &str) -> Vec<u8> {
      
-        let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (_user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
         // Retrieve the current file content (Base64 encoded) from store
         let store_value: String = match self.data_store.hget(
@@ -920,7 +920,7 @@ impl MirrorFS {
 
         let _permit = self.commit_semaphore.acquire().await.map_err(|_| DataStoreError::OperationFailed);
 
-        let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (_user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
 
         let channel = {
@@ -989,7 +989,7 @@ impl MirrorFS {
         let system_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let epoch_seconds = system_time.as_secs();
         let epoch_nseconds = system_time.subsec_nanos();
-        let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (_user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
         let update_result = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path),
             &[
@@ -1013,7 +1013,7 @@ impl MirrorFS {
 
     async fn is_likely_last_write(&self, id: fileid3, offset: u64, data_len: usize) -> Result<bool, nfsstat3> {
 
-        let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (_user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
         let path_result = self.get_path_from_id(id).await;
         let path: String = match path_result {
@@ -1041,7 +1041,7 @@ impl MirrorFS {
 }
 
 #[async_trait]
-impl NFSFileSystem for MirrorFS {
+impl NFSFileSystem for SharesFS {
     fn data_store(&self) -> &dyn DataStore {
         &*self.data_store
     }
@@ -1108,7 +1108,7 @@ impl NFSFileSystem for MirrorFS {
         {
             //let mut conn = self.pool.get_connection();             
 
-            let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+            let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
 
             // Get file path from the share store
@@ -1233,7 +1233,7 @@ impl NFSFileSystem for MirrorFS {
 
             //let mut conn = self.pool.get_connection();             
 
-            let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+            let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
             {
 
@@ -1346,7 +1346,7 @@ impl NFSFileSystem for MirrorFS {
 
         // println!("Starting write operation for file ID: {}, offset: {}, data length: {}", id, offset, data.len());
 
-        let (_user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (_user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
         let path_result = self.get_path_from_id(id).await;
         let path: String = match path_result {
@@ -1423,7 +1423,7 @@ impl NFSFileSystem for MirrorFS {
 
     //        let (user_id, hash_tag, new_file_path,new_file_id ) = {
                 
-                let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+                let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
                 
                 // Get parent directory path from the share store
                 let parent_path: String = self.data_store.hget(
@@ -1515,7 +1515,7 @@ impl NFSFileSystem for MirrorFS {
 
             //let (user_id, hash_tag, new_file_path,new_file_id ) = {
                 
-                let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+                let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
                 
                 // Get parent directory path from the share store
                 let parent_path: String = self.data_store.hget(
@@ -1652,7 +1652,7 @@ impl NFSFileSystem for MirrorFS {
 
 //            let (user_id, hash_tag, new_from_path, new_to_path) = {
                 
-                let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+                let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
                 
                 let from_path: String = self.data_store.hget(
                     &format!("{}/{}_id_to_path", hash_tag, user_id),
@@ -1782,7 +1782,7 @@ impl NFSFileSystem for MirrorFS {
             //let mut conn = self.pool.get_connection();             
 
         //    let (user_id, hash_tag, parent_path, new_dir_path, new_dir_id) = {
-                let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+                let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
         
                 let key1 = format!("{}/{}_id_to_path", hash_tag, user_id);
 
@@ -1864,7 +1864,7 @@ impl NFSFileSystem for MirrorFS {
     
     //let mut conn = self.pool.get_connection();  
 
-    let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;   
+    let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;   
 
     // Get the current system time for metadata timestamps
     let system_time = SystemTime::now()
@@ -1987,7 +1987,7 @@ impl NFSFileSystem for MirrorFS {
     }
 
     async fn readlink(&self, id: fileid3) -> Result<nfsstring, nfsstat3> {
-        let (user_id, hash_tag) = MirrorFS::get_user_id_and_hash_tag().await;
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
     
         // Retrieve the path from the file ID
         let path: String = match self.data_store.hget(
@@ -2100,7 +2100,7 @@ async fn main() {
     } else {
         None
     };
-    let fs = MirrorFS::new(data_store, blockchain_audit);
+    let fs = SharesFS::new(data_store, blockchain_audit);
 
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), fs)
         .await
