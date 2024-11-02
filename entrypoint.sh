@@ -18,7 +18,7 @@ echo "/mnt/nfs *(rw,sync,no_subtree_check)" >> /etc/exports
 
 
 # Start the NFS server
-/usr/local/bin/lockular_nfs /mnt/nfs &
+/usr/local/bin/graymamba /mnt/nfs &
 
 # Wait for the NFS server to start
 sleep 5

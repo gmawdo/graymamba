@@ -1,15 +1,14 @@
 
 [package]
-name = "lockular_nfs"
-version = "0.10.1"
+name = "graymamba"
+version = "1.0.0"
 edition = "2021"
-authors = ["arif94 <aribbinaziz@gmail.com>"]
-description = "A Rust Provenance Tracking Filesystem"
-homepage = "https://www.lockular.com"
-repository = "https://github.com/datasignals/secure-provenance-tracking-filesystem"
+description = "A Rust Secure Provenance Tracking Filesystem"
+homepage = "https://www.originmatters.co"
+repository = "https://github.com/gmawdo/secure-provenance-tracking-filesystem"
 readme = "README.md"
 keywords = ["nfs"]
-license = "BSD-3-Clause"
+license = "MIT"
 categories = ["network-programming", "filesystem"]
 publish = true
 include = ["src/**/*", "src/*", "Cargo.toml", "LICENSE", "README.md"]
@@ -96,7 +95,7 @@ once_cell = "1.19.0"
 
 
 
-# demo
+# traceability
 tracing-subscriber = { version = "0.3", features = ["tracing-log"], optional = true }
 intaglio = { version = "1.6", optional = true }
 config = "0.11"
@@ -104,9 +103,9 @@ chrono = "0.4"
 
 [features]
 strict = []
-demo = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
+traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
 
 [[bin]]
-name = "lockular_nfs"
-path = "src/lockular_nfs.rs"
-required-features = ["demo"]
+name = "graymamba"
+path = "src/graymamba.rs"
+required-features = ["traceability"]

@@ -20,17 +20,17 @@ use async_trait::async_trait;
 // use intaglio::osstr::SymbolTable;
 use tracing::debug;
 
-use lockular_nfs::blockchain_audit::BlockchainAudit;
-//use lockular_nfs::fs_util::*;
-use lockular_nfs::nfs::*;
-use lockular_nfs::nfs::nfsstat3;
-use lockular_nfs::tcp::{NFSTcp, NFSTcpListener};
-use lockular_nfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
-use lockular_nfs::channel_buffer;
+use graymamba::blockchain_audit::BlockchainAudit;
+//use graymamba::fs_util::*;
+use graymamba::nfs::*;
+use graymamba::nfs::nfsstat3;
+use graymamba::tcp::{NFSTcp, NFSTcpListener};
+use graymamba::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
+use graymamba::channel_buffer;
 
 use crate::channel_buffer::{ChannelBuffer, ActiveWrite};
 
-use lockular_nfs::data_store::{DataStore,DataStoreError,DataStoreResult};
+use graymamba::data_store::{DataStore,DataStoreError,DataStoreResult};
 
 use wasmtime::*;
 
@@ -2024,13 +2024,13 @@ const HOSTPORT: u32 = 2049;
 
 async fn start_ipfs_server() -> Result<(), Box<dyn std::error::Error>> {
     // Initialization and startup logic for the IPFS server.
-    println!("Lockular's NFS server started successfully.");
+    println!("graymamba NFS server started successfully.");
     Ok(())
 }
 
 async fn set_user_id_and_hashtag() {
     let mut user_id = USER_ID.write().unwrap();
-    *user_id = "lockular".to_string();
+    *user_id = "graymamba".to_string();
 
     let mut hash_tag = HASH_TAG.write().unwrap();
     hash_tag.clear(); // Clear the previous content
@@ -2086,7 +2086,7 @@ async fn main() {
         return;
     }
     
-    use lockular_nfs::redis_data_store::RedisDataStore;
+    use graymamba::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
     let blockchain_audit = if settings.get("enable_blockchain").unwrap_or(false) {

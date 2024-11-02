@@ -253,9 +253,9 @@ pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConne
     // Get a connection from the pool
     let mut conn = pool.get().map_err(|_| crate::nfs::nfsstat3::NFS3ERR_IO)?;
 
-    let hash_tag = "{lockular}";
+    let hash_tag = "{graymamba}";
 
-    let path = format!("/{}", "lockular");
+    let path = format!("/{}", "graymamba");
     //let key = format!("{{{}}}:{}", hash_tag, path);
     //let key = format!("{}:{}_nodes", hash_tag, path);
     let key = format!("{}:{}", hash_tag, mount_path);
@@ -276,11 +276,11 @@ pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConne
     //let score = 2.0;
     // let mut fileid: u64 = 0;
 
-    let nodes = format!("{}:/{}_nodes", hash_tag, "lockular");
+    let nodes = format!("{}:/{}_nodes", hash_tag, "graymamba");
     let key_exists: bool = conn.exists(nodes).unwrap_or(false);
 
     let fileid: u64 = if key_exists {
-        match conn.incr(format!("{}:/{}_next_fileid", hash_tag, "lockular"), 1) {
+        match conn.incr(format!("{}:/{}_next_fileid", hash_tag, "graymamba"), 1) {
             Ok(id) => id,
             Err(_) => {
                 //eprintln!("Error incrementing key: {:?}", err);
@@ -302,7 +302,7 @@ pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConne
  
     pipeline
         .cmd("ZADD")
-        .arg(format!("{}:/{}_nodes", hash_tag, "lockular"))
+        .arg(format!("{}:/{}_nodes", hash_tag, "graymamba"))
         .arg(score.to_string())
         //.arg(path.clone())
         .arg(mount_path)
@@ -361,7 +361,7 @@ fn authenticate_user(userkey: &str, conn: &mut PooledConnection<RedisClusterConn
     {
 
         // Check if userkey exists for normal access
-        let user_exists: Result<bool, _> = conn.sismember("LOCKULAR_NFS_USERS", userkey);
+        let user_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", userkey);
         if let Ok(exists) = user_exists {
             if exists {
                 return KeyType::Usual;
@@ -370,7 +370,7 @@ fn authenticate_user(userkey: &str, conn: &mut PooledConnection<RedisClusterConn
 
         // Check if userkey exists for special access
         let special_key = format!("{}-su", userkey);
-        let special_exists: Result<bool, _> = conn.sismember("LOCKULAR_NFS_USERS", &special_key);
+        let special_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", &special_key);
         if let Ok(exists) = special_exists {
             if exists {
                 return KeyType::Special;

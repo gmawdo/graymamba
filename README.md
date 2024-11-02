@@ -95,7 +95,7 @@ Steps
 
 5. Now to Build the filesystem open terminal at secure-provenance-filesystem folder and run:
 
-       `cargo build --bin lockular_nfs --features="demo" --release`
+       `cargo build --bin graymamba --features="traceability" --release`
 
 6. Run the FileSystem:
       - Create below folder somewhere in System: 
@@ -103,7 +103,7 @@ Steps
             $ `cd mnt`
             $ `mkdir nfs`
       - Now run below comand in terminal at secure-provenance-filesystem folder giving nfs absolute path
-            `./target/release/lockular_nfs /mnt/nfs`
+            `./target/release/graymamba /mnt/nfs`
 
 7. Mount the FileSystem:
       - Create below folder somewhere in System:
@@ -120,11 +120,11 @@ Docker Commands
 
 1. Build the Docker Image:
 
-      `sudo docker build -t lockular_nfs_image .`
+      `sudo docker build -t graymamba_image .`
 
 2. Run the Docker Image on a docker container:
 
-      `sudo docker run -d --name lockular_nfs_container --privileged --network host lockular_nfs_image`
+      `sudo docker run -d --name graymamba_container --privileged --network host graymamba_image`
 
 
 Usage
@@ -164,6 +164,6 @@ Security
 Contact
 -------
 
-For any questions or support, please open an issue on GitHub or contact us at https://www.lockular.com/contact-us.html.
+For any questions or support, please open an issue on GitHub or contact us at https://www.originmatters.co.
 
 Thank you for using Secure Provenance Tracking Filesystem. We are committed to providing a secure and reliable filesystem solution.

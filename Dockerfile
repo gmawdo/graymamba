@@ -26,13 +26,13 @@ COPY . /app
 WORKDIR /app
 
 # Build the Rust project
-RUN cargo build --bin lockular_nfs --features="demo" --release
+RUN cargo build --bin graymamba --features="traceability" --release
 
 # Copy the built binary to a location in the PATH
-RUN cp /app/target/release/lockular_nfs /usr/local/bin/lockular_nfs
+RUN cp /app/target/release/graymamba /usr/local/bin/graymamba
 
-# Make the lockular_nfs executable
-RUN chmod +x /usr/local/bin/lockular_nfs
+# Make the graymamba executable
+RUN chmod +x /usr/local/bin/graymamba
 
 # Expose the necessary ports
 EXPOSE 2049 9944 6380 6381 6382

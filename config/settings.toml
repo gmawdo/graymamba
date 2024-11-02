@@ -6,8 +6,7 @@ redis_pool_max_size = "1500"
 cluster_nodes = ["redis://:0rangerY@127.0.0.1:6380", "redis://:0rangerY@127.0.0.1:6381", "redis://:0rangerY@127.0.0.1:6382"]
 
 #Substrate-Blockchain Configuration
-substrate.ws_url = "ws://127.0.0.1:9944"
-#substrate.ws_url = "wss://node.lockular.in"
+#substrate.ws_url = "ws://127.0.0.1:9944"
 
 #Secret Sharing Configuration
 chunk_size = 48
@@ -22,7 +21,7 @@ enable_blockchain = false
 #name = "Alice"
 
 [logging]
-level = "error"
+level = "info"
 #"error" => tracing::Level::ERROR,
 #"warn" => tracing::Level::WARN,
 #"info" => tracing::Level::INFO,
