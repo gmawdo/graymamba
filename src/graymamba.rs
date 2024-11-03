@@ -669,89 +669,6 @@ impl SharesFS {
         Ok(())   
     }
 
-    // async fn get_data(&self, path: &str) -> Vec<u8> {
-
-    //     // Acquire lock on HASH_TAG 
-    //     let hash_tag = HASH_TAG.read().unwrap().clone();
-
-    //     if path.contains(".git/objects/pack/tmp_pack") {
-    //         // Retrieve the existing data from the in-memory hashmap
-    //         let hashmap = self.in_memory_hashmap.read().await;
-    //         let data = hashmap.get(path).cloned().unwrap_or_default(); // This is initially a String
-    //         if !data.is_empty() {
-    //             // Directly decode the base64 string to a byte array
-    //             match STANDARD.decode(&data) {
-    //                 Ok(byte_array) => byte_array, // Use the Vec<u8> byte array as needed
-    //                 Err(_) => Vec::new(), // Handle decoding error by returning an empty Vec<u8>
-    //             }
-    //         } else {
-    //             Vec::new() // Return an empty Vec<u8> if no data is found
-    //         }
-    //     } else {
-    //         // Retrieve the current file content (Base64 encoded) from the share store
-    //         let sharestore_value: String = match self.data_store.hget(
-    //             &format!("{}{}", hash_tag, path),
-    //             "data"
-    //         ).await {
-    //             Ok(value) => value,
-    //             Err(_) => String::default(), // or handle the error differently
-    //         };
-    //         if !sharestore_value.is_empty() {
-    //                match reassemble(&sharestore_value).await {
-    //                 Ok(reconstructed_secret) => {
-    //                     // Decode the base64 string to a byte array
-    //                     match STANDARD.decode(&reconstructed_secret) {
-    //                         Ok(byte_array) => byte_array, // Use the Vec<u8> byte array as needed
-    //                         Err(_) => Vec::new(), // Handle decoding error by returning an empty Vec<u8>
-    //                     }
-    //                 }
-    //                 Err(_) => Vec::new(), // Handle the re_assembly error by returning an empty Vec<u8>
-    //             }
-    //         } else {
-    //             Vec::new() // Return an empty Vec<u8> if no data is found
-    //         }
-    //     }
-        
-    // }
-
-    // async fn write_data(&self, path: &str, data: Vec<u8>) -> Result<bool, DataStoreError> {
-        
-    //     // Acquire lock on HASH_TAG 
-    //     let hash_tag = HASH_TAG.read().unwrap().clone();
-
-    //     let base64_string = STANDARD.encode(&data); // Convert byte array (Vec<u8>) to a base64 encoded string
-
-    //     if path.contains(".git/objects/pack/tmp_pack") {
-    //         // Retrieve the existing data from the in-memory hashmap
-    //         let mut data_block = self.in_memory_hashmap.write().await;
-    //         data_block.insert(path.to_owned(), base64_string);
-    //         Ok(true) // Operation successful
-    //     } else {
-
-    //         // Apply secret sharing to the secret
-    //         match disassemble(&base64_string).await {
-    //             Ok(shares) => {               
-    //                 // Write the shares to share store
-    //                     self.data_store.hset(
-    //                         &format!("{}{}", hash_tag, path),
-    //                         "data",
-    //                         &shares
-    //                     ).await
-    //                     .map(|_| true)
-    //                     .map_err(|_e| {
-    //                         //eprintln!("Error writing to DataStore: {}", e);
-    //                         DataStoreError::OperationFailed // Or use an appropriate error type
-    //                     })
-    //             },
-    //             Err(e) => {
-    //                 eprintln!("Error during disassembly: {}", e);
-    //                 Err(DataStoreError::OperationFailed)
-    //             }
-    //         }
-    //     }
-        
-    // }
-
     async fn get_user_id_and_hash_tag() -> (String, String) {
         let user_id = USER_ID.read().unwrap().clone();
         let hash_tag = HASH_TAG.read().unwrap().clone();
@@ -1503,28 +1420,8 @@ impl NFSFileSystem for SharesFS {
                         return Err(nfsstat3::NFS3ERR_IO);
                     }
                 };
-
-            //    (user_id, hash_tag, new_file_path, new_file_id) // Return the values needed outside the scope
-            //};
-
-            // if new_file_path.contains(".git/objects/pack/tmp_pack") {
-            //     // Redirect to HashMap
-            //     let mut hashmap = self.in_memory_hashmap.write().await;
-            //     hashmap.clear();
-            //     hashmap.insert(new_file_path.clone(), String::new());
-                
-            // }
-
             
             let _ = self.create_node("1", new_file_id, &new_file_path).await;
-            
-            // Get the current local date and time
-            //let local_date_time: DateTime<Local> = Local::now();
-
-            // Format the date and time using the specified pattern
-            //let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-
-            // Send the event with the formatted creation time, event type, path, and user ID
 
             Ok(new_file_id)
             
@@ -1628,59 +1525,10 @@ impl NFSFileSystem for SharesFS {
                 } else {
                     new_to_path = format!("{}/{}", to_path, objectname_osstr.to_str().unwrap_or(""));
                 }
-
-                    
-                
-    //            (user_id, hash_tag, new_from_path, new_to_path)
-    //        };
-
-
-            // if new_from_path.contains(".git/objects/pack/tmp_pack") {
-            //     // Redirect to HashMap
-            //     let hashmap = self.in_memory_hashmap.read().await;
-             
-            //     if let Some(key) = hashmap.keys().next() {
-            //         let hash_path = key.to_string();  // Store the key in a String variable
-            //         let data = hashmap.get(&hash_path).cloned().unwrap_or_default();  // This is initially a String
-            
-            //         // Disassemble the data
-            //         match disassemble(&data).await {
-            //             Ok(shares) => {
-            //                 // Use shares if dis_assembly was successful
-            //                 let result = self.data_store.hset(
-            //                     &format!("{}{}", hash_tag, hash_path),
-            //                     "data",
-            //                     &shares
-            //                 ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-
-            //                 if let Err(_e) = result {
-            //                     //eprintln!("Error setting data in the share store: {}", e);
-            //                 }
-            //             }
-            //             Err(e) => {
-            //                 // Handle the error from dis_assembly
-            //                 eprintln!("Error disassembling data: {}", e);
-            //             }
-            //         }
-            //     }
-            //     drop(hashmap);
-            //     let mut hashmap = self.in_memory_hashmap.write().await;
-            //     hashmap.clear();
-            // }
             
             
 
             let ftype_result = self.get_ftype(new_from_path.clone()).await;
-            
-            // Get the current local date and time
-            //let local_date_time: DateTime<Local> = Local::now();
-
-            // Format the date and time using the specified pattern
-            //let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-
-            // Send the event with the formatted creation time, event type, path, and user ID
-            
-            
             match ftype_result {
                 Ok(ftype) => {
                     if ftype == "0" {
