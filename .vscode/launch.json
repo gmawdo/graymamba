@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug graymamba (with traceability)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=graymamba",
+                    "--package=graymamba",
+                    "--features=traceability"
+                ]
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug graymamba (with strict)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=graymamba",
+                    "--package=graymamba",
+                    "--features=strict,traceability"
+                ]
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
