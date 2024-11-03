@@ -21,7 +21,7 @@ enable_blockchain = false
 #name = "Alice"
 
 [logging]
-level = "info"
+level = "debug"
 #"error" => tracing::Level::ERROR,
 #"warn" => tracing::Level::WARN,
 #"info" => tracing::Level::INFO,
