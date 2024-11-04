@@ -53,7 +53,7 @@ impl SharesFS {
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
 
-        let mirror_fs = SharesFS {
+        let shares_fs = SharesFS {
             data_store,
             blockchain_audit,
             active_writes: active_writes.clone(),
@@ -61,12 +61,12 @@ impl SharesFS {
         };
 
         // Start the background task to monitor active writes
-        let mirror_fs_clone = mirror_fs.clone();
+        let shares_fs_clone = shares_fs.clone();
         tokio::spawn(async move {
-            mirror_fs_clone.monitor_active_writes().await;
+            shares_fs_clone.monitor_active_writes().await;
         });
 
-        mirror_fs
+        shares_fs
     }
     pub fn mode_unmask_setattr(mode: u32) -> u32 {
         let mode = mode | 0x80;

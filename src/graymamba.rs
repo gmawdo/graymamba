@@ -951,12 +951,6 @@ impl NFSFileSystem for SharesFS {
 }
 const HOSTPORT: u32 = 2049;
 
-async fn start_ipfs_server() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialization and startup logic for the IPFS server.
-    println!("graymamba NFS server started successfully.");
-    Ok(())
-}
-
 async fn set_user_id_and_hashtag() {
     let mut user_id = USER_ID.write().unwrap();
     *user_id = "graymamba".to_string();
@@ -1008,12 +1002,6 @@ async fn main() {
 
     set_user_id_and_hashtag().await;
     other_function();
-    
-    // Start the IPFS server
-    if let Err(e) = start_ipfs_server().await {
-        eprintln!("Failed to start NFS server: {}", e);
-        return;
-    }
     
     use graymamba::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
