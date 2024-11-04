@@ -119,13 +119,13 @@ pub async fn mountproc3_mnt(
     let utf8path: String = if let Some(ref user_key) = user_key {
         match authenticate_user(user_key, &mut conn) {
             KeyType::Usual => {
-                println!("Authenticated as a usual user key: {}", user_key);
+                println!("Authenticated as a standard user: {}", user_key);
                 // Set the default mount directory
                 format!("/{}", user_key)
                 
             }
             KeyType::Special => {
-                println!("Authenticated as a special user key: {}", user_key);
+                println!("Authenticated as a superuser: {}", user_key);
                 // Set the default mount directory for special key
                 String::from("/")
                 
