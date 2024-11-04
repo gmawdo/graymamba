@@ -148,7 +148,7 @@ pub async fn mountproc3_mnt(
     {
         
         debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
-        if let Ok(fileid) = context.vfs.get_id_from_path_vfs(&utf8path, context.vfs.data_store()).await {
+        if let Ok(fileid) = context.vfs.get_id_from_path(&utf8path, context.vfs.data_store()).await {
             //println!("File ID: {:?}", fileid);
             //println!("FHandle: {:?}", context.vfs.id_to_fh(fileid).data);
             let response = mountres3_ok {
