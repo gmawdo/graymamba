@@ -25,11 +25,13 @@ use regex::Regex;
 
 use crate::channel_buffer::ChannelBuffer;
 
-use tracing::debug;
+use tracing::{debug, warn};
 
-lazy_static::lazy_static! {static ref USER_ID: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));}
-
-lazy_static::lazy_static! {static ref HASH_TAG: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));}
+use lazy_static::lazy_static;
+lazy_static! {
+    pub static ref USER_ID: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
+    pub static ref HASH_TAG: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
+}
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
@@ -37,21 +39,17 @@ use secretsharing::{disassemble, reassemble};
 
 #[derive(Clone)]
 pub struct SharesFS {
-    #[allow(dead_code)]
     pub data_store: Arc<dyn DataStore>,
-    #[allow(dead_code)]
     pub blockchain_audit: Option<Arc<BlockchainAudit>>, // Add NFSModule wrapped in Arc
-    #[allow(dead_code)]
     pub active_writes: Arc<Mutex<HashMap<fileid3, ActiveWrite>>>,
-    #[allow(dead_code)]
     pub commit_semaphore: Arc<Semaphore>,
     
 }
 
 impl SharesFS {
-    #[allow(dead_code)]
     pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<BlockchainAudit>>) -> SharesFS {
         // Create shared components for active writes
+        warn!("SharesFS::new");
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
 
@@ -112,6 +110,7 @@ impl SharesFS {
 
     /// Get the metadata for a given file/directory ID
     pub async fn get_metadata_from_id(&self, id: fileid3) -> Result<FileMetadata, nfsstat3> {
+        warn!("SharesFS::get_metadata_from_id");
         let path = self.get_path_from_id(id).await?;
         
         // Acquire lock on HASH_TAG
