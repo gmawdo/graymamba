@@ -86,9 +86,9 @@ impl SharesFS {
 
     pub async fn get_path_from_id(&self, id: fileid3) -> Result<String, nfsstat3> {
 
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
-        let key = format!("{}/{}_id_to_path", hash_tag, user_id);
+        let key = format!("{}/{}_id_to_path", hash_tag, namespace_id);
           
         let path: String = {
             self.data_store
@@ -103,9 +103,9 @@ impl SharesFS {
     /// Get the ID for a given file/directory path
     pub async fn get_id_from_path(&self, path: &str) -> Result<fileid3, nfsstat3> {
        
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
-        let key = format!("{}/{}_path_to_id", hash_tag, user_id);
+        let key = format!("{}/{}_path_to_id", hash_tag, namespace_id);
 
         let id_str: String = self.data_store
         .hget(&key, path)
@@ -120,7 +120,7 @@ impl SharesFS {
 
     /// Get the metadata for a given file/directory ID
     pub async fn get_metadata_from_id(&self, id: fileid3) -> Result<FileMetadata, nfsstat3> {
-        warn!("SharesFS::get_metadata_from_id");
+        //warn!("SharesFS::get_metadata_from_id");
         let path = self.get_path_from_id(id).await?;
         
         let hash_tag = HASH_TAG.read().unwrap().clone();
@@ -181,9 +181,9 @@ impl SharesFS {
 
     async fn get_nodes_in_subpath(&self, subpath: &str) -> Result<Vec<String>, nfsstat3> {
         
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
-        let key = format!("{}/{}_nodes", hash_tag, user_id);
+        let key = format!("{}/{}_nodes", hash_tag, namespace_id);
 
         // let pool_guard = shared_pool.lock().unwrap();
         // let mut conn = pool_guard.get_connection();
@@ -233,7 +233,7 @@ impl SharesFS {
     }
 
     pub async fn create_node(&self, node_type: &str, fileid: fileid3, path: &str) -> DataStoreResult<()> {
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
       
         let size = 0;
         let permissions = 777;
@@ -246,7 +246,7 @@ impl SharesFS {
         let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
         
         self.data_store.zadd(
-            &format!("{}/{}_nodes", hash_tag, user_id),
+            &format!("{}/{}_nodes", hash_tag, namespace_id),
             &path,
             score
         ).await?;
@@ -266,15 +266,15 @@ impl SharesFS {
             ("fileid", &fileid.to_string())
             ]).await?;
         
-            self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string()).await?;
-            self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path).await?;
+            self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, namespace_id), path, &fileid.to_string()).await?;
+            self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, namespace_id), &fileid.to_string(), path).await?;
             
         Ok(())
     }
     
     pub async fn create_file_node(&self, node_type: &str, fileid: fileid3, path: &str, setattr: sattr3,) -> DataStoreResult<()> {
        
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
       
         let size = 0;
         let score: f64 = path.matches('/').count() as f64 + 1.0;  
@@ -286,7 +286,7 @@ impl SharesFS {
         let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
         
         let _ = self.data_store.zadd(
-            &format!("{}/{}_nodes", hash_tag, user_id),
+            &format!("{}/{}_nodes", hash_tag, namespace_id),
             &path,
             score
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
@@ -319,8 +319,8 @@ impl SharesFS {
                 
             }
         // let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "").await.map_err(|_| nfsstat3::NFS3ERR_IO);
-        let _ = self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, user_id), path, &fileid.to_string()).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-        let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, user_id), &fileid.to_string(), path).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+        let _ = self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, namespace_id), path, &fileid.to_string()).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+        let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, namespace_id), &fileid.to_string(), path).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
         
         Ok(())
@@ -362,16 +362,16 @@ impl SharesFS {
     
     pub async fn remove_directory_file(&self, path: &str) -> Result<(), nfsstat3> {
             
-            let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+            let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
             let pattern = format!("{}/*", path);
-            let sorted_set_key = format!("{}/{}_nodes", hash_tag, user_id);
+            let sorted_set_key = format!("{}/{}_nodes", hash_tag, namespace_id);
             let match_found = self.get_member_keys(&pattern, &sorted_set_key).await?;
             if match_found {
                 return Err(nfsstat3::NFS3ERR_NOTEMPTY);
             }
 
             let dir_id = self.data_store.hget(
-                &format!("{}/{}_path_to_id", hash_tag, user_id),
+                &format!("{}/{}_path_to_id", hash_tag, namespace_id),
                 path
             ).await;
             
@@ -382,7 +382,7 @@ impl SharesFS {
             // Remove the directory         
             // Remove the node from the sorted set
             let _ = self.data_store.zrem(
-                &format!("{}/{}_nodes", hash_tag, user_id),
+                &format!("{}/{}_nodes", hash_tag, namespace_id),
                 path
             ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
                     
@@ -393,13 +393,13 @@ impl SharesFS {
                  
             // Remove the directory from the path-to-id mapping
             let _ = self.data_store.hdel(
-                &format!("{}/{}_path_to_id", hash_tag, user_id),
+                &format!("{}/{}_path_to_id", hash_tag, namespace_id),
                 path
             ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
             
             // Remove the directory from the id-to-path mapping
             let _ = self.data_store.hdel(
-                &format!("{}/{}_id_to_path", hash_tag, user_id),
+                &format!("{}/{}_id_to_path", hash_tag, namespace_id),
                 &value
             ).await.map_err(|_| nfsstat3::NFS3ERR_IO);             
              
@@ -408,7 +408,7 @@ impl SharesFS {
     }
     
     pub async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Result<(), nfsstat3> { 
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         //Rename the metadata hashkey
         let _ = self.data_store.rename(
             &format!("{}{}", hash_tag, from_path),
@@ -441,7 +441,7 @@ impl SharesFS {
             .map_err(|_| nfsstat3::NFS3ERR_IO);
         } 
         //Rename entries in sorted set (_nodes)
-        let key = format!("{}/{}_nodes", hash_tag, user_id);
+        let key = format!("{}/{}_nodes", hash_tag, namespace_id);
 
         // Retrieve all members of the sorted set with their scores
         let members_result = self.data_store.zrange_withscores(&key, 0, -1)
@@ -513,8 +513,8 @@ impl SharesFS {
             }
         }
         //Rename entries in path_to_id and id_to_path hash
-        let path_to_id_key = format!("{}/{}_path_to_id", hash_tag, user_id);
-        let id_to_path_key = format!("{}/{}_id_to_path", hash_tag, user_id);
+        let path_to_id_key = format!("{}/{}_path_to_id", hash_tag, namespace_id);
+        let id_to_path_key = format!("{}/{}_id_to_path", hash_tag, namespace_id);
 
         // Retrieve all the members of path_to_id hash
         let fields_result = self.data_store.hgetall(&path_to_id_key)
@@ -664,15 +664,15 @@ impl SharesFS {
         Ok(())   
     }
 
-    pub async fn get_user_id_and_hash_tag() -> (String, String) {
-        let user_id = NAMESPACE_ID.read().unwrap().clone();
+    pub async fn get_namespace_id_and_hash_tag() -> (String, String) {
+        let namespace_id = NAMESPACE_ID.read().unwrap().clone();
         let hash_tag = HASH_TAG.read().unwrap().clone();
-        (user_id, hash_tag)
+        (namespace_id, hash_tag)
     }
 
     pub async fn get_data(&self, path: &str) -> Vec<u8> {
      
-        let (_user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
         // Retrieve the current file content (Base64 encoded) from store
         let store_value: String = match self.data_store.hget(
@@ -756,7 +756,7 @@ impl SharesFS {
 
         let _permit = self.commit_semaphore.acquire().await.map_err(|_| DataStoreError::OperationFailed);
 
-        let (_user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
 
         let channel = {
@@ -825,7 +825,7 @@ impl SharesFS {
         let system_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let epoch_seconds = system_time.as_secs();
         let epoch_nseconds = system_time.subsec_nanos();
-        let (_user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
         let update_result = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path),
             &[
@@ -849,7 +849,7 @@ impl SharesFS {
 
     pub async fn is_likely_last_write(&self, id: fileid3, offset: u64, data_len: usize) -> Result<bool, nfsstat3> {
 
-        let (_user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
         let path_result = self.get_path_from_id(id).await;
         let path: String = match path_result {
@@ -914,7 +914,7 @@ impl NFSFileSystem for SharesFS {
     }
     
     async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3> {       
-        warn!("graymamba getattr {:?}", id);
+        //warn!("graymamba getattr {:?}", id);
         let metadata = self.get_metadata_from_id(id).await?;
         let path = self.get_path_from_id(id).await?;
         debug!("Stat {:?}: {:?}", path, &metadata);
@@ -924,11 +924,11 @@ impl NFSFileSystem for SharesFS {
     }
 
     async fn read(&self, id: fileid3, offset: u64, count: u32) -> Result<(Vec<u8>, bool), nfsstat3> {           
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
         // Get file path from the share store
         let path: String = self.data_store.hget(
-            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &id.to_string()
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
             //.unwrap_or_default();
@@ -1024,11 +1024,11 @@ impl NFSFileSystem for SharesFS {
     }
 
     async fn setattr(&self, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3> {       
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
         // Get file path from the share store
         let path: String = self.data_store.hget(
-            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &id.to_string()
         ).await
             .unwrap_or_else(|_| String::new());
@@ -1130,7 +1130,7 @@ impl NFSFileSystem for SharesFS {
 
         // println!("Starting write operation for file ID: {}, offset: {}, data length: {}", id, offset, data.len());
 
-        let (_user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
         let path_result = self.get_path_from_id(id).await;
         let path: String = match path_result {
@@ -1200,16 +1200,16 @@ impl NFSFileSystem for SharesFS {
 
     async fn create(&self, dirid: fileid3, filename: &filename3, setattr: sattr3) -> Result<(fileid3, fattr3), nfsstat3> {
                 
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         
         // Get parent directory path from the share store
         let parent_path: String = self.data_store.hget(
-            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &dirid.to_string()
         ).await
             .unwrap_or_else(|_| String::new());
         
-
+        warn!("graymamba create {:?}", parent_path);
         if parent_path.is_empty() {
             return Err(nfsstat3::NFS3ERR_NOENT); // No such directory id exists
         }
@@ -1226,7 +1226,7 @@ impl NFSFileSystem for SharesFS {
 
         // Check if file already exists
         let exists: bool = match self.data_store.zscore(
-            &format!("{}/{}_nodes", hash_tag, user_id),
+            &format!("{}/{}_nodes", hash_tag, namespace_id),
             &new_file_path
         ).await {
             Ok(Some(_)) => true,
@@ -1244,7 +1244,7 @@ impl NFSFileSystem for SharesFS {
 
         // Create new file ID
         let new_file_id: fileid3 = match self.data_store.incr(
-            &format!("{}/{}_next_fileid", hash_tag, user_id)
+            &format!("{}/{}_next_fileid", hash_tag, namespace_id)
         ).await {
             Ok(id) => id.try_into().unwrap(),
             Err(e) => {
@@ -1266,13 +1266,13 @@ impl NFSFileSystem for SharesFS {
 
             //let mut conn = self.pool.get_connection();             
 
-            //let (user_id, hash_tag, new_file_path,new_file_id ) = {
+            //let (namespace_id, hash_tag, new_file_path,new_file_id ) = {
                 
-                let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+                let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
                 
                 // Get parent directory path from the share store
                 let parent_path: String = self.data_store.hget(
-                    &format!("{}/{}_id_to_path", hash_tag, user_id),
+                    &format!("{}/{}_id_to_path", hash_tag, namespace_id),
                     &dirid.to_string()
                 ).await
                     .map_err(|_| nfsstat3::NFS3ERR_IO)?;
@@ -1292,7 +1292,7 @@ impl NFSFileSystem for SharesFS {
                 }
 
                 let exists: bool = match self.data_store.zscore(
-                    &format!("{}/{}_nodes", hash_tag, user_id),
+                    &format!("{}/{}_nodes", hash_tag, namespace_id),
                     &new_file_path
                 ).await {
                     Ok(Some(_)) => true,
@@ -1306,7 +1306,7 @@ impl NFSFileSystem for SharesFS {
                 if exists {
 
                     let fields_result = self.data_store.hget(
-                        &format!("{}/{}_path_to_id", hash_tag, user_id),
+                        &format!("{}/{}_path_to_id", hash_tag, namespace_id),
                         &new_file_path
                     ).await;
                     match fields_result {
@@ -1324,7 +1324,7 @@ impl NFSFileSystem for SharesFS {
 
                 // Create new file ID
                 let new_file_id: fileid3 = match self.data_store.incr(
-                    &format!("{}/{}_next_fileid", hash_tag, user_id)
+                    &format!("{}/{}_next_fileid", hash_tag, namespace_id)
                 ).await {
                     Ok(id) => id.try_into().unwrap(),
                     Err(e) => {
@@ -1376,10 +1376,10 @@ impl NFSFileSystem for SharesFS {
 
     async fn rename(&self, from_dirid: fileid3, from_filename: &filename3, to_dirid: fileid3, to_filename: &filename3) -> Result<(), nfsstat3> {
                 
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         
         let from_path: String = self.data_store.hget(
-            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &from_dirid.to_string()
         ).await
             .map_err(|_| nfsstat3::NFS3ERR_IO)?;
@@ -1397,7 +1397,7 @@ impl NFSFileSystem for SharesFS {
 
             // Check if the source file exists in the share store
             let from_exists: bool = match self.data_store.zscore(
-                &format!("{}/{}_nodes", hash_tag, user_id),
+                &format!("{}/{}_nodes", hash_tag, namespace_id),
                 &new_from_path
             ).await {
                 Ok(Some(_)) => true,
@@ -1413,7 +1413,7 @@ impl NFSFileSystem for SharesFS {
             }
 
         let to_path: String = self.data_store.hget(
-            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &to_dirid.to_string()
         ).await
             .map_err(|_| nfsstat3::NFS3ERR_IO)?;
@@ -1447,8 +1447,8 @@ impl NFSFileSystem for SharesFS {
     }
 
     async fn mkdir(&self, dirid: fileid3, dirname: &filename3) -> Result<(fileid3, fattr3), nfsstat3> {
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
-        let key1 = format!("{}/{}_id_to_path", hash_tag, user_id);
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+        let key1 = format!("{}/{}_id_to_path", hash_tag, namespace_id);
 
         // Get parent directory path from the share store
         let parent_path: String = self.data_store.hget(
@@ -1471,11 +1471,11 @@ impl NFSFileSystem for SharesFS {
             new_dir_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
         }
 
-        // let key2 = format!("{}/{}_path_to_id", hash_tag, user_id);
+        // let key2 = format!("{}/{}_path_to_id", hash_tag, namespace_id);
 
         // Check if directory already exists
         let exists: bool = match self.data_store.zscore(
-            &format!("{}/{}_nodes", hash_tag, user_id),
+            &format!("{}/{}_nodes", hash_tag, namespace_id),
             &new_dir_path
         ).await {
             Ok(Some(_)) => true,
@@ -1491,7 +1491,7 @@ impl NFSFileSystem for SharesFS {
         }
 
         // Create new directory ID
-        let key = format!("{}/{}_next_fileid", hash_tag, user_id);
+        let key = format!("{}/{}_next_fileid", hash_tag, namespace_id);
     
         let new_dir_id: fileid3 = match self.data_store.incr(&key).await {
             Ok(id) => {
@@ -1519,7 +1519,7 @@ impl NFSFileSystem for SharesFS {
     
     //let mut conn = self.pool.get_connection();  
 
-    let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;   
+    let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;   
 
     // Get the current system time for metadata timestamps
     let system_time = SystemTime::now()
@@ -1531,7 +1531,7 @@ impl NFSFileSystem for SharesFS {
 
     // Get the directory path from the directory ID
     let dir_path: String = self.data_store.hget(
-        &format!("{}/{}_id_to_path", hash_tag, user_id),
+        &format!("{}/{}_id_to_path", hash_tag, namespace_id),
         &dirid.to_string()
     ).await
         .map_err(|_| nfsstat3::NFS3ERR_IO)?;
@@ -1551,7 +1551,7 @@ impl NFSFileSystem for SharesFS {
         }
 
         let symlink_exists: bool = match self.data_store.zscore(
-            &format!("{}/{}_nodes", hash_tag, user_id),
+            &format!("{}/{}_nodes", hash_tag, namespace_id),
             &symlink_path
         ).await {
             Ok(Some(_)) => true,
@@ -1568,7 +1568,7 @@ impl NFSFileSystem for SharesFS {
 
     // Generate a new file ID for the symlink
     let symlink_id: fileid3 = match self.data_store.incr(
-        &format!("{}/{}_next_fileid", hash_tag, user_id)
+        &format!("{}/{}_next_fileid", hash_tag, namespace_id)
     ).await {
         Ok(id) => id.try_into().unwrap(),
         Err(e) => {
@@ -1581,7 +1581,7 @@ impl NFSFileSystem for SharesFS {
 
     let score = (symlink_path.matches('/').count() as f64) + 1.0;
     let _ = self.data_store.zadd(
-        &format!("{}/{}_nodes", hash_tag, user_id),
+        &format!("{}/{}_nodes", hash_tag, namespace_id),
         &symlink_path,
         score
     ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
@@ -1624,13 +1624,13 @@ impl NFSFileSystem for SharesFS {
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
         
         let _ = self.data_store.hset(
-            &format!("{}/{}_path_to_id", hash_tag, user_id),
+            &format!("{}/{}_path_to_id", hash_tag, namespace_id),
             &symlink_path,
             &symlink_id.to_string()
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
         let _ = self.data_store.hset(
-            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &symlink_id.to_string(),
             &symlink_path
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
@@ -1642,11 +1642,11 @@ impl NFSFileSystem for SharesFS {
     }
 
     async fn readlink(&self, id: fileid3) -> Result<nfsstring, nfsstat3> {
-        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
     
         // Retrieve the path from the file ID
         let path: String = match self.data_store.hget(
-            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &id.to_string()
         ).await {
             Ok(path) => path,

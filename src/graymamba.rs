@@ -12,7 +12,7 @@ use config::{Config, File as ConfigFile};
 
 const HOSTPORT: u32 = 2049;
 
-async fn set_user_id_and_hashtag() {
+async fn set_namespace_id_and_hashtag() {
     let mut namespace_id = NAMESPACE_ID.write().unwrap();
     *namespace_id = "graymamba".to_string();
 
@@ -56,13 +56,13 @@ async fn main() {
     // Load settings from the configuration file
     let settings = load_config();
 
-    set_user_id_and_hashtag().await;
+    set_namespace_id_and_hashtag().await;
     /*
     // Execute the two lines as a closure
     {
-        let user_id = NAMESPACE_ID.read().unwrap();
+        let namespace_id = NAMESPACE_ID.read().unwrap();
         let hash_tag = HASH_TAG.read().unwrap();
-        println!("User ID: {}", *user_id);
+        println!("User ID: {}", *namespace_id);
         println!("Hash Tag: {}", *hash_tag);
     }*/
     
