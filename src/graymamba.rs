@@ -19,19 +19,14 @@ use graymamba::nfs::nfsstat3;
 use graymamba::tcp::{NFSTcp, NFSTcpListener};
 use graymamba::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 use graymamba::channel_buffer;
+use graymamba::data_store::DataStore;
+use graymamba::file_metadata::FileMetadata;
 
 use crate::channel_buffer::{ChannelBuffer, ActiveWrite};
 
-use graymamba::data_store::DataStore;
-
 use wasmtime::*;
-
 extern crate secretsharing;
-
 use config::{Config, File as ConfigFile};
-
-mod file_metadata;
-use file_metadata::FileMetadata;
 
 mod sharesbased_fs;
 use sharesbased_fs::SharesFS;

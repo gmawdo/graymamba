@@ -1,6 +1,8 @@
 
 #![cfg_attr(feature = "strict", deny(warnings))]
 
+extern crate self as graymamba;
+
 mod context;
 
 mod rpc;
@@ -35,3 +37,7 @@ pub mod vfs;
 pub mod blockchain_audit;
 
 pub mod channel_buffer;
+
+pub mod file_metadata;
+
+//pub mod sharesbased_fs;
