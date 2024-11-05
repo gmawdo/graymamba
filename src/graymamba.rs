@@ -13,12 +13,12 @@ use config::{Config, File as ConfigFile};
 const HOSTPORT: u32 = 2049;
 
 async fn set_user_id_and_hashtag() {
-    let mut user_id = NAMESPACE_ID.write().unwrap();
-    *user_id = "graymamba".to_string();
+    let mut namespace_id = NAMESPACE_ID.write().unwrap();
+    *namespace_id = "graymamba".to_string();
 
     let mut hash_tag = HASH_TAG.write().unwrap();
     hash_tag.clear(); // Clear the previous content
-    hash_tag.push_str(&format!("{{{}}}:", user_id));
+    hash_tag.push_str(&format!("{{{}}}:", namespace_id));
 }
 
 // Load settings from the configuration file
@@ -57,13 +57,14 @@ async fn main() {
     let settings = load_config();
 
     set_user_id_and_hashtag().await;
+    /*
     // Execute the two lines as a closure
     {
         let user_id = NAMESPACE_ID.read().unwrap();
         let hash_tag = HASH_TAG.read().unwrap();
         println!("User ID: {}", *user_id);
         println!("Hash Tag: {}", *hash_tag);
-    }
+    }*/
     
     use graymamba::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));

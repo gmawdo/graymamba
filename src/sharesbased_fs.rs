@@ -123,8 +123,6 @@ impl SharesFS {
         warn!("SharesFS::get_metadata_from_id");
         let path = self.get_path_from_id(id).await?;
         
-        // Acquire lock on HASH_TAG
-        //let hash_tag = HASH_TAG.lock().unwrap();
         let hash_tag = HASH_TAG.read().unwrap().clone();
         
         // Construct the share store key for metadata
@@ -330,7 +328,6 @@ impl SharesFS {
     }
     
     pub async fn get_ftype(&self, path: String) -> Result<String, nfsstat3> {
-        // Acquire lock on HASH_TAG
         let hash_tag = HASH_TAG.read().unwrap().clone();
         let key = format!("{}{}", hash_tag, path.clone());
 
