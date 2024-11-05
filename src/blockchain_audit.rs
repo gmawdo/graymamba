@@ -11,7 +11,6 @@ use subxt_signer::sr25519::dev;
 use tokio::runtime::Runtime;
 use subxt::backend::rpc::RpcClient;
 
-
 #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
 pub mod pallet_template {}
 
@@ -39,7 +38,6 @@ impl BlockchainAudit {
         settings.merge(File::with_name("config/settings.toml"))?;
 
         let enable_blockchain: bool = settings.get("enable_blockchain")?;
-
         let ws_url: String = settings.get("substrate.ws_url")?;
 
         
@@ -48,18 +46,13 @@ impl BlockchainAudit {
 
         // Use this to construct our RPC methods
         let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client.clone());
-
         // Create the API client
         let api = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client).await.expect("Failed to create BlockChain Connection");
-
         println!("Connection with BlockChain Node established.");
-
 
         let account_id: AccountId32 = dev::alice().public_key().into();
         let signer = dev::alice();
-
         let rpc_clone = rpc.clone();
-
         let api_clone = api.clone();
         let signer_clone = signer.clone();
         let account_id_clone = account_id.clone();
@@ -101,8 +94,6 @@ impl BlockchainAudit {
         }
     }
 
-    
-
     async fn send_event(
         api: &OnlineClient<PolkadotConfig>,
         _rpc: &LegacyRpcMethods<PolkadotConfig>,
@@ -119,7 +110,6 @@ impl BlockchainAudit {
         let event_key: Vec<u8> = event.event_key.clone().into_bytes();
 
         if event.event_type == "disassembled" {
-
             // Call the disassembled function
             let disassembled_call = pallet_template::tx()
                 .template_module()
@@ -135,40 +125,29 @@ impl BlockchainAudit {
                 })?
                 .wait_for_finalized_success()
                 .await?;
-            println!("Disassembled event processed.");
-           
-
+            println!("Disassembled event processed."); 
         } else if  event.event_type == "reassembled" {
-
             // Call the reassembled function
-        let reassembled_call = pallet_template::tx()
-            .template_module()
-            .reassembled(event_type.clone(), creation_time.clone(), file_path.clone(), event_key.clone());
-            let _reassembled_events = api.clone()
-            .tx()
-            .sign_and_submit_then_watch_default(&reassembled_call, &signer.clone())
-            .await
-            .map(|e| {
-                println!("Reassembled call submitted, waiting for transaction to be finalized...");
-                e
-            })?
-            .wait_for_finalized_success()
-            .await?;
-        println!("Reassembled event processed.");
-        
-            
+            let reassembled_call = pallet_template::tx()
+                .template_module()
+                .reassembled(event_type.clone(), creation_time.clone(), file_path.clone(), event_key.clone());
+                let _reassembled_events = api.clone()
+                .tx()
+                .sign_and_submit_then_watch_default(&reassembled_call, &signer.clone())
+                .await
+                .map(|e| {
+                    println!("Reassembled call submitted, waiting for transaction to be finalized...");
+                    e
+                })?
+                .wait_for_finalized_success()
+                .await?;
+                println!("Reassembled event processed.");   
         } else {
-
-            eprintln!("Unknown event type");
-            
+                eprintln!("Unknown event type");       
         }
 
         Ok(())
-
-        
     }
-
-   
 
     pub fn trigger_event(&self, creation_time: &str, event_type: &str, file_path: &str, event_key: &str) {
         if self.enable_blockchain {    
@@ -181,7 +160,4 @@ impl BlockchainAudit {
             self.tx_sender.send(event).unwrap();
         }
     }
-
-
-
 }
