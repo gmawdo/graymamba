@@ -7,13 +7,7 @@ use num_traits::cast::{FromPrimitive, ToPrimitive};
 use std::io::{Read, Write};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use tracing::debug;
-
-use r2d2::PooledConnection;
-use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
-use r2d2_redis_cluster::Commands; 
-use r2d2_redis_cluster::redis_cluster_rs::redis;
-use redis::RedisError;
+use tracing::{debug, warn};
 
 use anyhow::Result;
 
@@ -34,12 +28,6 @@ enum KeyType {
     Usual,
     Special,
     None,
-}
-
-impl From<RedisError> for crate::nfs::nfsstat3 {
-    fn from(_: RedisError) -> Self {
-        crate::nfs::nfsstat3::NFS3ERR_IO // or another appropriate nfsstat3 variant
-    }
 }
 
 pub async fn handle_mount(
@@ -110,14 +98,10 @@ pub async fn mountproc3_mnt(
         }
     }
 
-    // Set-up data storage engine pool for the cluster and get the connection
-    let pool = crate::redis_data_store::get_redis_cluster_pool().unwrap();
-    let mut conn = pool.get()?;
-
     // Authenticate user
     // let mut utf8path = String::new();
     let utf8path: String = if let Some(ref user_key) = user_key {
-        match authenticate_user(user_key, &mut conn) {
+        match authenticate_user(user_key) {
             KeyType::Usual => {
                 println!("Authenticated as a standard user: {}", user_key);
                 // Set the default mount directory
@@ -143,14 +127,12 @@ pub async fn mountproc3_mnt(
     
 
     // Initialize the mount directory
-    let _ = init_user_directory(&utf8path, &pool);
+    let _ = init_user_directory(&utf8path);
     
     {
         
         debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
         if let Ok(fileid) = context.vfs.get_id_from_path(&utf8path, context.vfs.data_store()).await {
-            //println!("File ID: {:?}", fileid);
-            //println!("FHandle: {:?}", context.vfs.id_to_fh(fileid).data);
             let response = mountres3_ok {
                 fhandle: context.vfs.id_to_fh(fileid).data,
                 auth_flavors: vec![
@@ -244,37 +226,36 @@ pub async fn mountproc3_umnt_all(
     Ok(())
 }
 
-pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConnectionManager>) -> Result<(), crate::nfs::nfsstat3> {
-    
-    
-    {
+//the following code should not be visible at this high level
+//it is specific to a storage type and should be behind a trait
+use r2d2_redis_cluster::Commands; 
+use r2d2_redis_cluster::redis_cluster_rs::redis;
+use redis::RedisError;
 
-    
-    // Get a connection from the pool
+impl From<RedisError> for crate::nfs::nfsstat3 {
+    fn from(_: RedisError) -> Self {
+        crate::nfs::nfsstat3::NFS3ERR_IO // or another appropriate nfsstat3 variant
+    }
+}
+//must move these to a separate module
+fn init_user_directory(mount_path: &str) -> Result<(), crate::nfs::nfsstat3> {
+    let pool = crate::redis_data_store::get_redis_cluster_pool().unwrap();
     let mut conn = pool.get().map_err(|_| crate::nfs::nfsstat3::NFS3ERR_IO)?;
 
     let hash_tag = "{graymamba}";
-
     let path = format!("/{}", "graymamba");
-    //let key = format!("{{{}}}:{}", hash_tag, path);
-    //let key = format!("{}:{}_nodes", hash_tag, path);
     let key = format!("{}:{}", hash_tag, mount_path);
-
     let mut pipeline = redis::pipe();
     let exists_response: bool = conn.exists(key).unwrap_or(false);
-    
     
     if exists_response {
         return Ok(());
     } else {
 
-
     let node_type = "0";
     let size = 0;
     let permissions = 777;
     let score = if mount_path == "/" { 1.0 } else { 2.0 };
-    //let score = 2.0;
-    // let mut fileid: u64 = 0;
 
     let nodes = format!("{}:/{}_nodes", hash_tag, "graymamba");
     let key_exists: bool = conn.exists(nodes).unwrap_or(false);
@@ -283,20 +264,14 @@ pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConne
         match conn.incr(format!("{}:/{}_next_fileid", hash_tag, "graymamba"), 1) {
             Ok(id) => id,
             Err(_) => {
-                //eprintln!("Error incrementing key: {:?}", err);
                 return Err(crate::nfs::nfsstat3::NFS3ERR_IO);
             }
         }
     } else {
-        //println!("Key does not exist.");
         1
     };
 
-    //println!("File_id: {}",fileid);
-
-    let system_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap();
+    let system_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     let epoch_seconds = system_time.as_secs();
     let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
  
@@ -354,27 +329,25 @@ pub fn init_user_directory(mount_path: &str, pool: &r2d2::Pool<RedisClusterConne
         Ok(())
     }
 }
-}
 
-fn authenticate_user(userkey: &str, conn: &mut PooledConnection<RedisClusterConnectionManager>) -> KeyType {
-    // Initialize storage cluster pool from config file
-    {
+fn authenticate_user(userkey: &str) -> KeyType {
+    let pool = crate::redis_data_store::get_redis_cluster_pool().unwrap();
+    let mut conn = pool.get().unwrap();
 
-        // Check if userkey exists for normal access
-        let user_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", userkey);
-        if let Ok(exists) = user_exists {
-            if exists {
-                return KeyType::Usual;
-            }
+    let user_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", userkey);
+    if let Ok(exists) = user_exists {
+        if exists {
+            warn!("User key exists: {}", userkey);
+            return KeyType::Usual;
         }
+    }
 
-        // Check if userkey exists for special access
-        let special_key = format!("{}-su", userkey);
-        let special_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", &special_key);
-        if let Ok(exists) = special_exists {
-            if exists {
-                return KeyType::Special;
-            }
+    // Check if userkey variant exists for special access
+    let special_key = format!("{}-su", userkey);
+    let special_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", &special_key);
+    if let Ok(exists) = special_exists {
+        if exists {
+            return KeyType::Special;
         }
     }
 
