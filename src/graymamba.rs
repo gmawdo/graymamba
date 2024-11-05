@@ -59,6 +59,12 @@ async fn main() {
     let version = env!("CARGO_PKG_VERSION");
     println!("Application version: {}", version);
 
+    // Print enabled features
+    println!("Enabled features:");
+    if cfg!(feature = "blockchain_audit") {
+        println!(" - blockchain_audit");
+    }
+
     let _settings = load_config();
 
     set_namespace_id_and_hashtag().await;
