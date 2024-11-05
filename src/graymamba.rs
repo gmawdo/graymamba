@@ -50,9 +50,6 @@ impl NFSFileSystem for SharesFS {
     }
  
     async fn lookup(&self, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3> {
-        
-        {           
-
         let filename_str = OsStr::from_bytes(filename).to_str().ok_or(nfsstat3::NFS3ERR_IO)?;
 
         // Handle the root directory case
@@ -76,100 +73,67 @@ impl NFSFileSystem for SharesFS {
         }
     
         Err(nfsstat3::NFS3ERR_NOENT)
-        }
     }
     
-    async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3> {
-
-      
-
-        {         
+    async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3> {       
         warn!("graymamba getattr {:?}", id);
-
         let metadata = self.get_metadata_from_id(id).await?;
-       
         let path = self.get_path_from_id(id).await?;
-
         debug!("Stat {:?}: {:?}", path, &metadata);
-
         let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
-        
         Ok(fattr)
-
-        }
         
     }
 
-    async fn read(&self, id: fileid3, offset: u64, count: u32) -> Result<(Vec<u8>, bool), nfsstat3> {
+    async fn read(&self, id: fileid3, offset: u64, count: u32) -> Result<(Vec<u8>, bool), nfsstat3> {           
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
-        
-        {
-            //let mut conn = self.pool.get_connection();             
+        // Get file path from the share store
+        let path: String = self.data_store.hget(
+            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &id.to_string()
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+            //.unwrap_or_default();
 
-            let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
-
-
-            // Get file path from the share store
-            let path: String = self.data_store.hget(
-                &format!("{}/{}_id_to_path", hash_tag, user_id),
-                &id.to_string()
-            ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
-                //.unwrap_or_default();
-
-            // Retrieve the current file content (Base64 encoded)
-            // Retrieve the existing data from the share store
-            let current_data= self.get_data(&path).await;
-            // Check if the offset is beyond the current data length
-            if offset as usize >= current_data.len() {
-                return Ok((vec![], true)); // Return an empty vector and EOF as true
-            }
-
-            // Calculate the end of the data slice to return
-            let end = std::cmp::min(current_data.len(), (offset + count as u64) as usize);
-
-            // Slice the data from offset to the calculated end
-            let data_slice = &current_data[offset as usize..end];
-
-            // Determine if this slice reaches the end of the file
-            let eof = end >= current_data.len();
-            
-            // Get the current local date and time
-            let local_date_time: DateTime<Local> = Local::now();
-
-            // Format the date and time using the specified pattern
-            let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-            
-            // Initialize extracted with an empty string or any default value
-            
-            let mut user = "";
-
-            let parts: Vec<&str> = path.split('/').collect();
-
-                if parts.len() > 2 {
-                    user = parts[1];
-                }
-
-            
-
-            if let Some(blockchain_audit) = &self.blockchain_audit {
-                let _ = blockchain_audit.trigger_event(&creation_time, "reassembled", &path, &user);
-            }
-
-            
-                
-            
-
-            Ok((data_slice.to_vec(), eof))
-            //Ok((contents, eof))
+        // Retrieve the current file content (Base64 encoded)
+        // Retrieve the existing data from the share store
+        let current_data= self.get_data(&path).await;
+        // Check if the offset is beyond the current data length
+        if offset as usize >= current_data.len() {
+            return Ok((vec![], true)); // Return an empty vector and EOF as true
         }
-   
+
+        // Calculate the end of the data slice to return
+        let end = std::cmp::min(current_data.len(), (offset + count as u64) as usize);
+
+        // Slice the data from offset to the calculated end
+        let data_slice = &current_data[offset as usize..end];
+
+        // Determine if this slice reaches the end of the file
+        let eof = end >= current_data.len();
+        
+        // Get the current local date and time
+        let local_date_time: DateTime<Local> = Local::now();
+
+        // Format the date and time using the specified pattern
+        let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
+        
+        // Initialize extracted with an empty string or any default value
+        
+        let mut user = "";
+
+        let parts: Vec<&str> = path.split('/').collect();
+
+            if parts.len() > 2 {
+                user = parts[1];
+            }
+        if let Some(blockchain_audit) = &self.blockchain_audit {
+            let _ = blockchain_audit.trigger_event(&creation_time, "reassembled", &path, &user);
+        }
+        Ok((data_slice.to_vec(), eof))
     }
 
     async fn readdir(&self, dirid: fileid3, start_after: fileid3, max_entries: usize) -> Result<ReadDirResult, nfsstat3> {
-
-        
-        {            
-
         let path = self.get_path_from_id(dirid).await?;
 
         let children_vec = self.get_direct_children(&path).await?;
@@ -219,125 +183,109 @@ impl NFSFileSystem for SharesFS {
         debug!("readdir_result:{:?}", ret);
 
         Ok(ret)
-
-        }
-       
     }
 
-    async fn setattr(&self, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3> {
+    async fn setattr(&self, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3> {       
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
 
-       
-            {
+        // Get file path from the share store
+        let path: String = self.data_store.hget(
+            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &id.to_string()
+        ).await
+            .unwrap_or_else(|_| String::new());
 
-            //let mut conn = self.pool.get_connection();             
-
-            let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
-
-            {
-
-            // Get file path from the share store
-            let path: String = self.data_store.hget(
-                &format!("{}/{}_id_to_path", hash_tag, user_id),
-                &id.to_string()
-            ).await
-                .unwrap_or_else(|_| String::new());
-
-            match setattr.atime {
-                set_atime::SET_TO_SERVER_TIME => {
-                    let system_time = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap();
-                    let epoch_seconds = system_time.as_secs();
-                    let epoch_nseconds = system_time.subsec_nanos();
-            
-                    // Update the atime metadata of the file
-                    let _ = self.data_store.hset_multiple(
-                        &format!("{}{}", hash_tag, path),
-                        &[
-                            ("access_time_secs", &epoch_seconds.to_string()),
-                            ("access_time_nsecs", &epoch_nseconds.to_string()),
-                        ]
-                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-                }
-                set_atime::SET_TO_CLIENT_TIME(nfstime3 { seconds, nseconds }) => {
-                    // Update the atime metadata of the file with client-provided time
-                    let _ = self.data_store.hset_multiple(
-                        &format!("{}{}", hash_tag, path),
-                        &[
-                            ("access_time_secs", &seconds.to_string()),
-                            ("access_time_nsecs", &nseconds.to_string()),
-                        ]
-                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-                }
-                _ => {}
-            };
-
-            match setattr.mtime {
-                set_mtime::SET_TO_SERVER_TIME => {
-                    let system_time = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap();
-                    let epoch_seconds = system_time.as_secs();
-                    let epoch_nseconds = system_time.subsec_nanos();
-            
-                    // Update the atime metadata of the file
-                    let _ = self.data_store.hset_multiple(
-                        &format!("{}{}", hash_tag, path),
-                        &[
-                            ("modification_time_secs", &epoch_seconds.to_string()),
-                            ("modification_time_nsecs", &epoch_nseconds.to_string()),
-                        ],
-                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-                }
-                set_mtime::SET_TO_CLIENT_TIME(nfstime3 { seconds, nseconds }) => {
-                    // Update the atime metadata of the file with client-provided time
-                    let _ = self.data_store.hset_multiple(
-                        &format!("{}{}", hash_tag, path),
-                        &[
-                            ("modification_time_secs", &seconds.to_string()),
-                            ("modification_time_nsecs", &nseconds.to_string()),
-                        ],
-                    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-                }
-                _ => {}
-            };
-
-            if let set_mode3::mode(mode) = setattr.mode {
-                debug!(" -- set permissions {:?} {:?}", path, mode);
-                let mode_value = Self::mode_unmask_setattr(mode);
-    
-                // Update the permissions metadata of the file in the share store
-                let _ = self.data_store.hset(
-                    &format!("{}{}", hash_tag, path),
-                    "permissions",
-                    &mode_value.to_string()
-                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-                
-            }
-
-            if let set_size3::size(size3) = setattr.size {
-                debug!(" -- set size {:?} {:?}", path, size3);
+        match setattr.atime {
+            set_atime::SET_TO_SERVER_TIME => {
+                let system_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap();
+                let epoch_seconds = system_time.as_secs();
+                let epoch_nseconds = system_time.subsec_nanos();
         
-                // Update the size metadata of the file in the share store
-                let _hset_result = self.data_store.hset(
+                // Update the atime metadata of the file
+                let _ = self.data_store.hset_multiple(
                     &format!("{}{}", hash_tag, path),
-                    "size",
-                    &size3.to_string()
+                    &[
+                        ("access_time_secs", &epoch_seconds.to_string()),
+                        ("access_time_nsecs", &epoch_nseconds.to_string()),
+                    ]
                 ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
             }
-            
-
-
-        }
-            
-            let metadata = self.get_metadata_from_id(id).await?;
-
-            //FileMetadata::metadata_to_fattr3(id, &metadata)
-            let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
-
-            Ok(fattr)
-
+            set_atime::SET_TO_CLIENT_TIME(nfstime3 { seconds, nseconds }) => {
+                // Update the atime metadata of the file with client-provided time
+                let _ = self.data_store.hset_multiple(
+                    &format!("{}{}", hash_tag, path),
+                    &[
+                        ("access_time_secs", &seconds.to_string()),
+                        ("access_time_nsecs", &nseconds.to_string()),
+                    ]
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
             }
+            _ => {}
+        };
+
+        match setattr.mtime {
+            set_mtime::SET_TO_SERVER_TIME => {
+                let system_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap();
+                let epoch_seconds = system_time.as_secs();
+                let epoch_nseconds = system_time.subsec_nanos();
+        
+                // Update the atime metadata of the file
+                let _ = self.data_store.hset_multiple(
+                    &format!("{}{}", hash_tag, path),
+                    &[
+                        ("modification_time_secs", &epoch_seconds.to_string()),
+                        ("modification_time_nsecs", &epoch_nseconds.to_string()),
+                    ],
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+            }
+            set_mtime::SET_TO_CLIENT_TIME(nfstime3 { seconds, nseconds }) => {
+                // Update the atime metadata of the file with client-provided time
+                let _ = self.data_store.hset_multiple(
+                    &format!("{}{}", hash_tag, path),
+                    &[
+                        ("modification_time_secs", &seconds.to_string()),
+                        ("modification_time_nsecs", &nseconds.to_string()),
+                    ],
+                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+            }
+            _ => {}
+        };
+
+        if let set_mode3::mode(mode) = setattr.mode {
+            debug!(" -- set permissions {:?} {:?}", path, mode);
+            let mode_value = Self::mode_unmask_setattr(mode);
+
+            // Update the permissions metadata of the file in the share store
+            let _ = self.data_store.hset(
+                &format!("{}{}", hash_tag, path),
+                "permissions",
+                &mode_value.to_string()
+            ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+            
+        }
+
+        if let set_size3::size(size3) = setattr.size {
+            debug!(" -- set size {:?} {:?}", path, size3);
+    
+            // Update the size metadata of the file in the share store
+            let _hset_result = self.data_store.hset(
+                &format!("{}{}", hash_tag, path),
+                "size",
+                &size3.to_string()
+            ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+        }
+        
+        
+        let metadata = self.get_metadata_from_id(id).await?;
+
+        //FileMetadata::metadata_to_fattr3(id, &metadata)
+        let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
+
+        Ok(fattr)
     }
 
     async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
@@ -413,94 +361,63 @@ impl NFSFileSystem for SharesFS {
     }
 
     async fn create(&self, dirid: fileid3, filename: &filename3, setattr: sattr3) -> Result<(fileid3, fattr3), nfsstat3> {
-
-
-        {
-            
-            //let mut conn = self.pool.get_connection();             
-
-    //        let (user_id, hash_tag, new_file_path,new_file_id ) = {
                 
-                let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
-                
-                // Get parent directory path from the share store
-                let parent_path: String = self.data_store.hget(
-                    &format!("{}/{}_id_to_path", hash_tag, user_id),
-                    &dirid.to_string()
-                ).await
-                    .unwrap_or_else(|_| String::new());
-                
-
-                if parent_path.is_empty() {
-                    return Err(nfsstat3::NFS3ERR_NOENT); // No such directory id exists
-                }
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
         
-                let objectname_osstr = OsStr::from_bytes(filename).to_os_string();
-                
-                let new_file_path: String;
-                
-                if parent_path == "/" {
-                    new_file_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
-                } else {
-                    new_file_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
-                }
+        // Get parent directory path from the share store
+        let parent_path: String = self.data_store.hget(
+            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &dirid.to_string()
+        ).await
+            .unwrap_or_else(|_| String::new());
+        
 
-                // Check if file already exists
-                let exists: bool = match self.data_store.zscore(
-                    &format!("{}/{}_nodes", hash_tag, user_id),
-                    &new_file_path
-                ).await {
-                    Ok(Some(_)) => true,
-                    Ok(None) => false,
-                    Err(e) => {
-                        eprintln!("Error checking if file exists: {:?}", e);
-                        false
-                    }
-                };
-            
-                
-                if exists {
-                    return Err(nfsstat3::NFS3ERR_EXIST);
-                }
-
-                // Create new file ID
-                let new_file_id: fileid3 = match self.data_store.incr(
-                    &format!("{}/{}_next_fileid", hash_tag, user_id)
-                ).await {
-                    Ok(id) => id.try_into().unwrap(),
-                    Err(e) => {
-                        eprintln!("Error incrementing file ID: {:?}", e);
-                        return Err(nfsstat3::NFS3ERR_IO);
-                    }
-                };
-
-//                (user_id, hash_tag, new_file_path, new_file_id) // Return the values needed outside the scope
-//            };
-
-            // if new_file_path.contains(".git/objects/pack/tmp_pack") {
-            //     // Redirect to HashMap
-            //     let mut hashmap = self.in_memory_hashmap.write().await;
-            //     hashmap.clear();
-            //     hashmap.insert(new_file_path.clone(), String::new());
-                
-            // }
-
-
-            let _ = self.create_file_node("1", new_file_id, &new_file_path, setattr).await;
-
-            let metadata = self.get_metadata_from_id(new_file_id).await?;
-            
-            // Get the current local date and time
-            //let local_date_time: DateTime<Local> = Local::now();
-
-            // Format the date and time using the specified pattern
-            //let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-
-            // Send the event with the formatted creation time, event type, path, and user ID
-            
-            Ok((new_file_id, FileMetadata::metadata_to_fattr3(new_file_id, &metadata).await?))
-
+        if parent_path.is_empty() {
+            return Err(nfsstat3::NFS3ERR_NOENT); // No such directory id exists
         }
+
+        let objectname_osstr = OsStr::from_bytes(filename).to_os_string();
+        
+        let new_file_path: String;
+        
+        if parent_path == "/" {
+            new_file_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        } else {
+            new_file_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
+        }
+
+        // Check if file already exists
+        let exists: bool = match self.data_store.zscore(
+            &format!("{}/{}_nodes", hash_tag, user_id),
+            &new_file_path
+        ).await {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(e) => {
+                eprintln!("Error checking if file exists: {:?}", e);
+                false
+            }
+        };
+    
+        
+        if exists {
+            return Err(nfsstat3::NFS3ERR_EXIST);
+        }
+
+        // Create new file ID
+        let new_file_id: fileid3 = match self.data_store.incr(
+            &format!("{}/{}_next_fileid", hash_tag, user_id)
+        ).await {
+            Ok(id) => id.try_into().unwrap(),
+            Err(e) => {
+                eprintln!("Error incrementing file ID: {:?}", e);
+                return Err(nfsstat3::NFS3ERR_IO);
+            }
+        };
+
+        let _ = self.create_file_node("1", new_file_id, &new_file_path, setattr).await;
+        let metadata = self.get_metadata_from_id(new_file_id).await?;
+        Ok((new_file_id, FileMetadata::metadata_to_fattr3(new_file_id, &metadata).await?))
         
     }
 
@@ -586,201 +503,172 @@ impl NFSFileSystem for SharesFS {
         
     }
 
-    async fn remove(&self, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3> {
-        {           
-            let parent_path = format!("{}", self.get_path_from_id(dirid).await?);
-            let objectname_osstr = OsStr::from_bytes(filename).to_os_string();           
-            let new_dir_path: String;
+    async fn remove(&self, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3> {       
+        let parent_path = format!("{}", self.get_path_from_id(dirid).await?);
+        let objectname_osstr = OsStr::from_bytes(filename).to_os_string();           
+        let new_dir_path: String;
 
-            // Construct the full path of the file/directory
-            if parent_path == "/" {
-                new_dir_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
-            } else {
-                new_dir_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
+        // Construct the full path of the file/directory
+        if parent_path == "/" {
+            new_dir_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        } else {
+            new_dir_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
+        }
+
+        let ftype_result = self.get_ftype(new_dir_path.clone()).await;
+        
+        match ftype_result {
+        Ok(ftype) => {
+            if ftype == "0" {
+                self.remove_directory_file(&new_dir_path).await?;
+            } else if ftype == "1" || ftype == "2"{
+                self.remove_directory_file(&new_dir_path).await?;
+            } else if ftype == "2"{
+                self.remove_directory_file(&new_dir_path).await?;
             }
-    
-           let ftype_result = self.get_ftype(new_dir_path.clone()).await;
+            else {
+                return Err(nfsstat3::NFS3ERR_IO);
+            }
+        },
+        Err(_) => return Err(nfsstat3::NFS3ERR_IO),
+        }
             
-           match ftype_result {
+        Ok(())
+    }
+
+    async fn rename(&self, from_dirid: fileid3, from_filename: &filename3, to_dirid: fileid3, to_filename: &filename3) -> Result<(), nfsstat3> {
+                
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        
+        let from_path: String = self.data_store.hget(
+            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &from_dirid.to_string()
+        ).await
+            .map_err(|_| nfsstat3::NFS3ERR_IO)?;
+        
+        let objectname_osstr = OsStr::from_bytes(&from_filename).to_os_string();
+    
+        let new_from_path: String;
+
+        // Construct the full path of the file/directory
+        if from_path == "/" {
+            new_from_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        } else {
+            new_from_path = format!("{}/{}", from_path, objectname_osstr.to_str().unwrap_or(""));
+        }
+
+            // Check if the source file exists in the share store
+            let from_exists: bool = match self.data_store.zscore(
+                &format!("{}/{}_nodes", hash_tag, user_id),
+                &new_from_path
+            ).await {
+                Ok(Some(_)) => true,
+                Ok(None) => false,
+                Err(e) => {
+                    eprintln!("Error checking if source file exists: {:?}", e);
+                    false
+                }
+            };
+            
+            if !from_exists {
+                return Err(nfsstat3::NFS3ERR_NOENT);
+            }
+
+        let to_path: String = self.data_store.hget(
+            &format!("{}/{}_id_to_path", hash_tag, user_id),
+            &to_dirid.to_string()
+        ).await
+            .map_err(|_| nfsstat3::NFS3ERR_IO)?;
+        
+        let objectname_osstr = OsStr::from_bytes(&to_filename).to_os_string();
+    
+        let new_to_path: String;
+
+        // Construct the full path of the file/directory
+        if to_path == "/" {
+            new_to_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        } else {
+            new_to_path = format!("{}/{}", to_path, objectname_osstr.to_str().unwrap_or(""));
+        }
+            
+        let ftype_result = self.get_ftype(new_from_path.clone()).await;
+        match ftype_result {
             Ok(ftype) => {
                 if ftype == "0" {
-                    self.remove_directory_file(&new_dir_path).await?;
+                    self.rename_directory_file(&new_from_path, &new_to_path).await?;
                 } else if ftype == "1" || ftype == "2"{
-                    self.remove_directory_file(&new_dir_path).await?;
-                } else if ftype == "2"{
-                    self.remove_directory_file(&new_dir_path).await?;
-                }
-                else {
+                    self.rename_directory_file(&new_from_path, &new_to_path).await?;
+                } else {
                     return Err(nfsstat3::NFS3ERR_IO);
                 }
             },
             Err(_) => return Err(nfsstat3::NFS3ERR_IO),
             }
-                
-            Ok(())
-        }
-    }
-
-    async fn rename(&self, from_dirid: fileid3, from_filename: &filename3, to_dirid: fileid3, to_filename: &filename3) -> Result<(), nfsstat3> {
-      
-        
-        {
-           
-            //let mut conn = self.pool.get_connection();             
-
-//            let (user_id, hash_tag, new_from_path, new_to_path) = {
-                
-                let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
-                
-                let from_path: String = self.data_store.hget(
-                    &format!("{}/{}_id_to_path", hash_tag, user_id),
-                    &from_dirid.to_string()
-                ).await
-                    .map_err(|_| nfsstat3::NFS3ERR_IO)?;
-                
-                let objectname_osstr = OsStr::from_bytes(&from_filename).to_os_string();
             
-                let new_from_path: String;
-
-                // Construct the full path of the file/directory
-                if from_path == "/" {
-                    new_from_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
-                } else {
-                    new_from_path = format!("{}/{}", from_path, objectname_osstr.to_str().unwrap_or(""));
-                }
-
-                    // Check if the source file exists in the share store
-                    let from_exists: bool = match self.data_store.zscore(
-                        &format!("{}/{}_nodes", hash_tag, user_id),
-                        &new_from_path
-                    ).await {
-                        Ok(Some(_)) => true,
-                        Ok(None) => false,
-                        Err(e) => {
-                            eprintln!("Error checking if source file exists: {:?}", e);
-                            false
-                        }
-                    };
-                    
-                    if !from_exists {
-                        return Err(nfsstat3::NFS3ERR_NOENT);
-                    }
-
-                let to_path: String = self.data_store.hget(
-                    &format!("{}/{}_id_to_path", hash_tag, user_id),
-                    &to_dirid.to_string()
-                ).await
-                    .map_err(|_| nfsstat3::NFS3ERR_IO)?;
-                
-                let objectname_osstr = OsStr::from_bytes(&to_filename).to_os_string();
-            
-                let new_to_path: String;
-
-                // Construct the full path of the file/directory
-                if to_path == "/" {
-                    new_to_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
-                } else {
-                    new_to_path = format!("{}/{}", to_path, objectname_osstr.to_str().unwrap_or(""));
-                }
-            
-            
-
-            let ftype_result = self.get_ftype(new_from_path.clone()).await;
-            match ftype_result {
-                Ok(ftype) => {
-                    if ftype == "0" {
-                        self.rename_directory_file(&new_from_path, &new_to_path).await?;
-                    } else if ftype == "1" || ftype == "2"{
-                        self.rename_directory_file(&new_from_path, &new_to_path).await?;
-                    } else {
-                        return Err(nfsstat3::NFS3ERR_IO);
-                    }
-                },
-                Err(_) => return Err(nfsstat3::NFS3ERR_IO),
-                }
-                
-
-            Ok(())
-        }
+        Ok(())
     }
 
     async fn mkdir(&self, dirid: fileid3, dirname: &filename3) -> Result<(fileid3, fattr3), nfsstat3> {
-    
-        {
-        
-            //let mut conn = self.pool.get_connection();             
+        let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
+        let key1 = format!("{}/{}_id_to_path", hash_tag, user_id);
 
-        //    let (user_id, hash_tag, parent_path, new_dir_path, new_dir_id) = {
-                let (user_id, hash_tag) = SharesFS::get_user_id_and_hash_tag().await;
-        
-                let key1 = format!("{}/{}_id_to_path", hash_tag, user_id);
+        // Get parent directory path from the share store
+        let parent_path: String = self.data_store.hget(
+            &key1,
+            &dirid.to_string()
+        ).await
+            .map_err(|_| nfsstat3::NFS3ERR_IO)?;
 
-                // Get parent directory path from the share store
-                let parent_path: String = self.data_store.hget(
-                    &key1,
-                    &dirid.to_string()
-                ).await
-                    .map_err(|_| nfsstat3::NFS3ERR_IO)?;
-        
-                if parent_path.is_empty() {
-                    return Err(nfsstat3::NFS3ERR_NOENT); // No such directory id exists
-                }
-
-    
-                let objectname_osstr = OsStr::from_bytes(dirname).to_os_string();
-                
-                let new_dir_path: String;
-                
-                if parent_path == "/" {
-                    new_dir_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
-                } else {
-                    new_dir_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
-                }
-
-                // let key2 = format!("{}/{}_path_to_id", hash_tag, user_id);
-
-                // Check if directory already exists
-                let exists: bool = match self.data_store.zscore(
-                    &format!("{}/{}_nodes", hash_tag, user_id),
-                    &new_dir_path
-                ).await {
-                    Ok(Some(_)) => true,
-                    Ok(None) => false,
-                    Err(e) => {
-                        eprintln!("Error checking if directory exists: {:?}", e);
-                        false
-                    }
-                };
-                
-                if exists {
-                    return Err(nfsstat3::NFS3ERR_EXIST);
-                }
-
-                // Create new directory ID
-
-                let key = format!("{}/{}_next_fileid", hash_tag, user_id);
-            
-                let new_dir_id: fileid3 = match self.data_store.incr(&key).await {
-                    Ok(id) => {
-                        //println!("New directory ID: {}", id);
-                        id.try_into().unwrap()
-                    }
-                    Err(e) => {
-                        eprintln!("Error incrementing directory ID: {:?}", e);
-                        return Err(nfsstat3::NFS3ERR_IO);
-                    }
-                };
-
-//                (user_id, hash_tag, parent_path, new_dir_path, new_dir_id) // Return the values needed outside the scope
-//            };
-            
-            let _ = self.create_node("0", new_dir_id, &new_dir_path).await;
-
-            let metadata = self.get_metadata_from_id(new_dir_id).await?;
-
-            Ok((new_dir_id, FileMetadata::metadata_to_fattr3(new_dir_id, &metadata).await?))
-            
+        if parent_path.is_empty() {
+            return Err(nfsstat3::NFS3ERR_NOENT); // No such directory id exists
         }
+
+
+        let objectname_osstr = OsStr::from_bytes(dirname).to_os_string();
+        let new_dir_path: String;
+        
+        if parent_path == "/" {
+            new_dir_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        } else {
+            new_dir_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
+        }
+
+        // let key2 = format!("{}/{}_path_to_id", hash_tag, user_id);
+
+        // Check if directory already exists
+        let exists: bool = match self.data_store.zscore(
+            &format!("{}/{}_nodes", hash_tag, user_id),
+            &new_dir_path
+        ).await {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(e) => {
+                eprintln!("Error checking if directory exists: {:?}", e);
+                false
+            }
+        };
+        
+        if exists {
+            return Err(nfsstat3::NFS3ERR_EXIST);
+        }
+
+        // Create new directory ID
+        let key = format!("{}/{}_next_fileid", hash_tag, user_id);
+    
+        let new_dir_id: fileid3 = match self.data_store.incr(&key).await {
+            Ok(id) => {
+                //println!("New directory ID: {}", id);
+                id.try_into().unwrap()
+            }
+            Err(e) => {
+                eprintln!("Error incrementing directory ID: {:?}", e);
+                return Err(nfsstat3::NFS3ERR_IO);
+            }
+        };
+
+        let _ = self.create_node("0", new_dir_id, &new_dir_path).await;
+        let metadata = self.get_metadata_from_id(new_dir_id).await?;
+        Ok((new_dir_id, FileMetadata::metadata_to_fattr3(new_dir_id, &metadata).await?))
         
     }
 
