@@ -54,17 +54,12 @@ fn load_config() -> Config {
 #[tokio::main]
 async fn main() {
     // Load settings from the configuration file
+    let version = env!("CARGO_PKG_VERSION");
+    println!("Application version: {}", version);
+    
     let settings = load_config();
 
     set_namespace_id_and_hashtag().await;
-    /*
-    // Execute the two lines as a closure
-    {
-        let namespace_id = NAMESPACE_ID.read().unwrap();
-        let hash_tag = HASH_TAG.read().unwrap();
-        println!("User ID: {}", *namespace_id);
-        println!("Hash Tag: {}", *hash_tag);
-    }*/
     
     use graymamba::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
