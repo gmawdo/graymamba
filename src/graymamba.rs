@@ -3,9 +3,11 @@ use tracing::warn;
 
 
 use graymamba::tcp::{NFSTcp, NFSTcpListener};
-use graymamba::blockchain_audit::BlockchainAudit;
 use graymamba::sharesbased_fs::SharesFS;
 use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
+
+#[cfg(feature = "blockchain_audit")]
+use graymamba::blockchain_audit::BlockchainAudit;
 
 extern crate secretsharing;
 use config::{Config, File as ConfigFile};
@@ -56,25 +58,26 @@ async fn main() {
     // Load settings from the configuration file
     let version = env!("CARGO_PKG_VERSION");
     println!("Application version: {}", version);
-    
-    let settings = load_config();
+
+    let _settings = load_config();
 
     set_namespace_id_and_hashtag().await;
     
     use graymamba::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
-    let blockchain_audit = if settings.get("enable_blockchain").unwrap_or(false) {
-        match BlockchainAudit::new().await {
-            Ok(module) => Some(Arc::new(module)),
-            Err(e) => {
-                eprintln!("Failed to create BlockchainAudit: {}", e);
-                None
-            }
+    #[cfg(feature = "blockchain_audit")]
+    let blockchain_audit = match BlockchainAudit::new().await {
+        Ok(module) => Some(Arc::new(module)),
+        Err(e) => {
+            eprintln!("Failed to create BlockchainAudit: {}", e);
+            None
         }
-    } else {
-        None
     };
+
+    #[cfg(not(feature = "blockchain_audit"))]
+    let blockchain_audit = None;
+
     let fs = SharesFS::new(data_store, blockchain_audit);
     warn!("Created new SharesFS with data_store");
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), fs)

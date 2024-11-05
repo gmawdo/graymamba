@@ -1,7 +1,7 @@
 
 [package]
 name = "graymamba"
-version = "1.0.0"
+version = "2.0.1"
 edition = "2021"
 description = "A Rust Secure Provenance Tracking Filesystem"
 homepage = "https://www.originmatters.co"
@@ -54,8 +54,6 @@ hex = "0.4.3"
 #num-traits = "0.2.19"
 rayon = "1.10.0"
 
-
-
 #sp-application-crypto = "36.0.0"
 #jsonrpsee-ws-client = "0.22.5"
 #jsonrpsee = "0.22.5"
@@ -65,16 +63,8 @@ subxt-signer = "0.37.0"
 secretsharing = { path = "./secretsharing_wrapper" }
 wasmtime = "21.0.1"
 
-
-
-
-
-
-
 #substrate-api-client = { git = "https://github.com/scs/substrate-api-client", branch = "master" }
 #substrate-api-client = "0.17.0"
-
-
 
 # Substrate dependencies
 frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
@@ -92,9 +82,6 @@ sp-weights = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = 
 subxt = "0.37.0"
 once_cell = "1.19.0"
 
-
-
-
 # traceability
 tracing-subscriber = { version = "0.3", features = ["tracing-log"], optional = true }
 intaglio = { version = "1.6", optional = true }
@@ -104,6 +91,7 @@ chrono = "0.4"
 [features]
 strict = []
 traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
+blockchain_audit = []
 
 [[bin]]
 name = "graymamba"
