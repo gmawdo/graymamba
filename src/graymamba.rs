@@ -21,18 +21,6 @@ async fn set_user_id_and_hashtag() {
     hash_tag.push_str(&format!("{{{}}}:", user_id));
 }
 
-fn other_function() {
-    // Acquire lock on USER_ID
-    let user_id = USER_ID.read().unwrap();
-
-    // Acquire lock on HASH_TAG
-    let hash_tag = HASH_TAG.read().unwrap();
-
-    // Use the values stored in USER_ID and HASH_TAG
-    println!("User ID: {}", *user_id);
-    println!("Hash Tag: {}", *hash_tag);
-}
-
 // Load settings from the configuration file
 fn load_config() -> Config {
     let mut settings = Config::default();
@@ -69,7 +57,13 @@ async fn main() {
     let settings = load_config();
 
     set_user_id_and_hashtag().await;
-    other_function();
+    // Execute the two lines as a closure
+    {
+        let user_id = USER_ID.read().unwrap();
+        let hash_tag = HASH_TAG.read().unwrap();
+        println!("User ID: {}", *user_id);
+        println!("Hash Tag: {}", *hash_tag);
+    }
     
     use graymamba::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
