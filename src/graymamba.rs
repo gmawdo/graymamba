@@ -5,7 +5,7 @@ use tracing::warn;
 use graymamba::tcp::{NFSTcp, NFSTcpListener};
 use graymamba::blockchain_audit::BlockchainAudit;
 use graymamba::sharesbased_fs::SharesFS;
-use graymamba::sharesbased_fs::{USER_ID, HASH_TAG};
+use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
 
 extern crate secretsharing;
 use config::{Config, File as ConfigFile};
@@ -13,7 +13,7 @@ use config::{Config, File as ConfigFile};
 const HOSTPORT: u32 = 2049;
 
 async fn set_user_id_and_hashtag() {
-    let mut user_id = USER_ID.write().unwrap();
+    let mut user_id = NAMESPACE_ID.write().unwrap();
     *user_id = "graymamba".to_string();
 
     let mut hash_tag = HASH_TAG.write().unwrap();
@@ -59,7 +59,7 @@ async fn main() {
     set_user_id_and_hashtag().await;
     // Execute the two lines as a closure
     {
-        let user_id = USER_ID.read().unwrap();
+        let user_id = NAMESPACE_ID.read().unwrap();
         let hash_tag = HASH_TAG.read().unwrap();
         println!("User ID: {}", *user_id);
         println!("Hash Tag: {}", *hash_tag);

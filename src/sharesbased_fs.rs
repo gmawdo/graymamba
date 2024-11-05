@@ -39,7 +39,7 @@ use graymamba::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 
 use lazy_static::lazy_static;
 lazy_static! {
-    pub static ref USER_ID: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
+    pub static ref NAMESPACE_ID: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
     pub static ref HASH_TAG: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
 }
 
@@ -668,7 +668,7 @@ impl SharesFS {
     }
 
     pub async fn get_user_id_and_hash_tag() -> (String, String) {
-        let user_id = USER_ID.read().unwrap().clone();
+        let user_id = NAMESPACE_ID.read().unwrap().clone();
         let hash_tag = HASH_TAG.read().unwrap().clone();
         (user_id, hash_tag)
     }
