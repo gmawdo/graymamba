@@ -104,7 +104,7 @@ Steps
             $ `cd mnt`
             $ `mkdir nfs`
       - Now run below comand in terminal at secure-provenance-filesystem folder giving nfs absolute path
-            `./target/release/graymamba /mnt/nfs`
+            `./target/release/graymamba`
 
 7. Mount the FileSystem:
       - Create below folder somewhere in System:

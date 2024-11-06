@@ -84,9 +84,14 @@ async fn main() {
     #[cfg(not(feature = "blockchain_audit"))]
     let blockchain_audit = None;
 
-    let fs = SharesFS::new(data_store, blockchain_audit);
+    let shares_fs = SharesFS::new(data_store, blockchain_audit);
+    let shares_fs_clone = shares_fs.clone();
+    tokio::spawn(async move {
+        shares_fs_clone.start_monitoring().await;
+    });
+
     warn!("Created new SharesFS with data_store");
-    let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), fs)
+    let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), shares_fs)
         .await
         .unwrap();
     listener.handle_forever().await.unwrap();

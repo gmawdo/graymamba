@@ -8,6 +8,7 @@ use graymamba::nfs::fileid3;
 use std::collections::HashMap;
 use tokio::sync::{Mutex, Semaphore};
 use graymamba::channel_buffer::ActiveWrite;
+use rayon::prelude::*;
 
 use tokio::time::Duration;
 
@@ -57,6 +58,34 @@ pub struct SharesFS {
 }
 
 impl SharesFS {
+    pub async fn create_test_entry(&self, _parent_id: u64, path: &str, id: u64) -> Result<(), nfsstat3> {
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+        
+        // Store path to id mapping
+        self.data_store.hset(
+            &format!("{}/{}_path_to_id", hash_tag, namespace_id),
+            path,
+            &id.to_string()
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+
+        // Store id to path mapping
+        self.data_store.hset(
+            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
+            &id.to_string(),
+            path
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+
+        // Add to nodes set
+        let score = path.split("/").count() as f64;
+        self.data_store.zadd(
+            &format!("{}/{}_nodes", hash_tag, namespace_id),
+            path,
+            score
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+
+        Ok(())
+    }
+
     pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<BlockchainAudit>>) -> SharesFS {
         // Create shared components for active writes
         warn!("SharesFS::new");
@@ -70,14 +99,13 @@ impl SharesFS {
             commit_semaphore: commit_semaphore.clone(),
         };
 
-        // Start the background task to monitor active writes
-        let shares_fs_clone = shares_fs.clone();
-        tokio::spawn(async move {
-            shares_fs_clone.monitor_active_writes().await;
-        });
-
         shares_fs
     }
+    // New method to start monitoring
+    pub async fn start_monitoring(&self) {
+        self.monitor_active_writes().await;
+    }
+
     pub fn mode_unmask_setattr(mode: u32) -> u32 {
         let mode = mode | 0x80;
         let permissions = std::fs::Permissions::from_mode(mode);
@@ -973,6 +1001,7 @@ impl NFSFileSystem for SharesFS {
 
     async fn readdir(&self, dirid: fileid3, start_after: fileid3, max_entries: usize) -> Result<ReadDirResult, nfsstat3> {
         let path = self.get_path_from_id(dirid).await?;
+        //println!("path: {:?}", path);
 
         let children_vec = self.get_direct_children(&path).await?;
         let children: BTreeSet<u64> = children_vec.into_iter().collect();
@@ -991,16 +1020,14 @@ impl NFSFileSystem for SharesFS {
         };
 
         let remaining_length = children.range((range_start, Bound::Unbounded)).count();
-        debug!("path: {:?}", path);
         debug!("children len: {:?}", children.len());
         debug!("remaining_len : {:?}", remaining_length);
         for child_id in children.range((range_start, Bound::Unbounded)) {
-            //println!("Child_Id-------{}", *child_id);
             let child_path = self.get_path_from_id(*child_id).await?;
             let child_name = self.get_last_path_element(child_path).await;
             let child_metadata = self.get_metadata_from_id(*child_id).await?;
 
-            debug!("\t --- {:?} {:?}", child_id, child_name);
+            //println!("\t --- {:?} {:?}", child_id, child_name);
             
             ret.entries.push(DirEntry {
                 fileid: *child_id,
@@ -1018,9 +1045,51 @@ impl NFSFileSystem for SharesFS {
             ret.end = true;
         }
 
-        debug!("readdir_result:{:?}", ret);
+        //println!("readdir_result:{:?}", ret);
 
         Ok(ret)
+    }
+
+    async fn readdir_parallel(
+        &self,
+        dirid: fileid3,
+        start_after: fileid3,
+        max_entries: usize,
+    ) -> Result<ReadDirResult, nfsstat3> {
+        let path = self.get_path_from_id(dirid).await?;
+        let children = self.get_direct_children(&path).await?;
+        
+        let children_set: BTreeSet<_> = children.into_iter().collect();
+        
+        let range = if start_after > 0 {
+            children_set.range((Bound::Excluded(start_after), Bound::Unbounded))
+        } else {
+            children_set.range(..)
+        };
+
+        let entries: Vec<_> = range
+        .take(max_entries)
+        .collect::<Vec<_>>()
+        .par_iter()
+        .filter_map(|&child_id| {
+            let metadata = futures::executor::block_on(self.get_metadata_from_id(*child_id)).ok()?;
+            let path = futures::executor::block_on(self.get_path_from_id(*child_id)).ok()?;
+            let name = futures::executor::block_on(self.get_last_path_element(path));
+            let attr = futures::executor::block_on(FileMetadata::metadata_to_fattr3(*child_id, &metadata)).ok()?;
+            
+            Some(DirEntry {
+                fileid: *child_id,
+                name: name.as_bytes().into(),
+                attr,
+            })
+        })
+        .collect();
+
+        let cnt = entries.len();
+        Ok(ReadDirResult {
+            entries,
+            end: cnt < max_entries,
+        })
     }
 
     async fn setattr(&self, id: fileid3, setattr: sattr3) -> Result<fattr3, nfsstat3> {       
