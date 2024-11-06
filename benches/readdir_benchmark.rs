@@ -123,14 +123,14 @@ fn benchmark_readdir(c: &mut Criterion) {
                     b.iter(|| {
                         let fs = Arc::clone(&fs_clone);
                         RUNTIME.block_on(async move {
-                            fs.readdir(2, 0, size).await.unwrap()
+                            fs.readdir_sequential(2, 0, size).await.unwrap()
                         })
                     });
                 },
             );
         }
 
-        // Benchmark parallel readdir
+        // Benchmark parallel readdir which has now been made the default one
         {
             let fs_clone = Arc::clone(&fs);
             group.bench_with_input(
@@ -140,7 +140,7 @@ fn benchmark_readdir(c: &mut Criterion) {
                     b.iter(|| {
                         let fs = Arc::clone(&fs_clone);
                         RUNTIME.block_on(async move {
-                            fs.readdir_parallel(2, 0, size).await.unwrap()
+                            fs.readdir(2, 0, size).await.unwrap()
                         })
                     });
                 },

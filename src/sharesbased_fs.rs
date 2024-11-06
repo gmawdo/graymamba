@@ -999,7 +999,7 @@ impl NFSFileSystem for SharesFS {
         Ok((data_slice.to_vec(), eof))
     }
 
-    async fn readdir(&self, dirid: fileid3, start_after: fileid3, max_entries: usize) -> Result<ReadDirResult, nfsstat3> {
+    async fn readdir_sequential(&self, dirid: fileid3, start_after: fileid3, max_entries: usize) -> Result<ReadDirResult, nfsstat3> {
         let path = self.get_path_from_id(dirid).await?;
         //println!("path: {:?}", path);
 
@@ -1050,7 +1050,7 @@ impl NFSFileSystem for SharesFS {
         Ok(ret)
     }
 
-    async fn readdir_parallel(
+    async fn readdir(
         &self,
         dirid: fileid3,
         start_after: fileid3,

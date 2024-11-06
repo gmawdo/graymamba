@@ -164,8 +164,8 @@ pub trait NFSFileSystem: Sync {
         max_entries: usize,
     ) -> Result<ReadDirResult, nfsstat3>;
 
-    /// Parallel version of readdir
-    async fn readdir_parallel(
+    /// original sequential version of readdir
+    async fn readdir_sequential(
         &self,
         dirid: fileid3,
         start_after: fileid3,
