@@ -152,6 +152,15 @@ impl DataStore for TestDataStore {
         Ok(sets.get(key)
             .and_then(|set| set.get(member).copied()))
     }
+
+    async fn init_user_directory(&self, mount_path: &str) -> DataStoreResult<()> {
+        let mut data = self.data.write().await;
+        if data.contains_key(mount_path) {
+            return Ok(());
+        }
+        data.insert(mount_path.to_string(), String::new());
+        Ok(())
+    }
 }
 
 impl TestDataStore {

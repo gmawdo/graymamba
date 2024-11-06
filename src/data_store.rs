@@ -20,6 +20,7 @@ pub trait DataStore: Send + Sync {
     async fn zscan_match(&self, key: &str, pattern: &str) -> Result<Vec<String>, DataStoreError>;
     async fn zscore(&self, key: &str, member: &str) -> Result<Option<f64>, DataStoreError>;
     async fn authenticate_user(&self, userkey: &str) -> KeyType;
+    async fn init_user_directory(&self, mount_path: &str) -> Result<(), DataStoreError>;
 }
 
 #[derive(Debug)]
@@ -27,6 +28,7 @@ pub enum DataStoreError {
     ConnectionError,
     KeyNotFound,
     OperationFailed,
+    InitializationFailed,
 }
 
 pub type DataStoreResult<T> = Result<T, DataStoreError>;
