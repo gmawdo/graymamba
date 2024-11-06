@@ -207,14 +207,5 @@ pub async fn mountproc3_umnt_all(
     Ok(())
 }
 
-//the following code should not be visible at this high level
-//it is specific to a storage type and should be behind a trait
-use r2d2_redis_cluster::redis_cluster_rs::redis;
-use redis::RedisError;
 
-impl From<RedisError> for crate::nfs::nfsstat3 {
-    fn from(_: RedisError) -> Self {
-        crate::nfs::nfsstat3::NFS3ERR_IO // or another appropriate nfsstat3 variant
-    }
-}
 
