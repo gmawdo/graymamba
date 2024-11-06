@@ -7,9 +7,11 @@ use num_traits::cast::{FromPrimitive, ToPrimitive};
 use std::io::{Read, Write};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use anyhow::Result;
+
+use crate::data_store::KeyType;
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
@@ -22,12 +24,6 @@ enum MountProgram {
     MOUNTPROC3_UMNTALL = 4,
     MOUNTPROC3_EXPORT = 5,
     INVALID,
-}
-
-enum KeyType {
-    Usual,
-    Special,
-    None,
 }
 
 pub async fn handle_mount(
@@ -101,7 +97,7 @@ pub async fn mountproc3_mnt(
     // Authenticate user
     // let mut utf8path = String::new();
     let utf8path: String = if let Some(ref user_key) = user_key {
-        match authenticate_user(user_key) {
+        match context.vfs.data_store().authenticate_user(user_key).await {
             KeyType::Usual => {
                 println!("Authenticated as a standard user: {}", user_key);
                 // Set the default mount directory
@@ -328,29 +324,5 @@ fn init_user_directory(mount_path: &str) -> Result<(), crate::nfs::nfsstat3> {
         
         Ok(())
     }
-}
-
-fn authenticate_user(userkey: &str) -> KeyType {
-    let pool = crate::redis_data_store::get_redis_cluster_pool().unwrap();
-    let mut conn = pool.get().unwrap();
-
-    let user_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", userkey);
-    if let Ok(exists) = user_exists {
-        if exists {
-            warn!("User key exists: {}", userkey);
-            return KeyType::Usual;
-        }
-    }
-
-    // Check if userkey variant exists for special access
-    let special_key = format!("{}-su", userkey);
-    let special_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", &special_key);
-    if let Ok(exists) = special_exists {
-        if exists {
-            return KeyType::Special;
-        }
-    }
-
-    KeyType::None
 }
 

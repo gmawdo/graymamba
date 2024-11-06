@@ -8,6 +8,9 @@ use config::{Config, File as ConfigFile, ConfigError};
 
 use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
 
+use tracing::warn;
+use crate::data_store::KeyType;
+
 pub fn get_redis_cluster_pool() -> Result<Pool<RedisClusterConnectionManager>, Box<dyn StdError>> {
     RedisClusterPool::get_redis_cluster_pool()
 }
@@ -71,6 +74,29 @@ impl RedisDataStore {
 
 #[async_trait]
 impl DataStore for RedisDataStore {
+    async fn authenticate_user(&self, userkey: &str) -> KeyType {
+        let mut conn = self.pool.get().unwrap();
+
+        let user_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", userkey);
+        if let Ok(exists) = user_exists {
+            if exists {
+                warn!("User key exists: {}", userkey);
+                return KeyType::Usual;
+            }
+        }
+
+        // Check if userkey variant exists for special access
+        let special_key = format!("{}-su", userkey);
+        let special_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", &special_key);
+        if let Ok(exists) = special_exists {
+            if exists {
+                return KeyType::Special;
+            }
+        }
+
+        KeyType::None
+    }
+
     async fn get(&self, key: &str) -> Result<String, DataStoreError> {
         let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
         conn.get(key).map_err(|_| DataStoreError::KeyNotFound)

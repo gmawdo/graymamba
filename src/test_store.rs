@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::data_store::{DataStore, DataStoreError, DataStoreResult};
+use crate::data_store::KeyType;
 
 pub struct TestDataStore {
     data: Arc<RwLock<HashMap<String, String>>>,
@@ -11,6 +12,14 @@ pub struct TestDataStore {
 
 #[async_trait]
 impl DataStore for TestDataStore {
+    async fn authenticate_user(&self, userkey: &str) -> KeyType {
+        if userkey.ends_with("-su") {
+            KeyType::Special
+        } else {
+            KeyType::Usual
+        }
+    }
+
     async fn get(&self, key: &str) -> DataStoreResult<String> {
         let data = self.data.read().await;
         data.get(key).cloned().ok_or(DataStoreError::KeyNotFound)
