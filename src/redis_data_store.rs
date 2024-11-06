@@ -31,7 +31,7 @@ impl RedisClusterPool {
         let storage_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
         let storage_nodes: Vec<&str> = storage_nodes.iter().map(|s| s.as_str()).collect();
 
-        println!("Creating Redis cluster pool with nodes: {:?}", storage_nodes);
+        println!("🛠️ Creating Redis cluster pool with nodes: {:?}", storage_nodes);
         
         let manager = RedisClusterConnectionManager::new(storage_nodes)
             .map_err(|e| Box::new(e) as Box<dyn StdError>)?;

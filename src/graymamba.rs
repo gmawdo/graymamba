@@ -76,7 +76,7 @@ async fn main() {
     let blockchain_audit = match BlockchainAudit::new().await {
         Ok(module) => Some(Arc::new(module)),
         Err(e) => {
-            eprintln!("Failed to create BlockchainAudit: {}", e);
+            eprintln!("❌ Failed to create BlockchainAudit: {}", e);
             None
         }
     };
@@ -91,6 +91,7 @@ async fn main() {
     });
 
     warn!("Created new SharesFS with data_store");
+    println!("🚀 FS has launched");
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), shares_fs)
         .await
         .unwrap();
