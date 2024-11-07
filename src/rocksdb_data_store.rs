@@ -124,6 +124,7 @@ impl DataStore for RocksDBDataStore {
         unimplemented!("Sorted set operations not implemented for RocksDB")
     }
 
+    //used by get_nodes_in_subpath > get_direct_children > readdir
     async fn zrangebyscore(&self, key: &str, min: f64, max: f64) 
         -> Result<Vec<String>, DataStoreError> {
         unimplemented!("Sorted set operations not implemented for RocksDB")
@@ -137,11 +138,12 @@ impl DataStore for RocksDBDataStore {
         Ok(())
     }
 
+    //not sure this is used
     async fn zscan_match(&self, key: &str, pattern: &str) 
         -> Result<Vec<String>, DataStoreError> {
         unimplemented!("Sorted set operations not implemented for RocksDB")
     }
-
+    //not sure this is used
     async fn zscore(&self, key: &str, member: &str) -> Result<Option<f64>, DataStoreError> {
         unimplemented!("Sorted set operations not implemented for RocksDB")
     }
