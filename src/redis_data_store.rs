@@ -6,7 +6,13 @@ use async_trait::async_trait;
 use crate::data_store::{DataStore, DataStoreError};
 use config::{Config, File as ConfigFile, ConfigError};
 
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
 use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
+
+use tracing::warn;
+use crate::data_store::KeyType;
 
 pub fn get_redis_cluster_pool() -> Result<Pool<RedisClusterConnectionManager>, Box<dyn StdError>> {
     RedisClusterPool::get_redis_cluster_pool()
@@ -31,7 +37,7 @@ impl RedisClusterPool {
         let storage_nodes: Vec<String> = settings.get::<Vec<String>>("cluster_nodes")?;
         let storage_nodes: Vec<&str> = storage_nodes.iter().map(|s| s.as_str()).collect();
 
-        println!("Creating Redis cluster pool with nodes: {:?}", storage_nodes);
+        println!("🛠️ Creating Redis cluster pool with nodes: {:?}", storage_nodes);
         
         let manager = RedisClusterConnectionManager::new(storage_nodes)
             .map_err(|e| Box::new(e) as Box<dyn StdError>)?;
@@ -71,6 +77,29 @@ impl RedisDataStore {
 
 #[async_trait]
 impl DataStore for RedisDataStore {
+    async fn authenticate_user(&self, userkey: &str) -> KeyType {
+        let mut conn = self.pool.get().unwrap();
+
+        let user_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", userkey);
+        if let Ok(exists) = user_exists {
+            if exists {
+                warn!("User key exists: {}", userkey);
+                return KeyType::Usual;
+            }
+        }
+
+        // Check if userkey variant exists for special access
+        let special_key = format!("{}-su", userkey);
+        let special_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", &special_key);
+        if let Ok(exists) = special_exists {
+            if exists {
+                return KeyType::Special;
+            }
+        }
+
+        KeyType::None
+    }
+
     async fn get(&self, key: &str) -> Result<String, DataStoreError> {
         let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
         conn.get(key).map_err(|_| DataStoreError::KeyNotFound)
@@ -155,5 +184,93 @@ impl DataStore for RedisDataStore {
     async fn zscore(&self, key: &str, member: &str) -> Result<Option<f64>, DataStoreError> {
         let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
         conn.zscore(key, member).map_err(|_| DataStoreError::OperationFailed)
+    }
+
+    async fn init_user_directory(&self, mount_path: &str) -> Result<(), DataStoreError> {
+        let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
+        let hash_tag = "{graymamba}";
+        let path = format!("/{}", "graymamba");
+        let key = format!("{}:{}", hash_tag, mount_path);
+        let exists_response: bool = conn.exists(&key).map_err(|_| DataStoreError::OperationFailed)?;
+    
+        if exists_response {
+            return Ok(());
+        }
+    
+        let node_type = "0";
+        let size = 0;
+        let permissions = 777;
+        let score = if mount_path == "/" { 1.0 } else { 2.0 };
+    
+        let nodes = format!("{}:/{}_nodes", hash_tag, "graymamba");
+        let key_exists: bool = conn.exists(&nodes).map_err(|_| DataStoreError::OperationFailed)?;
+    
+        let fileid: u64 = if key_exists {
+            conn.incr(format!("{}:/{}_next_fileid", hash_tag, "graymamba"), 1)
+                .map_err(|_| DataStoreError::OperationFailed)?
+        } else {
+            1
+        };
+    
+        let system_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let epoch_seconds = system_time.as_secs();
+        let epoch_nseconds = system_time.subsec_nanos();
+    
+        // Instead of using pipeline, execute commands individually
+        conn.zadd(
+            format!("{}:/{}_nodes", hash_tag, "graymamba"),
+            mount_path,
+            score
+        ).map_err(|_| DataStoreError::OperationFailed)?;
+    
+        let size_str = size.to_string();
+        let permissions_str = permissions.to_string();
+        let epoch_seconds_str = epoch_seconds.to_string();
+        let epoch_nseconds_str = epoch_nseconds.to_string();
+        let fileid_str = fileid.to_string();
+    
+        // Now create the vector with references to our stored strings
+        let hash_fields = vec![
+            ("ftype", node_type),
+            ("size", &size_str),
+            ("permissions", &permissions_str),
+            ("change_time_secs", &epoch_seconds_str),
+            ("change_time_nsecs", &epoch_nseconds_str),
+            ("modification_time_secs", &epoch_seconds_str),
+            ("modification_time_nsecs", &epoch_nseconds_str),
+            ("access_time_secs", &epoch_seconds_str),
+            ("access_time_nsecs", &epoch_nseconds_str),
+            ("birth_time_secs", &epoch_seconds_str),
+            ("birth_time_nsecs", &epoch_nseconds_str),
+            ("fileid", &fileid_str),
+        ];
+    
+        conn.hset_multiple(
+            &format!("{}:{}", hash_tag, mount_path),
+            &hash_fields
+        ).map_err(|_| DataStoreError::OperationFailed)?;
+    
+        // Set path to id mapping
+        conn.hset(
+            &format!("{}:{}_path_to_id", hash_tag, path),
+            mount_path,
+            fileid
+        ).map_err(|_| DataStoreError::OperationFailed)?;
+    
+        // Set id to path mapping
+        conn.hset(
+            &format!("{}:{}_id_to_path", hash_tag, path),
+            fileid.to_string(),
+            mount_path
+        ).map_err(|_| DataStoreError::OperationFailed)?;
+    
+        if fileid == 1 {
+            conn.set(
+                &format!("{}:{}_next_fileid", hash_tag, path),
+                1
+            ).map_err(|_| DataStoreError::OperationFailed)?;
+        }
+    
+        Ok(())
     }
 }

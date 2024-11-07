@@ -164,6 +164,17 @@ pub trait NFSFileSystem: Sync {
         max_entries: usize,
     ) -> Result<ReadDirResult, nfsstat3>;
 
+    /// original sequential version of readdir
+    async fn readdir_sequential(
+        &self,
+        dirid: fileid3,
+        start_after: fileid3,
+        max_entries: usize,
+    ) -> Result<ReadDirResult, nfsstat3> {
+        // Default implementation falls back to sequential readdir
+        self.readdir(dirid, start_after, max_entries).await
+    }
+
     /// Makes a symlink with the following attributes.
     /// If not supported due to readonly file system
     /// this should return Err(nfsstat3::NFS3ERR_ROFS)
