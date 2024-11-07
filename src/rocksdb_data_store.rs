@@ -1,5 +1,4 @@
 use rocksdb::{DB, Options};
-use thiserror::Error;
 use async_trait::async_trait;
 use crate::data_store::{DataStore, DataStoreError};
 
@@ -52,19 +51,32 @@ impl DataStore for RocksDBDataStore {
     }
 
     async fn hget(&self, key: &str, field: &str) -> Result<String, DataStoreError> {
-        unimplemented!("Hash operations not implemented for RocksDB")
+        let full_key = format!("{}:{}", key, field);
+        self.get(&full_key).await
     }
 
     async fn hset(&self, key: &str, field: &str, value: &str) -> Result<(), DataStoreError> {
-        unimplemented!("Hash operations not implemented for RocksDB")
+        let full_key = format!("{}:{}", key, field);
+        self.set(&full_key, value).await
     }
 
     async fn hdel(&self, key: &str, field: &str) -> Result<(), DataStoreError> {
-        unimplemented!("Hash operations not implemented for RocksDB")
+        let full_key = format!("{}:{}", key, field);
+        self.delete(&full_key).await
     }
 
     async fn hgetall(&self, key: &str) -> Result<Vec<(String, String)>, DataStoreError> {
-        unimplemented!("Hash operations not implemented for RocksDB")
+        let mut results = Vec::new();
+        let iter = self.db.prefix_iterator(key);
+        for item in iter {
+            let (full_key, value) = item.map_err(|_| DataStoreError::OperationFailed)?;
+            let full_key_str = String::from_utf8(full_key.to_vec()).map_err(|_| DataStoreError::OperationFailed)?;
+            let value_str = String::from_utf8(value.to_vec()).map_err(|_| DataStoreError::OperationFailed)?;
+            if let Some(field) = full_key_str.strip_prefix(&format!("{}:", key)) {
+                results.push((field.to_string(), value_str));
+            }
+        }
+        Ok(results)
     }
 
     async fn incr(&self, key: &str) -> Result<i64, DataStoreError> {
