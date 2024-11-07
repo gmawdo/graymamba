@@ -24,6 +24,7 @@ mod portmap_handlers;
 pub mod data_store;
 
 pub mod redis_data_store;
+pub mod rocksdb_data_store;
 
 pub mod fs_util;
 

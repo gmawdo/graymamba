@@ -72,6 +72,9 @@ async fn main() {
     use graymamba::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
+    use graymamba::rocksdb_data_store::RocksDBDataStore;
+    let data_store2 = Arc::new(RocksDBDataStore::new("gmrocks").expect("Failed to create a data store"));
+
     #[cfg(feature = "blockchain_audit")]
     let blockchain_audit = match BlockchainAudit::new().await {
         Ok(module) => Some(Arc::new(module)),
