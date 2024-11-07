@@ -28,7 +28,19 @@ impl RocksDBDataStore {
 
 #[async_trait]
 impl DataStore for RocksDBDataStore {
+    async fn authenticate_user(&self, userkey: &str) -> KeyType {
+        // Implement user authentication logic
+        unimplemented!("User authentication not implemented for RocksDB")
+    }
 
+    async fn get(&self, key: &str) -> Result<String, DataStoreError> {
+        match self.db.get(key) {
+            Ok(Some(value)) => Ok(String::from_utf8(value).map_err(|_| DataStoreError::OperationFailed)?),
+            Ok(None) => Err(DataStoreError::KeyNotFound),
+            Err(_) => Err(DataStoreError::OperationFailed),
+        }
+    }
+    
     async fn set(&self, key: &str, value: &str) -> Result<(), DataStoreError> {
         self.db.put(key.as_bytes(), value.as_bytes())
             .map_err(|_| DataStoreError::OperationFailed)
@@ -53,13 +65,6 @@ impl DataStore for RocksDBDataStore {
 
     async fn hgetall(&self, key: &str) -> Result<Vec<(String, String)>, DataStoreError> {
         unimplemented!("Hash operations not implemented for RocksDB")
-    }
-    async fn get(&self, key: &str) -> Result<String, DataStoreError> {
-        match self.db.get(key) {
-            Ok(Some(value)) => Ok(String::from_utf8(value).map_err(|_| DataStoreError::OperationFailed)?),
-            Ok(None) => Err(DataStoreError::KeyNotFound),
-            Err(_) => Err(DataStoreError::OperationFailed),
-        }
     }
 
     async fn incr(&self, key: &str) -> Result<i64, DataStoreError> {
@@ -127,11 +132,6 @@ impl DataStore for RocksDBDataStore {
 
     async fn zscore(&self, key: &str, member: &str) -> Result<Option<f64>, DataStoreError> {
         unimplemented!("Sorted set operations not implemented for RocksDB")
-    }
-
-    async fn authenticate_user(&self, userkey: &str) -> KeyType {
-        // Implement user authentication logic
-        unimplemented!("User authentication not implemented for RocksDB")
     }
 
     async fn init_user_directory(&self, mount_path: &str) -> Result<(), DataStoreError> {
