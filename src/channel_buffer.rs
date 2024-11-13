@@ -5,9 +5,16 @@ use bytes::{BytesMut, Bytes};
 use std::sync::Arc;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use graymamba::nfs::nfsstat3;
 pub struct ActiveWrite {
     pub channel: Arc<ChannelBuffer>,
     pub last_activity: Instant,
+}
+
+#[derive(Copy, Clone)]
+pub enum WriteMode {
+    Buffered,
+    Synchronous
 }
 pub struct ChannelBuffer {
     //buffer: Mutex<BytesMut>,
@@ -25,6 +32,15 @@ impl ChannelBuffer {
             last_write: Mutex::new(Instant::now()),
             is_complete: AtomicBool::new(false),
         })
+    }
+
+    pub async fn write_with_mode(&self, offset: u64, data: &[u8], mode: WriteMode) -> Result<(), nfsstat3> {
+        self.write(offset, data).await;
+        
+        if matches!(mode, WriteMode::Synchronous) {
+            self.set_complete();
+        }
+        Ok(())
     }
 
     pub async fn write(&self, offset: u64, data: &[u8]) {
