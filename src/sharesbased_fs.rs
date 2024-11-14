@@ -88,7 +88,6 @@ impl SharesFS {
 
     pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<BlockchainAudit>>) -> SharesFS {
         // Create shared components for active writes
-        warn!("SharesFS::new");
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
 
@@ -949,7 +948,6 @@ impl NFSFileSystem for SharesFS {
     async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
         let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         let path = self.get_path_from_id(id).await?;
-        warn!("sharesbased_fs:Write request for path: {}", path);
     
         let channel = {
             let mut active_writes = self.active_writes.lock().await;
@@ -973,7 +971,6 @@ impl NFSFileSystem for SharesFS {
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
     
         if !path.contains("/objects/pack/") && (path.contains("/.git/") || path.ends_with(".git")) {
-            warn!("sharesbased_fs:because it's synchronous Committing write for path: {}", path);
             self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
         }
     
@@ -988,8 +985,6 @@ impl NFSFileSystem for SharesFS {
             &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &id.to_string()
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
-    
-        warn!(">>>Read request for path: {}", path);
         
         // For pack files, read from active writes if present
         if path.contains("/objects/pack/") {
@@ -1030,7 +1025,6 @@ impl NFSFileSystem for SharesFS {
         } else if path.contains("/.git/") || path.ends_with(".git") {
             let active_writes = self.active_writes.lock().await;
             if let Some(_write) = active_writes.get(&id) {
-                warn!(">>>Found .git file with active write, committing first");
                 drop(active_writes);
                 self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
             }
@@ -1269,7 +1263,7 @@ impl NFSFileSystem for SharesFS {
         ).await
             .unwrap_or_else(|_| String::new());
         
-        warn!("graymamba create {:?}", parent_path);
+        //warn!("graymamba create {:?}", parent_path);
         if parent_path.is_empty() {
             return Err(nfsstat3::NFS3ERR_NOENT); // No such directory id exists
         }
@@ -1435,7 +1429,7 @@ impl NFSFileSystem for SharesFS {
     }
 
     async fn rename(&self, from_dirid: fileid3, from_filename: &filename3, to_dirid: fileid3, to_filename: &filename3) -> Result<(), nfsstat3> {
-        warn!("graymamba rename {:?} {:?} {:?} {:?}", from_dirid, from_filename, to_dirid, to_filename);
+        //warn!("graymamba rename {:?} {:?} {:?} {:?}", from_dirid, from_filename, to_dirid, to_filename);
         let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         
         let from_path: String = self.data_store.hget(

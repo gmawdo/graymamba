@@ -5,8 +5,6 @@ use bytes::{BytesMut, Bytes};
 use std::sync::Arc;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-
-use tracing::warn;
 pub struct ActiveWrite {
     pub channel: Arc<ChannelBuffer>,
     pub last_activity: Instant,
@@ -44,10 +42,6 @@ impl ChannelBuffer {
         let end_offset = offset + count as u64;
         let total_size = self.total_size.load(Ordering::SeqCst);
         
-        warn!(">>>read_range - Requested offset: {}, count: {}, total_size: {}", 
-            offset, count, total_size);
-        warn!(">>>read_range - Number of chunks in buffer: {}", buffer.len());
-        
         // If reading past total size, adjust end_offset
         let end_offset = std::cmp::min(end_offset, total_size);
         
@@ -61,26 +55,18 @@ impl ChannelBuffer {
                     end_offset - current_offset
                 ) as usize;
                 
-                warn!(">>>read_range - Found chunk at offset: {}, size: {}, copying: {} bytes", 
-                    current_offset, available_bytes, bytes_to_copy);
-                
                 result.extend_from_slice(&bytes[..bytes_to_copy]);
                 current_offset += bytes_to_copy as u64;
             } else {
-                warn!(">>>read_range - No chunk found at offset: {}, breaking", current_offset);
                 break;
             }
         }
         
-        warn!(">>>read_range - Returning {} bytes", result.len());
         result
     }
 
 pub async fn write(&self, offset: u64, data: &[u8]) {
     let mut buffer = self.buffer.lock().await;
-    warn!("=========\n>>>write - Writing at offset: {}, size: {}", offset, data.len());
-    warn!(">>>write - Buffer chunks before write: {}", buffer.len());
-    warn!(">>>write - Current total size: {}", self.total_size.load(Ordering::SeqCst));
     
     buffer.insert(offset, Bytes::copy_from_slice(data));
     
@@ -88,13 +74,8 @@ pub async fn write(&self, offset: u64, data: &[u8]) {
     let end_offset = offset + data.len() as u64;
     let current_size = self.total_size.load(Ordering::SeqCst);
     if end_offset > current_size {
-        warn!(">>>write - Updating total size from {} to {}", current_size, end_offset);
         self.total_size.store(end_offset, Ordering::SeqCst);
     }
-    
-    warn!(">>>write - Buffer chunks after write: {}", buffer.len());
-    warn!(">>>write - Buffer contains offsets: {:?}", buffer.keys().collect::<Vec<_>>());
-    warn!("=========\n>");
     
     // Update last write time
     *self.last_write.lock().await = Instant::now();
