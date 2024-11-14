@@ -951,41 +951,31 @@ impl NFSFileSystem for SharesFS {
         let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         let path = self.get_path_from_id(id).await?;
         warn!("sharesbased_fs:Write request for path: {}", path);
-        let write_mode = if path.contains("/.git/") || path.ends_with(".git") {
-            WriteMode::Synchronous
-        } else {
-            WriteMode::Buffered
+    
+        let channel = {
+            let mut active_writes = self.active_writes.lock().await;
+            if let Some(write) = active_writes.get_mut(&id) {
+                write.last_activity = Instant::now();
+                write.channel.clone()
+            } else {
+                let channel = ChannelBuffer::new();
+                active_writes.insert(id, ActiveWrite::new(channel.clone()));
+                channel
+            }
         };
     
-        {
-            let mut active_writes = self.active_writes.lock().await;
-            let write = active_writes.entry(id).or_insert_with(|| ActiveWrite {
-                channel: ChannelBuffer::new(),
-                last_activity: Instant::now(),
-            });
+        channel.write(offset, data).await;
+        
+        let total_size = channel.total_size();
+        self.data_store.hset(
+            &format!("{}{}", hash_tag, path),
+            "size",
+            &total_size.to_string()
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
     
-            if write.channel.is_empty().await && offset > 0 {
-                warn!("sharesbased_fs:Loading existing content for path: {}", path);
-                self.load_existing_content(id, &write.channel).await?;
-            }
-    
-            write.channel.write_with_mode(offset, data, write_mode).await?;
-            write.last_activity = Instant::now();
-            
-            let total_size = write.channel.total_size();
-            self.data_store.hset(
-                &format!("{}{}", hash_tag, path), 
-                "size", 
-                &total_size.to_string()
-            ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
-    
-            if matches!(write_mode, WriteMode::Synchronous) {
-                warn!("sharesbased_fs:because it's synchronous Committing write for path: {}", path);
-                drop(active_writes);
-                self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
-            } else if self.is_likely_last_write(id, offset, data.len()).await? {
-                write.channel.set_complete();
-            }
+        if !path.contains("/objects/pack/") && (path.contains("/.git/") || path.ends_with(".git")) {
+            warn!("sharesbased_fs:because it's synchronous Committing write for path: {}", path);
+            self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
         }
     
         let metadata = self.get_metadata_from_id(id).await?;
@@ -1004,35 +994,32 @@ impl NFSFileSystem for SharesFS {
         
         // For pack files, read from active writes if present
         if path.contains("/objects/pack/") {
-            warn!(">>>Found pack file path");
-            let active_writes = self.active_writes.lock().await;
-            warn!(">>>Active writes count: {}", active_writes.len());
+            let channel = {
+                let active_writes = self.active_writes.lock().await;
+                if let Some(write) = active_writes.get(&id) {
+                    write.channel.clone()
+                } else {
+                    let channel = ChannelBuffer::new();
+                    self.load_existing_content(id, &channel).await?;
+                    let mut active_writes = self.active_writes.lock().await;
+                    active_writes.insert(id, ActiveWrite::new(channel.clone()));
+                    channel
+                }
+            };
+    
+            let total_size = channel.total_size();
+            let buffer = channel.read_range(offset, count).await;
             
-            if let Some(write) = active_writes.get(&id) {
-                let total_size = write.channel.total_size();
-                warn!(">>>Pack file read request - Path: {}, Offset: {}, Size: {}, TotalSize: {}", 
-                    path, offset, count, total_size);
-                
-                let buffer = write.channel.read_range(offset, count).await;
-                drop(active_writes);
-                let eof = offset + buffer.len() as u64 >= total_size;
-                warn!(">>>Pack file read complete - Path: {}, Offset: {}, ReadSize: {}, EOF: {}", 
-                    path, offset, buffer.len(), eof);
-                return Ok((buffer, eof));
-            } else {
-                // For pack files, if no active write exists, try to load existing content
-                drop(active_writes);
-                let channel = ChannelBuffer::new();
+            // If we got no data and the offset is valid, load existing content
+            if buffer.is_empty() && offset < total_size {
                 self.load_existing_content(id, &channel).await?;
-                
-                // Add to active writes
-                let mut active_writes = self.active_writes.lock().await;
-                active_writes.insert(id, ActiveWrite::new(channel));
-                drop(active_writes);
-                
-                // Retry the read
-                return self.read(id, offset, count).await;
+                let buffer = channel.read_range(offset, count).await;
+                let eof = offset + buffer.len() as u64 >= total_size;
+                return Ok((buffer, eof));
             }
+            
+            let eof = offset + buffer.len() as u64 >= total_size;
+            return Ok((buffer, eof));
         } else if path.contains("/.git/") || path.ends_with(".git") {
             let active_writes = self.active_writes.lock().await;
             if let Some(_write) = active_writes.get(&id) {
