@@ -213,6 +213,7 @@ pub async fn nfsproc3_read(
 ) -> Result<(), anyhow::Error> {
     let mut args = READ3args::default();
     args.deserialize(input)?;
+    warn!("Pack file read - XID: {}, Offset: {}, Size: {}", xid, args.offset, args.count);
     debug!("nfsproc3_read({:?},{:?}) ", xid, args);
 
     let id = context.vfs.fh_to_id(&args.file);
@@ -725,6 +726,7 @@ pub async fn nfsproc3_write(
     let mut args = WRITE3args::default();
     args.deserialize(input)?;
     debug!("nfsproc3_write({:?},...) ", xid);
+    warn!("Pack file write - XID: {}, Offset: {}, Size: {}", xid, args.offset, args.count);
     // sanity check the length
     if args.data.len() != args.count as usize {
         garbage_args_reply_message(xid).serialize(output)?;
