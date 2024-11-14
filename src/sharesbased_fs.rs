@@ -1000,6 +1000,7 @@ impl NFSFileSystem for SharesFS {
                     write.channel.clone()
                 } else {
                     let channel = ChannelBuffer::new();
+                    drop(active_writes);
                     self.load_existing_content(id, &channel).await?;
                     let mut active_writes = self.active_writes.lock().await;
                     active_writes.insert(id, ActiveWrite::new(channel.clone()));
@@ -1007,18 +1008,25 @@ impl NFSFileSystem for SharesFS {
                 }
             };
     
-            let total_size = channel.total_size();
-            let buffer = channel.read_range(offset, count).await;
+            // Calculate chunk boundaries
+            let chunk_start = (offset / 32768) * 32768;
+            let chunk_end = ((offset + count as u64 + 32767) / 32768) * 32768;
             
-            // If we got no data and the offset is valid, load existing content
-            if buffer.is_empty() && offset < total_size {
-                self.load_existing_content(id, &channel).await?;
-                let buffer = channel.read_range(offset, count).await;
-                let eof = offset + buffer.len() as u64 >= total_size;
-                return Ok((buffer, eof));
+            // Read all needed chunks
+            let mut full_buffer = Vec::new();
+            for chunk_offset in (chunk_start..chunk_end).step_by(32768) {
+                let chunk = channel.read_range(chunk_offset, 32768).await;
+                full_buffer.extend_from_slice(&chunk);
             }
+    
+            // Extract the requested range
+            let start = (offset - chunk_start) as usize;
+            let end = std::cmp::min(start + count as usize, full_buffer.len());
+            let buffer = full_buffer[start..end].to_vec();
             
+            let total_size = channel.total_size();
             let eof = offset + buffer.len() as u64 >= total_size;
+            
             return Ok((buffer, eof));
         } else if path.contains("/.git/") || path.ends_with(".git") {
             let active_writes = self.active_writes.lock().await;
