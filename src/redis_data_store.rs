@@ -83,7 +83,7 @@ impl DataStore for RedisDataStore {
         let user_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", userkey);
         if let Ok(exists) = user_exists {
             if exists {
-                warn!("User key exists: {}", userkey);
+                warn!("Wallet exists: {}", userkey);
                 return KeyType::Usual;
             }
         }

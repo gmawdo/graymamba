@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use tracing::warn;
 
 
 use graymamba::tcp::{NFSTcp, NFSTcpListener};
@@ -90,8 +89,7 @@ async fn main() {
         shares_fs_clone.start_monitoring().await;
     });
 
-    warn!("Created new SharesFS with data_store");
-    println!("🚀 FS has launched");
+    println!("🚀 graymamba launched");
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), shares_fs)
         .await
         .unwrap();

@@ -5,16 +5,18 @@ use bytes::{BytesMut, Bytes};
 use std::sync::Arc;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use graymamba::nfs::nfsstat3;
 pub struct ActiveWrite {
     pub channel: Arc<ChannelBuffer>,
     pub last_activity: Instant,
 }
 
-#[derive(Copy, Clone)]
-pub enum WriteMode {
-    Buffered,
-    Synchronous
+impl ActiveWrite {
+    pub fn new(channel: Arc<ChannelBuffer>) -> Self {
+        ActiveWrite {
+            channel,
+            last_activity: Instant::now(),
+        }
+    }
 }
 pub struct ChannelBuffer {
     //buffer: Mutex<BytesMut>,
@@ -34,24 +36,50 @@ impl ChannelBuffer {
         })
     }
 
-    pub async fn write_with_mode(&self, offset: u64, data: &[u8], mode: WriteMode) -> Result<(), nfsstat3> {
-        self.write(offset, data).await;
+    pub async fn read_range(&self, offset: u64, count: u32) -> Vec<u8> {
+        let buffer = self.buffer.lock().await;
+        let mut result = Vec::with_capacity(count as usize);
+        let end_offset = offset + count as u64;
+        let total_size = self.total_size.load(Ordering::SeqCst);
         
-        if matches!(mode, WriteMode::Synchronous) {
-            self.set_complete();
+        // If reading past total size, adjust end_offset
+        let end_offset = std::cmp::min(end_offset, total_size);
+        
+        // Find all chunks that overlap with the requested range
+        let mut current_offset = offset;
+        while current_offset < end_offset {
+            if let Some(bytes) = buffer.get(&current_offset) {
+                let available_bytes = bytes.len() as u64;
+                let bytes_to_copy = std::cmp::min(
+                    available_bytes,
+                    end_offset - current_offset
+                ) as usize;
+                
+                result.extend_from_slice(&bytes[..bytes_to_copy]);
+                current_offset += bytes_to_copy as u64;
+            } else {
+                break;
+            }
         }
-        Ok(())
-    }
-
-    pub async fn write(&self, offset: u64, data: &[u8]) {
-        let mut buffer = self.buffer.lock().await;
-        buffer.insert(offset, Bytes::copy_from_slice(data));
         
-        let new_size = offset + data.len() as u64;
-        self.total_size.fetch_max(new_size, Ordering::SeqCst);
-
-        *self.last_write.lock().await = Instant::now();
+        result
     }
+
+pub async fn write(&self, offset: u64, data: &[u8]) {
+    let mut buffer = self.buffer.lock().await;
+    
+    buffer.insert(offset, Bytes::copy_from_slice(data));
+    
+    // Update total size if this write extends it
+    let end_offset = offset + data.len() as u64;
+    let current_size = self.total_size.load(Ordering::SeqCst);
+    if end_offset > current_size {
+        self.total_size.store(end_offset, Ordering::SeqCst);
+    }
+    
+    // Update last write time
+    *self.last_write.lock().await = Instant::now();
+}
 
     pub async fn read_all(&self) -> Bytes {
         let buffer = self.buffer.lock().await;

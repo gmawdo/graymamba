@@ -8,7 +8,6 @@ use graymamba::nfs::fileid3;
 use std::collections::HashMap;
 use tokio::sync::{Mutex, Semaphore};
 use graymamba::channel_buffer::ActiveWrite;
-use graymamba::channel_buffer::WriteMode;
 use rayon::prelude::*;
 
 use tokio::time::Duration;
@@ -89,7 +88,6 @@ impl SharesFS {
 
     pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<BlockchainAudit>>) -> SharesFS {
         // Create shared components for active writes
-        warn!("SharesFS::new");
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
 
@@ -746,35 +744,30 @@ impl SharesFS {
         Ok(())
     }
 
-
     async fn monitor_active_writes(&self) {
-        println!("Starting active writes monitor");
+        warn!("Starting active writes monitor");
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
             
             let to_commit: Vec<fileid3> = {
                 let active_writes = self.active_writes.lock().await;
                 let mut to_commit = Vec::new();
-    
+                
                 for (&id, write) in active_writes.iter() {
-                    if write.channel.is_write_complete() && write.channel.time_since_last_write().await > Duration::from_secs(10) {
-                        to_commit.push(id);
+                    // Get the path for this file id
+                    if let Ok(path) = self.get_path_from_id(id).await {
+                        // Don't auto-commit pack files
+                        if !path.contains("/objects/pack/") && write.channel.is_write_complete() {
+                            to_commit.push(id);
+                        }
                     }
                 }
-    
                 to_commit
             };
-
+    
             for id in to_commit {
-                // println!("Attempting to commit write for file ID: {}", id);
-                match self.commit_write(id).await {
-                    Ok(()) => {
-                        debug!("Successfully committed write for file ID: {}", id);
-                    },
-                    Err(e) => {
-                        debug!("Error committing write for file ID: {}: {:?}", id, e);
-                    }
-                }
+                warn!("Auto-committing write for id: {}", id);
+                let _ = self.commit_write(id).await;
             }
         }
     }
@@ -955,40 +948,30 @@ impl NFSFileSystem for SharesFS {
     async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
         let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         let path = self.get_path_from_id(id).await?;
-        
-        let write_mode = if path.contains("/.git/") || path.ends_with(".git") {
-            WriteMode::Synchronous
-        } else {
-            WriteMode::Buffered
+    
+        let channel = {
+            let mut active_writes = self.active_writes.lock().await;
+            if let Some(write) = active_writes.get_mut(&id) {
+                write.last_activity = Instant::now();
+                write.channel.clone()
+            } else {
+                let channel = ChannelBuffer::new();
+                active_writes.insert(id, ActiveWrite::new(channel.clone()));
+                channel
+            }
         };
     
-        {
-            let mut active_writes = self.active_writes.lock().await;
-            let write = active_writes.entry(id).or_insert_with(|| ActiveWrite {
-                channel: ChannelBuffer::new(),
-                last_activity: Instant::now(),
-            });
+        channel.write(offset, data).await;
+        
+        let total_size = channel.total_size();
+        self.data_store.hset(
+            &format!("{}{}", hash_tag, path),
+            "size",
+            &total_size.to_string()
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
     
-            if write.channel.is_empty().await && offset > 0 {
-                self.load_existing_content(id, &write.channel).await?;
-            }
-    
-            write.channel.write_with_mode(offset, data, write_mode).await?;
-            write.last_activity = Instant::now();
-            
-            let total_size = write.channel.total_size();
-            self.data_store.hset(
-                &format!("{}{}", hash_tag, path), 
-                "size", 
-                &total_size.to_string()
-            ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
-    
-            if matches!(write_mode, WriteMode::Synchronous) {
-                drop(active_writes);
-                self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
-            } else if self.is_likely_last_write(id, offset, data.len()).await? {
-                write.channel.set_complete();
-            }
+        if !path.contains("/objects/pack/") && (path.contains("/.git/") || path.ends_with(".git")) {
+            self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
         }
     
         let metadata = self.get_metadata_from_id(id).await?;
@@ -1002,8 +985,44 @@ impl NFSFileSystem for SharesFS {
             &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &id.to_string()
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+        
+        // For pack files, read from active writes if present
+        if path.contains("/objects/pack/") {
+            let channel = {
+                let active_writes = self.active_writes.lock().await;
+                if let Some(write) = active_writes.get(&id) {
+                    write.channel.clone()
+                } else {
+                    let channel = ChannelBuffer::new();
+                    drop(active_writes);
+                    self.load_existing_content(id, &channel).await?;
+                    let mut active_writes = self.active_writes.lock().await;
+                    active_writes.insert(id, ActiveWrite::new(channel.clone()));
+                    channel
+                }
+            };
     
-        if path.contains("/.git/") || path.ends_with(".git") {
+            // Calculate chunk boundaries
+            let chunk_start = (offset / 32768) * 32768;
+            let chunk_end = ((offset + count as u64 + 32767) / 32768) * 32768;
+            
+            // Read all needed chunks
+            let mut full_buffer = Vec::new();
+            for chunk_offset in (chunk_start..chunk_end).step_by(32768) {
+                let chunk = channel.read_range(chunk_offset, 32768).await;
+                full_buffer.extend_from_slice(&chunk);
+            }
+    
+            // Extract the requested range
+            let start = (offset - chunk_start) as usize;
+            let end = std::cmp::min(start + count as usize, full_buffer.len());
+            let buffer = full_buffer[start..end].to_vec();
+            
+            let total_size = channel.total_size();
+            let eof = offset + buffer.len() as u64 >= total_size;
+            
+            return Ok((buffer, eof));
+        } else if path.contains("/.git/") || path.ends_with(".git") {
             let active_writes = self.active_writes.lock().await;
             if let Some(_write) = active_writes.get(&id) {
                 drop(active_writes);
@@ -1244,7 +1263,7 @@ impl NFSFileSystem for SharesFS {
         ).await
             .unwrap_or_else(|_| String::new());
         
-        warn!("graymamba create {:?}", parent_path);
+        //warn!("graymamba create {:?}", parent_path);
         if parent_path.is_empty() {
             return Err(nfsstat3::NFS3ERR_NOENT); // No such directory id exists
         }
@@ -1410,7 +1429,7 @@ impl NFSFileSystem for SharesFS {
     }
 
     async fn rename(&self, from_dirid: fileid3, from_filename: &filename3, to_dirid: fileid3, to_filename: &filename3) -> Result<(), nfsstat3> {
-                
+        //warn!("graymamba rename {:?} {:?} {:?} {:?}", from_dirid, from_filename, to_dirid, to_filename);
         let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         
         let from_path: String = self.data_store.hget(
