@@ -8,7 +8,6 @@ use graymamba::nfs::fileid3;
 use std::collections::HashMap;
 use tokio::sync::{Mutex, Semaphore};
 use graymamba::channel_buffer::ActiveWrite;
-use graymamba::channel_buffer::WriteMode;
 use rayon::prelude::*;
 
 use tokio::time::Duration;

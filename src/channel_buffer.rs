@@ -5,7 +5,6 @@ use bytes::{BytesMut, Bytes};
 use std::sync::Arc;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use graymamba::nfs::nfsstat3;
 
 use tracing::warn;
 pub struct ActiveWrite {
@@ -20,12 +19,6 @@ impl ActiveWrite {
             last_activity: Instant::now(),
         }
     }
-}
-
-#[derive(Copy, Clone)]
-pub enum WriteMode {
-    Buffered,
-    Synchronous
 }
 pub struct ChannelBuffer {
     //buffer: Mutex<BytesMut>,
@@ -81,16 +74,6 @@ impl ChannelBuffer {
         
         warn!(">>>read_range - Returning {} bytes", result.len());
         result
-    }
-
-    pub async fn write_with_mode(&self, offset: u64, data: &[u8], mode: WriteMode) -> Result<(), nfsstat3> {
-        self.write(offset, data).await;
-        
-        if matches!(mode, WriteMode::Synchronous) {
-            warn!("=========\n>>>write_with_mode - Setting complete\n>");
-            self.set_complete();
-        }
-        Ok(())
     }
 
 pub async fn write(&self, offset: u64, data: &[u8]) {
