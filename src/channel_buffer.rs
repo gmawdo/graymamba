@@ -87,6 +87,7 @@ impl ChannelBuffer {
         self.write(offset, data).await;
         
         if matches!(mode, WriteMode::Synchronous) {
+            warn!("=========\n>>>write_with_mode - Setting complete\n>");
             self.set_complete();
         }
         Ok(())
@@ -94,8 +95,9 @@ impl ChannelBuffer {
 
 pub async fn write(&self, offset: u64, data: &[u8]) {
     let mut buffer = self.buffer.lock().await;
-    warn!(">>>write - Writing at offset: {}, size: {}", offset, data.len());
+    warn!("=========\n>>>write - Writing at offset: {}, size: {}", offset, data.len());
     warn!(">>>write - Buffer chunks before write: {}", buffer.len());
+    warn!(">>>write - Current total size: {}", self.total_size.load(Ordering::SeqCst));
     
     buffer.insert(offset, Bytes::copy_from_slice(data));
     
@@ -103,10 +105,13 @@ pub async fn write(&self, offset: u64, data: &[u8]) {
     let end_offset = offset + data.len() as u64;
     let current_size = self.total_size.load(Ordering::SeqCst);
     if end_offset > current_size {
+        warn!(">>>write - Updating total size from {} to {}", current_size, end_offset);
         self.total_size.store(end_offset, Ordering::SeqCst);
     }
     
     warn!(">>>write - Buffer chunks after write: {}", buffer.len());
+    warn!(">>>write - Buffer contains offsets: {:?}", buffer.keys().collect::<Vec<_>>());
+    warn!("=========\n>");
     
     // Update last write time
     *self.last_write.lock().await = Instant::now();

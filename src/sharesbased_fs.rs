@@ -950,7 +950,7 @@ impl NFSFileSystem for SharesFS {
     async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
         let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         let path = self.get_path_from_id(id).await?;
-        
+        warn!("sharesbased_fs:Write request for path: {}", path);
         let write_mode = if path.contains("/.git/") || path.ends_with(".git") {
             WriteMode::Synchronous
         } else {
@@ -965,6 +965,7 @@ impl NFSFileSystem for SharesFS {
             });
     
             if write.channel.is_empty().await && offset > 0 {
+                warn!("sharesbased_fs:Loading existing content for path: {}", path);
                 self.load_existing_content(id, &write.channel).await?;
             }
     
@@ -979,6 +980,7 @@ impl NFSFileSystem for SharesFS {
             ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
     
             if matches!(write_mode, WriteMode::Synchronous) {
+                warn!("sharesbased_fs:because it's synchronous Committing write for path: {}", path);
                 drop(active_writes);
                 self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
             } else if self.is_likely_last_write(id, offset, data.len()).await? {
