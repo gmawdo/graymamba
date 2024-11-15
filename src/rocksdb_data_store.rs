@@ -27,7 +27,7 @@ impl RocksDBDataStore {
 
 #[async_trait]
 impl DataStore for RocksDBDataStore {
-    async fn authenticate_user(&self, userkey: &str) -> KeyType {
+    async fn authenticate_user(&self, _userkey: &str) -> KeyType {
         // Implement user authentication logic
         unimplemented!("User authentication not implemented for RocksDB")
     }
@@ -110,22 +110,22 @@ impl DataStore for RocksDBDataStore {
         Ok(results)
     }
 
-    async fn zrange_withscores(&self, key: &str, start: isize, stop: isize) 
+    async fn zrange_withscores(&self, _key: &str, _start: isize, _stop: isize) 
         -> Result<Vec<(String, f64)>, DataStoreError> {
         // Implement sorted set operations
         unimplemented!("Sorted set operations not implemented for RocksDB")
     }
 
-    async fn zadd(&self, key: &str, member: &str, score: f64) -> Result<(), DataStoreError> {
+    async fn zadd(&self, _key: &str, _member: &str, _score: f64) -> Result<(), DataStoreError> {
         unimplemented!("Sorted set operations not implemented for RocksDB")
     }
 
-    async fn zrem(&self, key: &str, member: &str) -> Result<(), DataStoreError> {
+    async fn zrem(&self, _key: &str, _member: &str) -> Result<(), DataStoreError> {
         unimplemented!("Sorted set operations not implemented for RocksDB")
     }
 
     //used by get_nodes_in_subpath > get_direct_children > readdir
-    async fn zrangebyscore(&self, key: &str, min: f64, max: f64) 
+    async fn zrangebyscore(&self, _key: &str, _min: f64, _max: f64) 
         -> Result<Vec<String>, DataStoreError> {
         unimplemented!("Sorted set operations not implemented for RocksDB")
     }
@@ -139,16 +139,16 @@ impl DataStore for RocksDBDataStore {
     }
 
     //not sure this is used
-    async fn zscan_match(&self, key: &str, pattern: &str) 
+    async fn zscan_match(&self, _key: &str, _pattern: &str) 
         -> Result<Vec<String>, DataStoreError> {
         unimplemented!("Sorted set operations not implemented for RocksDB")
     }
     //not sure this is used
-    async fn zscore(&self, key: &str, member: &str) -> Result<Option<f64>, DataStoreError> {
+    async fn zscore(&self, _key: &str, _member: &str) -> Result<Option<f64>, DataStoreError> {
         unimplemented!("Sorted set operations not implemented for RocksDB")
     }
 
-    async fn init_user_directory(&self, mount_path: &str) -> Result<(), DataStoreError> {
+    async fn init_user_directory(&self, _mount_path: &str) -> Result<(), DataStoreError> {
         // Implement directory initialization logic
         unimplemented!("Directory initialization not implemented for RocksDB")
     }
