@@ -80,7 +80,7 @@ pub async fn handle_nfs(
         NFSProgram::NFSPROC3_SYMLINK => nfsproc3_symlink(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_READLINK => nfsproc3_readlink(xid, input, output, context).await?,
         _ => {
-            warn!("Unimplemented message {:?}", prog);
+            //warn!("Unimplemented message {:?}", prog);
             proc_unavail_reply_message(xid).serialize(output)?;
         } /*
           NFSPROC3_MKNOD,
@@ -715,7 +715,6 @@ pub async fn nfsproc3_write(
 ) -> Result<(), anyhow::Error> {
     // if we do not have write capabilities
     if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        warn!("No write capabilities.");
         make_success_reply(xid).serialize(output)?;
         nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
         nfs::wcc_data::default().serialize(output)?;
@@ -799,7 +798,6 @@ pub async fn nfsproc3_create(
 ) -> Result<(), anyhow::Error> {
     // if we do not have write capabilities
     if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        warn!("No write capabilities.");
         make_success_reply(xid).serialize(output)?;
         nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
         nfs::wcc_data::default().serialize(output)?;
@@ -962,7 +960,6 @@ pub async fn nfsproc3_setattr(
     context: &RPCContext,
 ) -> Result<(), anyhow::Error> {
     if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        warn!("No write capabilities.");
         make_success_reply(xid).serialize(output)?;
         nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
         nfs::wcc_data::default().serialize(output)?;
@@ -1043,7 +1040,6 @@ pub async fn nfsproc3_remove(
 ) -> Result<(), anyhow::Error> {
     // if we do not have write capabilities
     if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        warn!("No write capabilities.");
         make_success_reply(xid).serialize(output)?;
         nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
         nfs::wcc_data::default().serialize(output)?;
@@ -1128,7 +1124,6 @@ pub async fn nfsproc3_rename(
 ) -> Result<(), anyhow::Error> {
     // if we do not have write capabilities
     if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        warn!("No write capabilities.");
         make_success_reply(xid).serialize(output)?;
         nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
         nfs::wcc_data::default().serialize(output)?;
@@ -1272,7 +1267,6 @@ pub async fn nfsproc3_mkdir(
 ) -> Result<(), anyhow::Error> {
     // if we do not have write capabilities
     if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        warn!("No write capabilities.");
         make_success_reply(xid).serialize(output)?;
         nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
         nfs::wcc_data::default().serialize(output)?;
@@ -1390,7 +1384,6 @@ pub async fn nfsproc3_symlink(
 ) -> Result<(), anyhow::Error> {
     // if we do not have write capabilities
     if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        warn!("No write capabilities.");
         make_success_reply(xid).serialize(output)?;
         nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
         nfs::wcc_data::default().serialize(output)?;

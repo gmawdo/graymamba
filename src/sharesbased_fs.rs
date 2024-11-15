@@ -88,7 +88,6 @@ impl SharesFS {
 
     pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<BlockchainAudit>>) -> SharesFS {
         // Create shared components for active writes
-        warn!("SharesFS::new");
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
 
@@ -745,35 +744,30 @@ impl SharesFS {
         Ok(())
     }
 
-
     async fn monitor_active_writes(&self) {
-        println!("Starting active writes monitor");
+        warn!("Starting active writes monitor");
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
             
             let to_commit: Vec<fileid3> = {
                 let active_writes = self.active_writes.lock().await;
                 let mut to_commit = Vec::new();
-    
+                
                 for (&id, write) in active_writes.iter() {
-                    if write.channel.is_write_complete() && write.channel.time_since_last_write().await > Duration::from_secs(10) {
-                        to_commit.push(id);
+                    // Get the path for this file id
+                    if let Ok(path) = self.get_path_from_id(id).await {
+                        // Don't auto-commit pack files
+                        if !path.contains("/objects/pack/") && write.channel.is_write_complete() {
+                            to_commit.push(id);
+                        }
                     }
                 }
-    
                 to_commit
             };
-
+    
             for id in to_commit {
-                // println!("Attempting to commit write for file ID: {}", id);
-                match self.commit_write(id).await {
-                    Ok(()) => {
-                        debug!("Successfully committed write for file ID: {}", id);
-                    },
-                    Err(e) => {
-                        debug!("Error committing write for file ID: {}: {:?}", id, e);
-                    }
-                }
+                warn!("Auto-committing write for id: {}", id);
+                let _ = self.commit_write(id).await;
             }
         }
     }
@@ -951,51 +945,127 @@ impl NFSFileSystem for SharesFS {
         
     }
 
+    async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
+        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+        let path = self.get_path_from_id(id).await?;
+    
+        let channel = {
+            let mut active_writes = self.active_writes.lock().await;
+            if let Some(write) = active_writes.get_mut(&id) {
+                write.last_activity = Instant::now();
+                write.channel.clone()
+            } else {
+                let channel = ChannelBuffer::new();
+                active_writes.insert(id, ActiveWrite::new(channel.clone()));
+                channel
+            }
+        };
+    
+        channel.write(offset, data).await;
+        
+        let total_size = channel.total_size();
+        self.data_store.hset(
+            &format!("{}{}", hash_tag, path),
+            "size",
+            &total_size.to_string()
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+    
+        if !path.contains("/objects/pack/") && (path.contains("/.git/") || path.ends_with(".git")) {
+            self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+        }
+
+        let local_date_time: DateTime<Local> = Local::now();
+        let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
+    
+        let mut user = "";
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() > 2 {
+            user = parts[1];
+        }
+
+        if let Some(blockchain_audit) = &self.blockchain_audit {
+            let _ = blockchain_audit.trigger_event(&creation_time, "disassembled", &path, &user);
+        }
+    
+        let metadata = self.get_metadata_from_id(id).await?;
+        FileMetadata::metadata_to_fattr3(id, &metadata).await
+    }
+
     async fn read(&self, id: fileid3, offset: u64, count: u32) -> Result<(Vec<u8>, bool), nfsstat3> {           
         let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
-
-        // Get file path from the share store
+    
         let path: String = self.data_store.hget(
             &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &id.to_string()
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
-            //.unwrap_or_default();
-
-        // Retrieve the current file content (Base64 encoded)
-        // Retrieve the existing data from the share store
-        let current_data= self.get_data(&path).await;
-        // Check if the offset is beyond the current data length
-        if offset as usize >= current_data.len() {
-            return Ok((vec![], true)); // Return an empty vector and EOF as true
-        }
-
-        // Calculate the end of the data slice to return
-        let end = std::cmp::min(current_data.len(), (offset + count as u64) as usize);
-
-        // Slice the data from offset to the calculated end
-        let data_slice = &current_data[offset as usize..end];
-
-        // Determine if this slice reaches the end of the file
-        let eof = end >= current_data.len();
         
-        // Get the current local date and time
-        let local_date_time: DateTime<Local> = Local::now();
-
-        // Format the date and time using the specified pattern
-        let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-        
-        // Initialize extracted with an empty string or any default value
-        
-        let mut user = "";
-
-        let parts: Vec<&str> = path.split('/').collect();
-
-            if parts.len() > 2 {
-                user = parts[1];
+        // For pack files, read from active writes if present
+        if path.contains("/objects/pack/") {
+            let channel = {
+                let active_writes = self.active_writes.lock().await;
+                if let Some(write) = active_writes.get(&id) {
+                    write.channel.clone()
+                } else {
+                    let channel = ChannelBuffer::new();
+                    drop(active_writes);
+                    self.load_existing_content(id, &channel).await?;
+                    let mut active_writes = self.active_writes.lock().await;
+                    active_writes.insert(id, ActiveWrite::new(channel.clone()));
+                    channel
+                }
+            };
+    
+            // Calculate chunk boundaries
+            let chunk_start = (offset / 32768) * 32768;
+            let chunk_end = ((offset + count as u64 + 32767) / 32768) * 32768;
+            
+            // Read all needed chunks
+            let mut full_buffer = Vec::new();
+            for chunk_offset in (chunk_start..chunk_end).step_by(32768) {
+                let chunk = channel.read_range(chunk_offset, 32768).await;
+                full_buffer.extend_from_slice(&chunk);
             }
+    
+            // Extract the requested range
+            let start = (offset - chunk_start) as usize;
+            let end = std::cmp::min(start + count as usize, full_buffer.len());
+            let buffer = full_buffer[start..end].to_vec();
+            
+            let total_size = channel.total_size();
+            let eof = offset + buffer.len() as u64 >= total_size;
+            
+            return Ok((buffer, eof));
+        } else if path.contains("/.git/") || path.ends_with(".git") {
+            let active_writes = self.active_writes.lock().await;
+            if let Some(_write) = active_writes.get(&id) {
+                drop(active_writes);
+                self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+            }
+        }
+    
+        let current_data = self.get_data(&path).await;
+        
+        if offset as usize >= current_data.len() {
+            return Ok((vec![], true));
+        }
+    
+        let end = std::cmp::min(current_data.len(), (offset + count as u64) as usize);
+        let data_slice = &current_data[offset as usize..end];
+        let eof = end >= current_data.len();
+    
+        let local_date_time: DateTime<Local> = Local::now();
+        let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
+    
+        let mut user = "";
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() > 2 {
+            user = parts[1];
+        }
+    
         if let Some(blockchain_audit) = &self.blockchain_audit {
             let _ = blockchain_audit.trigger_event(&creation_time, "reassembled", &path, &user);
         }
+    
         Ok((data_slice.to_vec(), eof))
     }
 
@@ -1195,78 +1265,6 @@ impl NFSFileSystem for SharesFS {
         Ok(fattr)
     }
 
-    async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
-
-        // println!("Starting write operation for file ID: {}, offset: {}, data length: {}", id, offset, data.len());
-
-        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
-
-        let path_result = self.get_path_from_id(id).await;
-        let path: String = match path_result {
-            Ok(k) => k,
-            Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
-        };
-
-        let _is_complete = {
-
-        let mut active_writes = self.active_writes.lock().await;
-        let write = active_writes.entry(id).or_insert_with(|| ActiveWrite {
-            channel: ChannelBuffer::new(),
-            last_activity: Instant::now(),
-        });
-    
-        
-
-        if write.channel.is_empty().await && offset > 0 {
-            self.load_existing_content(id, &write.channel).await?;
-        }
-
-        //Perform the write operation
-        write.channel.write(offset, data).await;
-
-        write.last_activity = Instant::now();
-        // write.last_activity = std::time::Instant::now().into();
-        
-        let total_size = write.channel.total_size();
-       
-
-       let _  = self.data_store.hset(&format!("{}{}", hash_tag, path), "size", &total_size.to_string()).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-
-        };
-
-        
-        // Check if this might be the last write
-        if self.is_likely_last_write(id, offset, data.len()).await? {
-
-            self.mark_write_as_complete(id).await?;
-
-        }
-
-        // Get the current local date and time
-        let local_date_time: DateTime<Local> = Local::now();
-
-        // Format the date and time using the specified pattern
-        let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
-
-        let mut user = "";
-
-            let parts: Vec<&str> = path.split('/').collect();
-
-                if parts.len() > 2 {
-                    user = parts[1];
-                }
-
-        if let Some(blockchain_audit) = &self.blockchain_audit {
-            let _ = blockchain_audit.trigger_event(&creation_time, "disassembled", &path, &user);
-        }
-
-        let metadata = self.get_metadata_from_id(id).await?;
-
-        let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
-
-        Ok(fattr)
-    }
-
     async fn create(&self, dirid: fileid3, filename: &filename3, setattr: sattr3) -> Result<(fileid3, fattr3), nfsstat3> {
                 
         let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
@@ -1278,7 +1276,7 @@ impl NFSFileSystem for SharesFS {
         ).await
             .unwrap_or_else(|_| String::new());
         
-        warn!("graymamba create {:?}", parent_path);
+        //warn!("graymamba create {:?}", parent_path);
         if parent_path.is_empty() {
             return Err(nfsstat3::NFS3ERR_NOENT); // No such directory id exists
         }
@@ -1444,7 +1442,7 @@ impl NFSFileSystem for SharesFS {
     }
 
     async fn rename(&self, from_dirid: fileid3, from_filename: &filename3, to_dirid: fileid3, to_filename: &filename3) -> Result<(), nfsstat3> {
-                
+        //warn!("graymamba rename {:?} {:?} {:?} {:?}", from_dirid, from_filename, to_dirid, to_filename);
         let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         
         let from_path: String = self.data_store.hget(

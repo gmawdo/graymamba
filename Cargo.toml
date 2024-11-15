@@ -38,7 +38,7 @@ iroh = { git = "https://github.com/n0-computer/iroh.git", branch = "main" }
 # Adding redis library dependencies for Rust
 redis = "0.25.3"
 r2d2 = "0.8.10"
-r2d2_redis_cluster = "0.1.6"
+r2d2_redis_cluster2 = "0.23.3"
 
 # RocksDB
 rocksdb = "0.22.0"

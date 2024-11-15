@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use r2d2::Pool;
 use std::error::Error as StdError;
-use r2d2_redis_cluster::Commands;
+use r2d2_redis_cluster2::Commands;
 use async_trait::async_trait;
 use crate::data_store::{DataStore, DataStoreError};
 use config::{Config, File as ConfigFile, ConfigError};
@@ -9,7 +9,7 @@ use config::{Config, File as ConfigFile, ConfigError};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
+use r2d2_redis_cluster2::{r2d2, RedisClusterConnectionManager};
 
 use tracing::warn;
 use crate::data_store::KeyType;
@@ -64,7 +64,7 @@ impl RedisClusterPool {
 }
 
 pub struct RedisDataStore {
-    pool: Arc<r2d2::Pool<r2d2_redis_cluster::RedisClusterConnectionManager>>,
+    pool: Arc<r2d2::Pool<r2d2_redis_cluster2::RedisClusterConnectionManager>>,
 }
 
 impl RedisDataStore {
@@ -83,7 +83,7 @@ impl DataStore for RedisDataStore {
         let user_exists: Result<bool, _> = conn.sismember("GRAYMAMBAWALLETS", userkey);
         if let Ok(exists) = user_exists {
             if exists {
-                warn!("User key exists: {}", userkey);
+                warn!("Wallet exists: {}", userkey);
                 return KeyType::Usual;
             }
         }
@@ -107,7 +107,8 @@ impl DataStore for RedisDataStore {
 
     async fn set(&self, key: &str, value: &str) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
-        conn.set(key, value).map_err(|_| DataStoreError::OperationFailed)
+        let _: () = conn.set(key, value).map_err(|_| DataStoreError::OperationFailed)?;
+        Ok(())
     }
 
     async fn delete(&self, key: &str) -> Result<(), DataStoreError> {
@@ -122,7 +123,8 @@ impl DataStore for RedisDataStore {
 
     async fn hset(&self, key: &str, field: &str, value: &str) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
-        conn.hset(key, field, value).map_err(|_| DataStoreError::OperationFailed)
+        let _: () = conn.hset(key, field, value).map_err(|_| DataStoreError::OperationFailed)?;
+        Ok(())
     }
 
     async fn hdel(&self, key: &str, field: &str) -> Result<(), DataStoreError> {
@@ -170,7 +172,7 @@ impl DataStore for RedisDataStore {
     }
     async fn hset_multiple(&self, key: &str, fields: &[(&str, &str)]) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
-        conn.hset_multiple::<_, _, _, ()>(key, fields).map_err(|_| DataStoreError::OperationFailed)?;
+        let _: () = conn.hset_multiple::<_, _, _, ()>(key, fields).map_err(|_| DataStoreError::OperationFailed)?;
         Ok(())
     }
     async fn zscan_match(&self, key: &str, pattern: &str) -> Result<Vec<String>, DataStoreError> {
@@ -217,7 +219,7 @@ impl DataStore for RedisDataStore {
         let epoch_nseconds = system_time.subsec_nanos();
     
         // Instead of using pipeline, execute commands individually
-        conn.zadd(
+        let _: () = conn.zadd(
             format!("{}:/{}_nodes", hash_tag, "graymamba"),
             mount_path,
             score
@@ -244,28 +246,29 @@ impl DataStore for RedisDataStore {
             ("birth_time_nsecs", &epoch_nseconds_str),
             ("fileid", &fileid_str),
         ];
-    
-        conn.hset_multiple(
+
+        // In the init_user_directory function, modify the hset_multiple call:
+        let _: () = conn.hset_multiple(
             &format!("{}:{}", hash_tag, mount_path),
             &hash_fields
         ).map_err(|_| DataStoreError::OperationFailed)?;
     
         // Set path to id mapping
-        conn.hset(
+        let _: () = conn.hset(
             &format!("{}:{}_path_to_id", hash_tag, path),
             mount_path,
             fileid
         ).map_err(|_| DataStoreError::OperationFailed)?;
     
         // Set id to path mapping
-        conn.hset(
+        let _: () = conn.hset(
             &format!("{}:{}_id_to_path", hash_tag, path),
             fileid.to_string(),
             mount_path
         ).map_err(|_| DataStoreError::OperationFailed)?;
     
         if fileid == 1 {
-            conn.set(
+            let _: () = conn.set(
                 &format!("{}:{}_next_fileid", hash_tag, path),
                 1
             ).map_err(|_| DataStoreError::OperationFailed)?;
