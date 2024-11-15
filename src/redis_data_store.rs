@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use r2d2::Pool;
 use std::error::Error as StdError;
-use r2d2_redis_cluster::Commands;
+use r2d2_redis_cluster2::Commands;
 use async_trait::async_trait;
 use crate::data_store::{DataStore, DataStoreError};
 use config::{Config, File as ConfigFile, ConfigError};
@@ -9,7 +9,7 @@ use config::{Config, File as ConfigFile, ConfigError};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use r2d2_redis_cluster::{r2d2, RedisClusterConnectionManager};
+use r2d2_redis_cluster2::{r2d2, RedisClusterConnectionManager};
 
 use tracing::warn;
 use crate::data_store::KeyType;
@@ -64,7 +64,7 @@ impl RedisClusterPool {
 }
 
 pub struct RedisDataStore {
-    pool: Arc<r2d2::Pool<r2d2_redis_cluster::RedisClusterConnectionManager>>,
+    pool: Arc<r2d2::Pool<r2d2_redis_cluster2::RedisClusterConnectionManager>>,
 }
 
 impl RedisDataStore {
