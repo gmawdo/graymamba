@@ -1,4 +1,3 @@
-
 [package]
 name = "graymamba"
 version = "2.0.1"
@@ -13,68 +12,60 @@ categories = ["network-programming", "filesystem"]
 publish = true
 include = ["src/**/*", "src/*", "Cargo.toml", "LICENSE", "README.md"]
 
-
 [lib]
 doctest = false
 
 [dependencies]
+# Core utilities
 lazy_static = "1.4.0"
-bytestream = "0.4"
 byteorder = "1.4"
 num-traits = "0.2"
 num-derive = "0.3"
-#tokio = { version="1", features = [ "net", "io-util", "sync", "fs", "rt", "macros" ], default-features = false }
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3.21"
-tracing = "0.1.31"
-tracing-attributes = "0.1"
-anyhow = "1"
-async-trait = "0.1.9"
-smallvec = "1.10.0"
 filetime = "0.2"
-#once_cell = "1.8.0"
-iroh = { git = "https://github.com/n0-computer/iroh.git", branch = "main" }
-
-# Adding redis library dependencies for Rust
-redis = "0.25.3"
-r2d2 = "0.8.10"
-r2d2_redis_cluster2 = "0.23.3"
-
-# RocksDB
-rocksdb = "0.22.0"
-thiserror = "1.0"
-
 bytes = "1.6.0"
 base64 = "0.22.1"
 regex = "1.10.4"
-#threshold-secret-sharing = "0.2.2"
-#shamir_secret_sharing = "0.1.1"
+
+# Error handling and async
+anyhow = "1"
+async-trait = "0.1.9"
+thiserror = "1.0"
+
+# Data structures and serialization
+smallvec = "1.10.0"
 toml = "0.8.12"
-#serde = "1.0.201"
 serde_json = "1.0.117"
-#num-bigint = "0.4.5"
 num-bigint = { version = "0.2.6", features = ["serde"] }
 serde = { version = "1.0.201", features = ["derive"] }
 hex = "0.4.3"
-#num-traits = "0.2.19"
+
+# Storage
+redis = "0.25.3"
+r2d2_redis_cluster2 = "0.23.3"
+rocksdb = "0.22.0"
+
+# IPFS integration
+#iroh = { git = "https://github.com/n0-computer/iroh.git", branch = "main" }
+
+# Parallel processing
 rayon = "1.10.0"
 
-#sp-application-crypto = "36.0.0"
-#jsonrpsee-ws-client = "0.22.5"
-#jsonrpsee = "0.22.5"
+# Logging and tracing
+tracing = "0.1.31"
+tracing-attributes = "0.1"
 env_logger = "0.11.3"
-#subxt = "0.37.0"
+
+# Blockchain integration
+subxt = "0.37.0"
 subxt-signer = "0.37.0"
 secretsharing = { path = "./secretsharing_wrapper" }
 wasmtime = "21.0.1"
 
-#substrate-api-client = { git = "https://github.com/scs/substrate-api-client", branch = "master" }
-#substrate-api-client = "0.17.0"
-
-# Substrate dependencies
+# Substrate specific
 frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
 frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
-#kitchensink-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
 pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
 pallet-identity = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
 pallet-staking = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
@@ -83,15 +74,14 @@ sp-keyring = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = 
 sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
 sp-weights = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
 
-#parity-scale-codec = "3.6.9"
-subxt = "0.37.0"
+# Configuration and time
 once_cell = "1.19.0"
-
-# traceability
-tracing-subscriber = { version = "0.3", features = ["tracing-log"], optional = true }
-intaglio = { version = "1.6", optional = true }
 config = "0.11"
 chrono = "0.4"
+
+# Optional dependencies for tracing
+tracing-subscriber = { version = "0.3", features = ["tracing-log"], optional = true }
+intaglio = { version = "1.6", optional = true }
 
 [features]
 strict = []
