@@ -973,6 +973,19 @@ impl NFSFileSystem for SharesFS {
         if !path.contains("/objects/pack/") && (path.contains("/.git/") || path.ends_with(".git")) {
             self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
         }
+
+        let local_date_time: DateTime<Local> = Local::now();
+        let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
+    
+        let mut user = "";
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() > 2 {
+            user = parts[1];
+        }
+
+        if let Some(blockchain_audit) = &self.blockchain_audit {
+            let _ = blockchain_audit.trigger_event(&creation_time, "disassembled", &path, &user);
+        }
     
         let metadata = self.get_metadata_from_id(id).await?;
         FileMetadata::metadata_to_fattr3(id, &metadata).await
