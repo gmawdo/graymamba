@@ -4,7 +4,7 @@ Secure Provenance Tracking Filesystem - README
 Overview
 ========
 
-The Secure Provenance Tracking Filesystem is a cutting-edge Network File System (NFS) developed in Rust. The filesystem incorporates advanced features to ensure security and provenance tracking. It employs innovative methods such as the Shamir Secret Sharing Algorithm, blockchain (Polkadot/Aleph Zero), Redis Cluster, and a Git interception feature to deliver a secure, reliable, and traceable file storage solution.
+The Secure Provenance Tracking Filesystem is a cutting-edge Network File System (NFS) developed in Rust. The filesystem incorporates advanced features to support the principle of Secure by Design, ensuring a highly secure IDE and provenance tracking. It employs innovative methods such as the Shamir Secret Sharing Algorithm, Merkle Trees, ZNP Git interception feature to deliver a secure, reliable, and traceable IDE based file storage solution.
 
 Features
 ========
@@ -13,12 +13,15 @@ Features
     - Uses Shamir Secret Sharing to disassemble file contents into secret shares upon creation.
     - Reassembles the secret shares to reconstruct the file contents when the file is read.
     - Enhances security by ensuring that file contents are only accessible when a threshold number of shares are combined.
+    - The protocol of disassembly and reassembly os controlled by blockchain and provides audit hooks that are tamper-proof.
 2. Provenance Tracking with Blockchain:
-    - Tracks provenance by recording disassembly and reassembly events on Polkadot/Aleph Zero blockchain.
+    - Tracks provenance by recording disassembly and reassembly events on Polkadot/Aleph Zero blockchain or similar (e.g. Merkle Tree and append only aidit with ZKPs).
     - Provides tamper-proof records ensuring the integrity and traceability of file operations.
-3. Redis Cluster for Persistence:
-    - Utilizes Redis Cluster to store files and directories  persistently.
-    - Ensures high availability and fault tolerance.
+3. A data store for Persistence that must adhere to the following requirements as embodied in a trait:
+    - Store files and directories  persistently.
+    - Ensure a high availability and fault tolerance.
+    - Provide a set of operations that can be used to implement the file system.
+    - Currently Redis and RocksDB are the only data stores that adhere to the trait.
 4. Git Interception for Fast Cloning:
     - Enhances the cloning of large Git repositories by utilizing Shamir Secret Sharing.
     - Disassembles repository data into secret shares for faster and secure cloning processes.
@@ -30,14 +33,14 @@ Prerequisites
 =============
 
  	- Rust (latest stable version)
- 	- Polkadot/Aleph Zero node
-  	- Redis Cluster
+ 	- Polkadot/Aleph Zero node (optional)
+  	- Redis Cluster or RocksDB
 
 Steps
 =====
 1. Clone the Repository:
 
-      `git clone https://github.com/datasignals/secure-provenance-tracking-filesystem.git`<br>
+      `git clone https://github.com/gmawdo/secure-provenance-tracking-filesystem.git`<br>
       `cd secure-provenance-tracking-filesystem`
 
 2. Install Dependencies:
@@ -115,6 +118,16 @@ Steps
       - $ `cd mount_point`
       - Follow below Basic Commands
 
+Testing and performance commands
+---------------
+
+1. Linter:
+
+      `cargo clippy`
+
+2. Benchmarking:
+
+      `cargo bench`
 
 Docker Commands
 ---------------
@@ -165,6 +178,6 @@ Security
 Contact
 -------
 
-For any questions or support, please open an issue on GitHub or contact us at https://www.originmatters.co.
+For any questions or support, please open an issue on GitHub.
 
 Thank you for using Secure Provenance Tracking Filesystem. We are committed to providing a secure and reliable filesystem solution.
