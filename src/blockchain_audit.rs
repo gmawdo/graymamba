@@ -119,9 +119,8 @@ impl BlockchainAudit {
                 .tx()
                 .sign_and_submit_then_watch_default(&disassembled_call, &signer.clone())
                 .await
-                .map(|e| {
+                .inspect(|_e| {
                     println!("Disassembled call submitted, waiting for transaction to be finalized...");
-                    e
                 })?
                 .wait_for_finalized_success()
                 .await?;
@@ -135,9 +134,8 @@ impl BlockchainAudit {
                 .tx()
                 .sign_and_submit_then_watch_default(&reassembled_call, &signer.clone())
                 .await
-                .map(|e| {
+                .inspect(|_e| {
                     println!("Reassembled call submitted, waiting for transaction to be finalized...");
-                    e
                 })?
                 .wait_for_finalized_success()
                 .await?;

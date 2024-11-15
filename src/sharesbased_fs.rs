@@ -91,14 +91,14 @@ impl SharesFS {
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
 
-        let shares_fs = SharesFS {
+        
+
+        SharesFS {
             data_store,
             blockchain_audit,
             active_writes: active_writes.clone(),
             commit_semaphore: commit_semaphore.clone(),
-        };
-
-        shares_fs
+        }
     }
     // New method to start monitoring
     pub async fn start_monitoring(&self) {
@@ -219,7 +219,7 @@ impl SharesFS {
             // If the subpath is the root, return nodes with a score of ROOT_DIRECTORY_SCORE
             // Await the async operation and then transform the Ok value
             let nodes_result: Vec<String> = self.data_store.zrangebyscore(&key, 2.0, 2.0).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
-            Ok(nodes_result.into())
+            Ok(nodes_result)
             
         } else {
             // Calculate start and end scores based on the hierarchy level
@@ -229,7 +229,7 @@ impl SharesFS {
             // Retrieve nodes at the specified hierarchy level
             // Await the async operation and then transform the Ok value
             let nodes_result: Vec<String> = self.data_store.zrangebyscore(&key, end_score, end_score).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
-            Ok(nodes_result.into())
+            Ok(nodes_result)
             
         }
     }
@@ -253,9 +253,9 @@ impl SharesFS {
         
         let last_element = elements[elements.len() - 1];
         if last_element == "/" {
-            return String::from("/");
+            String::from("/")
         } else {
-            return last_element.to_string();
+            last_element.to_string()
         }
     }
 
@@ -274,7 +274,7 @@ impl SharesFS {
         
         self.data_store.zadd(
             &format!("{}/{}_nodes", hash_tag, namespace_id),
-            &path,
+            path,
             score
         ).await?;
     
@@ -314,7 +314,7 @@ impl SharesFS {
         
         let _ = self.data_store.zadd(
             &format!("{}/{}_nodes", hash_tag, namespace_id),
-            &path,
+            path,
             score
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
@@ -374,7 +374,6 @@ impl SharesFS {
                 // This part depends on what type your zscan_match returns
                 let matching_keys: Vec<String> = iter
                 .into_iter()
-                .map(|key| key)
                 .collect();
         
                 if !matching_keys.is_empty() {
@@ -702,21 +701,12 @@ impl SharesFS {
         let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
 
         // Retrieve the current file content (Base64 encoded) from store
-        let store_value: String = match self.data_store.hget(
-            &format!("{}{}", hash_tag, path),
-            "data"
-        ).await {
-            Ok(value) => value,
-            Err(_) => String::default(), // or handle the error differently
-        };
+        let store_value: String = (self.data_store.hget(&format!("{}{}", hash_tag, path),"data").await).unwrap_or_default();
     if !store_value.is_empty() {
         match reassemble(&store_value).await {
             Ok(reconstructed_secret) => {
                     // Decode the base64 string to a byte array
-                    match STANDARD.decode(&reconstructed_secret) {
-                        Ok(byte_array) => byte_array, // Use the Vec<u8> byte array as needed
-                        Err(_) => Vec::new(), // Handle decoding error by returning an empty Vec<u8>
-                    }
+                    STANDARD.decode(&reconstructed_secret).unwrap_or_default()
                 }
                 Err(_) => Vec::new(), // Handle the re_assembly error by returning an empty Vec<u8>
             }
@@ -807,7 +797,7 @@ impl SharesFS {
         let contents = channel.read_all().await;
 
 
-        let base64_contents = STANDARD.encode(&contents.to_vec()); // Convert byte array (Vec<u8>) to a base64 encoded string
+        let base64_contents = STANDARD.encode(&contents); // Convert byte array (Vec<u8>) to a base64 encoded string
         
 
         match disassemble(&base64_contents).await {
@@ -984,7 +974,7 @@ impl NFSFileSystem for SharesFS {
         }
 
         if let Some(blockchain_audit) = &self.blockchain_audit {
-            let _ = blockchain_audit.trigger_event(&creation_time, "disassembled", &path, &user);
+            let _ = blockchain_audit.trigger_event(&creation_time, "disassembled", &path, user);
         }
     
         let metadata = self.get_metadata_from_id(id).await?;
@@ -1063,7 +1053,7 @@ impl NFSFileSystem for SharesFS {
         }
     
         if let Some(blockchain_audit) = &self.blockchain_audit {
-            let _ = blockchain_audit.trigger_event(&creation_time, "reassembled", &path, &user);
+            let _ = blockchain_audit.trigger_event(&creation_time, "reassembled", &path, user);
         }
     
         Ok((data_slice.to_vec(), eof))
@@ -1283,13 +1273,11 @@ impl NFSFileSystem for SharesFS {
 
         let objectname_osstr = OsStr::from_bytes(filename).to_os_string();
         
-        let new_file_path: String;
-        
-        if parent_path == "/" {
-            new_file_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        let new_file_path: String = if parent_path == "/" {
+            format!("/{}", objectname_osstr.to_str().unwrap_or(""))
         } else {
-            new_file_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
-        }
+            format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""))
+        };
 
         // Check if file already exists
         let exists: bool = match self.data_store.zscore(
@@ -1350,13 +1338,11 @@ impl NFSFileSystem for SharesFS {
         
                 let objectname_osstr = OsStr::from_bytes(filename).to_os_string();
                 
-                let new_file_path: String;
-                
-                if parent_path == "/" {
-                    new_file_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+                let new_file_path: String = if parent_path == "/" {
+                    format!("/{}", objectname_osstr.to_str().unwrap_or(""))
                 } else {
-                    new_file_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
-                }
+                    format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""))
+                };
 
                 let exists: bool = match self.data_store.zscore(
                     &format!("{}/{}_nodes", hash_tag, namespace_id),
@@ -1379,7 +1365,7 @@ impl NFSFileSystem for SharesFS {
                     match fields_result {
                         Ok(value) => {
                             // File already exists, return the existing file ID
-                            return Ok(value.parse::<u64>().map_err(|_| nfsstat3::NFS3ERR_IO)?);
+                            return value.parse::<u64>().map_err(|_| nfsstat3::NFS3ERR_IO);
                         }
                         Err(_) => {
                             // Handle the error case, e.g., return NFS3ERR_IO or any other appropriate error
@@ -1409,29 +1395,22 @@ impl NFSFileSystem for SharesFS {
     }
 
     async fn remove(&self, dirid: fileid3, filename: &filename3) -> Result<(), nfsstat3> {       
-        let parent_path = format!("{}", self.get_path_from_id(dirid).await?);
+        let parent_path = (self.get_path_from_id(dirid).await?).to_string();
         let objectname_osstr = OsStr::from_bytes(filename).to_os_string();           
-        let new_dir_path: String;
-
         // Construct the full path of the file/directory
-        if parent_path == "/" {
-            new_dir_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        let new_dir_path: String = if parent_path == "/" {
+            format!("/{}", objectname_osstr.to_str().unwrap_or(""))
         } else {
-            new_dir_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
-        }
+            format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""))
+        };
 
         let ftype_result = self.get_ftype(new_dir_path.clone()).await;
         
         match ftype_result {
         Ok(ftype) => {
-            if ftype == "0" {
+            if ftype == "0" || ftype == "1" || ftype == "2" {
                 self.remove_directory_file(&new_dir_path).await?;
-            } else if ftype == "1" || ftype == "2"{
-                self.remove_directory_file(&new_dir_path).await?;
-            } else if ftype == "2"{
-                self.remove_directory_file(&new_dir_path).await?;
-            }
-            else {
+            } else {
                 return Err(nfsstat3::NFS3ERR_IO);
             }
         },
@@ -1451,16 +1430,13 @@ impl NFSFileSystem for SharesFS {
         ).await
             .map_err(|_| nfsstat3::NFS3ERR_IO)?;
         
-        let objectname_osstr = OsStr::from_bytes(&from_filename).to_os_string();
-    
-        let new_from_path: String;
-
-        // Construct the full path of the file/directory
-        if from_path == "/" {
-            new_from_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        let objectname_osstr = OsStr::from_bytes(from_filename).to_os_string();
+        // Construct the full path of the file/directory    
+        let new_from_path: String = if from_path == "/" {
+            format!("/{}", objectname_osstr.to_str().unwrap_or(""))
         } else {
-            new_from_path = format!("{}/{}", from_path, objectname_osstr.to_str().unwrap_or(""));
-        }
+            format!("{}/{}", from_path, objectname_osstr.to_str().unwrap_or(""))
+        };
 
             // Check if the source file exists in the share store
             let from_exists: bool = match self.data_store.zscore(
@@ -1485,23 +1461,19 @@ impl NFSFileSystem for SharesFS {
         ).await
             .map_err(|_| nfsstat3::NFS3ERR_IO)?;
         
-        let objectname_osstr = OsStr::from_bytes(&to_filename).to_os_string();
+        let objectname_osstr = OsStr::from_bytes(to_filename).to_os_string();
     
-        let new_to_path: String;
-
         // Construct the full path of the file/directory
-        if to_path == "/" {
-            new_to_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        let new_to_path: String = if to_path == "/" {
+            format!("/{}", objectname_osstr.to_str().unwrap_or(""))
         } else {
-            new_to_path = format!("{}/{}", to_path, objectname_osstr.to_str().unwrap_or(""));
-        }
+            format!("{}/{}", to_path, objectname_osstr.to_str().unwrap_or(""))
+        };
             
         let ftype_result = self.get_ftype(new_from_path.clone()).await;
         match ftype_result {
             Ok(ftype) => {
-                if ftype == "0" {
-                    self.rename_directory_file(&new_from_path, &new_to_path).await?;
-                } else if ftype == "1" || ftype == "2"{
+                if ftype == "0" || ftype == "1" || ftype == "2" {
                     self.rename_directory_file(&new_from_path, &new_to_path).await?;
                 } else {
                     return Err(nfsstat3::NFS3ERR_IO);
@@ -1530,13 +1502,11 @@ impl NFSFileSystem for SharesFS {
 
 
         let objectname_osstr = OsStr::from_bytes(dirname).to_os_string();
-        let new_dir_path: String;
-        
-        if parent_path == "/" {
-            new_dir_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        let new_dir_path: String = if parent_path == "/" {
+            format!("/{}", objectname_osstr.to_str().unwrap_or(""))
         } else {
-            new_dir_path = format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""));
-        }
+            format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""))
+        };
 
         // let key2 = format!("{}/{}_path_to_id", hash_tag, namespace_id);
 
@@ -1609,13 +1579,11 @@ impl NFSFileSystem for SharesFS {
     // Construct the full symlink path
     let objectname_osstr = OsStr::from_bytes(linkname).to_os_string();
                 
-        let symlink_path: String;
-                
-        if dir_path == "/" {
-            symlink_path = format!("/{}", objectname_osstr.to_str().unwrap_or(""));
+        let symlink_path: String = if dir_path == "/" {
+            format!("/{}", objectname_osstr.to_str().unwrap_or(""))
         } else {
-            symlink_path = format!("{}/{}", dir_path, objectname_osstr.to_str().unwrap_or(""));
-        }
+            format!("{}/{}", dir_path, objectname_osstr.to_str().unwrap_or(""))
+        };
 
         let symlink_exists: bool = match self.data_store.zscore(
             &format!("{}/{}_nodes", hash_tag, namespace_id),

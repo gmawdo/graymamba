@@ -249,27 +249,27 @@ impl DataStore for RedisDataStore {
 
         // In the init_user_directory function, modify the hset_multiple call:
         let _: () = conn.hset_multiple(
-            &format!("{}:{}", hash_tag, mount_path),
+            format!("{}:{}", hash_tag, mount_path),
             &hash_fields
         ).map_err(|_| DataStoreError::OperationFailed)?;
     
         // Set path to id mapping
         let _: () = conn.hset(
-            &format!("{}:{}_path_to_id", hash_tag, path),
+            format!("{}:{}_path_to_id", hash_tag, path),
             mount_path,
             fileid
         ).map_err(|_| DataStoreError::OperationFailed)?;
     
         // Set id to path mapping
         let _: () = conn.hset(
-            &format!("{}:{}_id_to_path", hash_tag, path),
+            format!("{}:{}_id_to_path", hash_tag, path),
             fileid.to_string(),
             mount_path
         ).map_err(|_| DataStoreError::OperationFailed)?;
     
         if fileid == 1 {
             let _: () = conn.set(
-                &format!("{}:{}_next_fileid", hash_tag, path),
+                format!("{}:{}_next_fileid", hash_tag, path),
                 1
             ).map_err(|_| DataStoreError::OperationFailed)?;
         }

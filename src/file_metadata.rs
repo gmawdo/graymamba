@@ -25,21 +25,6 @@ pub struct FileMetadata {
 }
 
 impl FileMetadata {
-    #[allow(dead_code)]
-    pub fn new(ftype: u8, permissions: u32, size: u64, access_time_secs: u32, access_time_nsecs: u32, change_time_secs: u32, change_time_nsecs: u32, modification_time_secs: u32, modification_time_nsecs: u32, fileid: u64) -> Self {
-        FileMetadata {
-            ftype,
-            permissions,
-            size,
-            access_time_secs,
-            access_time_nsecs,
-            change_time_secs,
-            change_time_nsecs,
-            modification_time_secs,
-            modification_time_nsecs,
-            fileid,
-        }
-    }
     async fn mode_unmask(mode: u32) -> u32 {
         let mode = mode | 0x80;
         let permissions = std::fs::Permissions::from_mode(mode);
@@ -67,16 +52,16 @@ impl FileMetadata {
             fileid: fid,
             rdev: specdata3::default(),
             atime: nfstime3 {
-                seconds: metadata.access_time_secs as u32,
-                nseconds: metadata.access_time_nsecs as u32,
+                seconds: metadata.access_time_secs,
+                nseconds: metadata.access_time_nsecs,
             },
             mtime: nfstime3 {
-                seconds: metadata.modification_time_secs as u32,
-                nseconds: metadata.modification_time_nsecs as u32,
+                seconds: metadata.modification_time_secs,
+                nseconds: metadata.modification_time_nsecs,
             },
             ctime: nfstime3 {
-                seconds: metadata.change_time_secs as u32,
-                nseconds: metadata.change_time_nsecs as u32,
+                seconds: metadata.change_time_secs,
+                nseconds: metadata.change_time_nsecs,
             },
         })
     }

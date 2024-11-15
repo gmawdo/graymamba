@@ -163,6 +163,12 @@ impl DataStore for TestDataStore {
     }
 }
 
+impl Default for TestDataStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TestDataStore {
     pub fn new() -> Self {
         TestDataStore {
