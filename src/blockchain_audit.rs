@@ -6,9 +6,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
 use config::{Config, File};
-use subxt::backend::legacy::LegacyRpcMethods;
+//use subxt::backend::legacy::LegacyRpcMethods;
 use subxt::backend::rpc::RpcClient;
-use subxt::utils::AccountId32;
+//use subxt::utils::AccountId32;
 use subxt::OnlineClient;
 use subxt::PolkadotConfig;
 use subxt_signer::sr25519::dev;
@@ -20,10 +20,10 @@ pub mod pallet_template {}
 
 pub struct BlockchainAudit {
     api: OnlineClient<PolkadotConfig>,
-    account_id: AccountId32,
+    //account_id: AccountId32,
     signer: Keypair,
     tx_sender: Sender<AuditEvent>,
-    rpc: LegacyRpcMethods<PolkadotConfig>,
+    //rpc: LegacyRpcMethods<PolkadotConfig>,
 }
 
 #[async_trait]
@@ -39,7 +39,7 @@ impl IrrefutableAudit for BlockchainAudit {
                 .await
                 .map_err(|e| AuditError::ConnectionError(e.to_string()))?;
             
-            let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client.clone());
+            //let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client.clone());
             let api = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client)
                 .await
                 .map_err(|e| AuditError::ConnectionError(e.to_string()))?;
@@ -86,7 +86,7 @@ impl BlockchainAudit {
         let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client);
         println!("✅ Connection with BlockChain Node established.");
 
-        let account_id: AccountId32 = dev::alice().public_key().into();
+        //let account_id: AccountId32 = dev::alice().public_key().into();
         let signer = dev::alice();
         
         let (tx_sender, rx) = mpsc::channel();
@@ -96,10 +96,10 @@ impl BlockchainAudit {
 
         Ok(BlockchainAudit {
             api,
-            account_id,
+            //account_id,
             signer,
             tx_sender,
-            rpc,
+            //rpc,
         })
     }
 
@@ -108,11 +108,13 @@ impl BlockchainAudit {
     }
 
     fn spawn_event_handler(receiver: Receiver<AuditEvent>) -> Result<(), Box<dyn Error>> {
+        let blockchain_audit = Self::new()?;
+        
         thread::spawn(move || {
             let rt = Runtime::new().unwrap();
             rt.block_on(async {
                 while let Ok(event) = receiver.recv() {
-                    if let Err(e) = Self::process_event(event).await {
+                    if let Err(e) = blockchain_audit.process_event(event).await {
                         eprintln!("Failed to process event: {:?}", e);
                     }
                 }
@@ -122,28 +124,37 @@ impl BlockchainAudit {
         Ok(())
     }
 
-    async fn process_event(event: AuditEvent) -> Result<(), Box<dyn Error>> {
+    async fn process_event(&self, event: AuditEvent) -> Result<(), Box<dyn Error>> {
         println!("Processing event: {:?}", event);
-    
-        // Clone the strings before converting to bytes
+
         let event_type_bytes = event.event_type.clone().into_bytes();
         let creation_time = event.creation_time.into_bytes();
         let file_path = event.file_path.into_bytes();
         let event_key = event.event_key.into_bytes();
-    
+
         match event.event_type.as_str() {
             "disassembled" => {
-                let _call = pallet_template::tx()
+                let tx = pallet_template::tx()
                     .template_module()
                     .disassembled(event_type_bytes, creation_time, file_path, event_key);
-                // Submit transaction...
+                
+                self.api.tx()
+                    .sign_and_submit_default(&tx, &self.signer)
+                    .await
+                    .map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
+                
                 println!("Disassembled event processed.");
             }
             "reassembled" => {
-                let _call = pallet_template::tx()
+                let tx = pallet_template::tx()
                     .template_module()
                     .reassembled(event_type_bytes, creation_time, file_path, event_key);
-                // Submit transaction...
+                
+                self.api.tx()
+                    .sign_and_submit_default(&tx, &self.signer)
+                    .await
+                    .map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
+                
                 println!("Reassembled event processed.");
             }
             _ => return Err(Box::new(AuditError::EventProcessingError(

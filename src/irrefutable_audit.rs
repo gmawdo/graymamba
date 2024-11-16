@@ -1,7 +1,3 @@
-use std::error::Error;
-use std::sync::mpsc::{Sender, Receiver};
-use async_trait::async_trait;
-
 /*
 Here's a detailed explanation of how the connection between send and process_event is established by the trait:
 
@@ -18,6 +14,9 @@ and the channel system. Here's the flow:
 Even though the trait doesn't explicitly link them, the implementation has to connect them via the channel system
 in spawn_event_handler, thus laying down the pattern for an irrfutable logegr.
 */
+use std::error::Error;
+use std::sync::mpsc::{Sender, Receiver};
+use async_trait::async_trait;
 
 /// Represents an audit event that must be recorded
 #[derive(Clone, Debug)]
@@ -31,7 +30,6 @@ pub struct AuditEvent {
 /// Trait defining the interface for irrefutable audit systems
 /// Implementations of this trait guarantee that events are permanently recorded
 /// in a tamper-evident manner using a dedicated event handling thread
-
 #[async_trait]
 pub trait IrrefutableAudit: Send + Sync {
     /// Initialize a new instance of the audit system
@@ -42,11 +40,9 @@ pub trait IrrefutableAudit: Send + Sync {
     fn new() -> Result<Self, Box<dyn Error>> where Self: Sized;
 
     /// Get the sender handle for dispatching events
-    /// This is used internally by trigger_event
     fn get_sender(&self) -> &Sender<AuditEvent>;
 
     /// Trigger a new audit event
-    /// This method ensures events are sent to the handler thread
     fn trigger_event(
         &self,
         creation_time: &str,
@@ -66,16 +62,12 @@ pub trait IrrefutableAudit: Send + Sync {
     }
 
     /// Start the event handler thread
-    /// This method must be called during initialization
-    /// It should run continuously, processing events from the channel
     fn spawn_event_handler(receiver: Receiver<AuditEvent>) -> Result<(), Box<dyn Error>> where Self: Sized;
 
     /// Process a single event in the handler thread
-    /// This is where the actual recording of the event occurs
-    async fn process_event(event: AuditEvent) -> Result<(), Box<dyn Error>> where Self: Sized;
+    async fn process_event(&self, event: AuditEvent) -> Result<(), Box<dyn Error>>;
 
     /// Gracefully shutdown the audit system
-    /// This should ensure all pending events are processed before shutting down
     fn shutdown(&self) -> Result<(), Box<dyn Error>>;
 }
 
