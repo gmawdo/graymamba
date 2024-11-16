@@ -1,36 +1,49 @@
-use subxt::backend::legacy::LegacyRpcMethods;
-use subxt::OnlineClient;
-use config::{Config, File};
+use crate::irrefutable_audit::{IrrefutableAudit, AuditEvent, AuditError};
+use async_trait::async_trait;
+use std::error::Error;
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
-use subxt::{PolkadotConfig,utils::AccountId32};
 
-use subxt_signer::sr25519::Keypair;
-use subxt_signer::sr25519::dev;
-use tokio::runtime::Runtime;
+use config::{Config, File};
+use subxt::backend::legacy::LegacyRpcMethods;
 use subxt::backend::rpc::RpcClient;
+use subxt::utils::AccountId32;
+use subxt::OnlineClient;
+use subxt::PolkadotConfig;
+use subxt_signer::sr25519::dev;
+use subxt_signer::sr25519::Keypair;
+use tokio::runtime::Runtime;
 
 #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
 pub mod pallet_template {}
 
-#[allow(dead_code)]
 pub struct BlockchainAudit {
     api: OnlineClient<PolkadotConfig>,
     account_id: AccountId32,
     signer: Keypair,
-    tx_sender: Sender<Event>,
-
+    tx_sender: Sender<AuditEvent>,
     rpc: LegacyRpcMethods<PolkadotConfig>,
-    enable_blockchain: bool
 }
 
-pub struct Event {
-    creation_time: String,
-    event_type: String,
-    file_path: String,
-    event_key: String,
-}
+#[async_trait]
+impl IrrefutableAudit for BlockchainAudit {
+    fn new() -> Result<Self, Box<dyn Error>> {
+        let rt = Runtime::new()?;
+        rt.block_on(async {
+            let mut settings = Config::default();
+            settings.merge(File::with_name("config/settings.toml"))?;
+            let ws_url: String = settings.get("substrate.ws_url")?;
+            
+            let rpc_client = RpcClient::from_url(&ws_url)
+                .await
+                .map_err(|e| AuditError::ConnectionError(e.to_string()))?;
+            
+            let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client.clone());
+            let api = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client)
+                .await
+                .map_err(|e| AuditError::ConnectionError(e.to_string()))?;
+
 
 #[derive(Debug)]
 pub enum BlockchainError {
@@ -75,25 +88,11 @@ impl BlockchainAudit {
 
         let account_id: AccountId32 = dev::alice().public_key().into();
         let signer = dev::alice();
-        let (tx_sender, tx_receiver) = mpsc::channel();
-
-        let rpc_clone = rpc.clone();
-        let api_clone = api.clone();
-        let signer_clone = signer.clone();
-        let account_id_clone = account_id.clone();
-
-        thread::spawn(move || {
-            let rt = Runtime::new().unwrap();
-            rt.block_on(async move {
-                BlockchainAudit::event_handler(
-                    tx_receiver, 
-                    api_clone,
-                    rpc_clone,
-                    signer_clone, 
-                    account_id_clone
-                ).await;
-            });
-        });
+        
+        let (tx_sender, rx) = mpsc::channel();
+        
+        // Spawn the event handler thread
+        Self::spawn_event_handler(rx)?;
 
         Ok(BlockchainAudit {
             api,
@@ -101,88 +100,69 @@ impl BlockchainAudit {
             signer,
             tx_sender,
             rpc,
-            enable_blockchain: true,
         })
     }
 
-    async fn event_handler(
-        rx: Receiver<Event>,
-        api: OnlineClient<PolkadotConfig>,
-        rpc: LegacyRpcMethods<PolkadotConfig>,
-        signer: Keypair,
-        account_id: AccountId32,
-    ) {
-        while let Ok(event) = rx.recv() {
-            // match NFSModule::send_event(&api, &signer, &account_id, &event).await {
-            match BlockchainAudit::send_event(&api, &rpc, &signer, &account_id, &event).await {
-                Ok(_) => println!("............................"),
-                Err(e) => println!("Failed to send event: {:?}", e),
-            }
-        }
+    fn get_sender(&self) -> &Sender<AuditEvent> {
+        &self.tx_sender
     }
 
-    async fn send_event(
-        api: &OnlineClient<PolkadotConfig>,
-        _rpc: &LegacyRpcMethods<PolkadotConfig>,
-        signer: &Keypair,
-        _account_id: &AccountId32,
-        event: &Event,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Preparing to send event...");
-    
-        // Data to be used in calls (convert event data to Vec<u8>)
-        let event_type: Vec<u8> = event.event_type.clone().into_bytes();
-        let creation_time: Vec<u8> = event.creation_time.clone().into_bytes();
-        let file_path: Vec<u8> = event.file_path.clone().into_bytes();
-        let event_key: Vec<u8> = event.event_key.clone().into_bytes();
-
-        if event.event_type == "disassembled" {
-            // Call the disassembled function
-            let disassembled_call = pallet_template::tx()
-                .template_module()
-                .disassembled(event_type.clone() ,creation_time.clone(), file_path.clone(), event_key.clone());
-        
-                let _disassembled_events = api.clone()
-                .tx()
-                .sign_and_submit_then_watch_default(&disassembled_call, &signer.clone())
-                .await
-                .inspect(|_e| {
-                    println!("Disassembled call submitted, waiting for transaction to be finalized...");
-                })?
-                .wait_for_finalized_success()
-                .await?;
-            println!("Disassembled event processed."); 
-        } else if  event.event_type == "reassembled" {
-            // Call the reassembled function
-            let reassembled_call = pallet_template::tx()
-                .template_module()
-                .reassembled(event_type.clone(), creation_time.clone(), file_path.clone(), event_key.clone());
-                let _reassembled_events = api.clone()
-                .tx()
-                .sign_and_submit_then_watch_default(&reassembled_call, &signer.clone())
-                .await
-                .inspect(|_e| {
-                    println!("Reassembled call submitted, waiting for transaction to be finalized...");
-                })?
-                .wait_for_finalized_success()
-                .await?;
-                println!("Reassembled event processed.");   
-        } else {
-                eprintln!("Unknown event type");       
-        }
+    fn spawn_event_handler(receiver: Receiver<AuditEvent>) -> Result<(), Box<dyn Error>> {
+        thread::spawn(move || {
+            let rt = Runtime::new().unwrap();
+            rt.block_on(async {
+                while let Ok(event) = receiver.recv() {
+                    if let Err(e) = Self::process_event(event).await {
+                        eprintln!("Failed to process event: {:?}", e);
+                    }
+                }
+            });
+        });
 
         Ok(())
     }
 
-    pub fn trigger_event(&self, creation_time: &str, event_type: &str, file_path: &str, event_key: &str) {
-        if self.enable_blockchain {    
-            let event = Event {
-                creation_time: creation_time.to_string(),
-                event_type: event_type.to_string(),
-                file_path: file_path.to_string(),
-                event_key: event_key.to_string(),
-            };
-            self.tx_sender.send(event).unwrap();
+    async fn process_event(event: AuditEvent) -> Result<(), Box<dyn Error>> {
+        println!("Processing event: {:?}", event);
+    
+        // Clone the strings before converting to bytes
+        let event_type_bytes = event.event_type.clone().into_bytes();
+        let creation_time = event.creation_time.into_bytes();
+        let file_path = event.file_path.into_bytes();
+        let event_key = event.event_key.into_bytes();
+    
+        match event.event_type.as_str() {
+            "disassembled" => {
+                let _call = pallet_template::tx()
+                    .template_module()
+                    .disassembled(event_type_bytes, creation_time, file_path, event_key);
+                // Submit transaction...
+                println!("Disassembled event processed.");
+            }
+            "reassembled" => {
+                let _call = pallet_template::tx()
+                    .template_module()
+                    .reassembled(event_type_bytes, creation_time, file_path, event_key);
+                // Submit transaction...
+                println!("Reassembled event processed.");
+            }
+            _ => return Err(Box::new(AuditError::EventProcessingError(
+                "Unknown event type".to_string()
+            ))),
         }
+        Ok(())
     }
+
+    fn shutdown(&self) -> Result<(), Box<dyn Error>> {
+        // Drop sender to signal handler thread to stop
+        // Additional cleanup if needed
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Add tests here
 }

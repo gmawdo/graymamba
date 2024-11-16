@@ -7,6 +7,7 @@ use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
 
 #[cfg(feature = "blockchain_audit")]
 use graymamba::blockchain_audit::BlockchainAudit;
+use graymamba::irrefutable_audit::IrrefutableAudit; 
 
 extern crate secretsharing;
 use config::{Config, File as ConfigFile};
@@ -80,6 +81,7 @@ async fn main() {
             println!("✅ Blockchain initialization successful");
             Some(Arc::new(audit))
         },
+
         Err(e) => {
             eprintln!("❌ Fatal Error: {}", e);
             eprintln!("\nRequired services:");

@@ -35,6 +35,7 @@ use async_trait::async_trait;
 
 use tracing::{debug, warn};
 
+use crate::irrefutable_audit::IrrefutableAudit;
 use graymamba::blockchain_audit::BlockchainAudit;
 use graymamba::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 
