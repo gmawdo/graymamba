@@ -75,11 +75,17 @@ async fn main() {
     let _data_store2 = Arc::new(RocksDBDataStore::new("theROCKSDB").expect("Failed to create a data store"));
 
     #[cfg(feature = "blockchain_audit")]
-    let blockchain_audit = match BlockchainAudit::new().await {
-        Ok(module) => Some(Arc::new(module)),
+    let blockchain_audit =    match BlockchainAudit::new().await {
+        Ok(audit) => {
+            println!("✅ Blockchain initialization successful");
+            Some(Arc::new(audit))
+        },
         Err(e) => {
-            eprintln!("❌ Failed to create BlockchainAudit: {}", e);
-            None
+            eprintln!("❌ Fatal Error: {}", e);
+            eprintln!("\nRequired services:");
+            eprintln!(" - Aleph Zero blockchain node must be running");
+            eprintln!(" - Check your blockchain configuration in settings.toml");
+            std::process::exit(1);
         }
     };
 

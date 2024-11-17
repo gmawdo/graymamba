@@ -118,6 +118,14 @@ Steps
       - $ `cd mount_point`
       - Follow below Basic Commands
 
+When the blockchain is compiled in and running then you will see the following type of output on the console when a file is created or read:
+---------------
+............................
+Preparing to send event...
+Disassembled call submitted, waiting for transaction to be finalized...
+Disassembled event processed.
+............................
+
 Testing and performance commands
 ---------------
 
