@@ -36,6 +36,7 @@ mod nfs_handlers;
 pub mod vfs;
 
 pub mod irrefutable_audit;
+#[cfg(feature = "blockchain_audit")]
 pub mod blockchain_audit;
 
 pub mod channel_buffer;
