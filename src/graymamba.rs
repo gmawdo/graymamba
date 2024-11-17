@@ -7,6 +7,7 @@ use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
 
 #[cfg(feature = "blockchain_audit")]
 use graymamba::blockchain_audit::BlockchainAudit;
+#[cfg(feature = "blockchain_audit")]
 use graymamba::irrefutable_audit::IrrefutableAudit; 
 
 extern crate secretsharing;

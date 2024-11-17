@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
 use config::{Config, File};
-//use subxt::backend::legacy::LegacyRpcMethods;
+use subxt::backend::legacy::LegacyRpcMethods;
 use subxt::backend::rpc::RpcClient;
 //use subxt::utils::AccountId32;
 use subxt::OnlineClient;
@@ -26,24 +26,6 @@ pub struct BlockchainAudit {
     //rpc: LegacyRpcMethods<PolkadotConfig>,
 }
 
-#[async_trait]
-impl IrrefutableAudit for BlockchainAudit {
-    fn new() -> Result<Self, Box<dyn Error>> {
-        let rt = Runtime::new()?;
-        rt.block_on(async {
-            let mut settings = Config::default();
-            settings.merge(File::with_name("config/settings.toml"))?;
-            let ws_url: String = settings.get("substrate.ws_url")?;
-            
-            let rpc_client = RpcClient::from_url(&ws_url)
-                .await
-                .map_err(|e| AuditError::ConnectionError(e.to_string()))?;
-            
-            //let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client.clone());
-            let api = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client)
-                .await
-                .map_err(|e| AuditError::ConnectionError(e.to_string()))?;
-
 
 #[derive(Debug)]
 pub enum BlockchainError {
@@ -62,8 +44,9 @@ impl std::fmt::Display for BlockchainError {
 
 impl std::error::Error for BlockchainError {}
 
-impl BlockchainAudit {
-    pub async fn new() -> Result<BlockchainAudit, BlockchainError> {
+#[async_trait]
+impl IrrefutableAudit for BlockchainAudit {
+    async fn new() -> Result<Self, Box<dyn Error>> {
         let mut settings = Config::default();
         settings.merge(File::with_name("config/settings.toml"))
             .map_err(|e| BlockchainError::ConfigError(e.to_string()))?;
@@ -83,7 +66,7 @@ impl BlockchainAudit {
                 format!("Failed to establish blockchain connection: {}", e)
             ))?;
 
-        let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client);
+        let _rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client);
         println!("✅ Connection with BlockChain Node established.");
 
         //let account_id: AccountId32 = dev::alice().public_key().into();
@@ -91,16 +74,16 @@ impl BlockchainAudit {
         
         let (tx_sender, rx) = mpsc::channel();
         
-        // Spawn the event handler thread
-        Self::spawn_event_handler(rx)?;
-
-        Ok(BlockchainAudit {
+        let audit = BlockchainAudit {
             api,
-            //account_id,
             signer,
             tx_sender,
-            //rpc,
-        })
+        };
+        
+        // Spawn the event handler
+        Self::spawn_event_handler(rx)?;
+        
+        Ok(audit)
     }
 
     fn get_sender(&self) -> &Sender<AuditEvent> {
@@ -108,19 +91,16 @@ impl BlockchainAudit {
     }
 
     fn spawn_event_handler(receiver: Receiver<AuditEvent>) -> Result<(), Box<dyn Error>> {
-        let blockchain_audit = Self::new()?;
-        
         thread::spawn(move || {
             let rt = Runtime::new().unwrap();
-            rt.block_on(async {
+            rt.block_on(async move {
                 while let Ok(event) = receiver.recv() {
-                    if let Err(e) = blockchain_audit.process_event(event).await {
-                        eprintln!("Failed to process event: {:?}", e);
-                    }
+                    // Just process the event - no new connection needed
+                    println!("Processing event: {:?}", event);
+                    // TODO: Add actual event processing logic here
                 }
             });
         });
-
         Ok(())
     }
 

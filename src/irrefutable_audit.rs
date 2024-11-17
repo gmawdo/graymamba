@@ -37,7 +37,7 @@ pub trait IrrefutableAudit: Send + Sync {
     /// 1. Create a channel for event communication
     /// 2. Spawn a dedicated event handling thread
     /// 3. Return a ready-to-use instance
-    fn new() -> Result<Self, Box<dyn Error>> where Self: Sized;
+    async fn new() -> Result<Self, Box<dyn Error>> where Self: Sized;
 
     /// Get the sender handle for dispatching events
     fn get_sender(&self) -> &Sender<AuditEvent>;
