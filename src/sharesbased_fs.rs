@@ -36,7 +36,6 @@ use async_trait::async_trait;
 use tracing::{debug, warn};
 
 use crate::irrefutable_audit::IrrefutableAudit;
-use graymamba::blockchain_audit::BlockchainAudit;
 use graymamba::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 
 use lazy_static::lazy_static;
@@ -52,7 +51,7 @@ use secretsharing::{disassemble, reassemble};
 #[derive(Clone)]
 pub struct SharesFS {
     pub data_store: Arc<dyn DataStore>,
-    pub blockchain_audit: Option<Arc<BlockchainAudit>>, // Add NFSModule wrapped in Arc
+    pub blockchain_audit: Option<Arc<dyn IrrefutableAudit>>, // Add NFSModule wrapped in Arc
     pub active_writes: Arc<Mutex<HashMap<fileid3, ActiveWrite>>>,
     pub commit_semaphore: Arc<Semaphore>,
     
@@ -87,7 +86,7 @@ impl SharesFS {
         Ok(())
     }
 
-    pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<BlockchainAudit>>) -> SharesFS {
+    pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<dyn IrrefutableAudit>>) -> SharesFS {
         // Create shared components for active writes
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities

@@ -80,7 +80,7 @@ async fn main() {
     let blockchain_audit =    match BlockchainAudit::new().await {
         Ok(audit) => {
             println!("✅ Blockchain initialization successful");
-            Some(Arc::new(audit))
+            Some(Arc::new(audit) as Arc<dyn IrrefutableAudit>)
         },
 
         Err(e) => {
