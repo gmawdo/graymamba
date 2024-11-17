@@ -1,6 +1,6 @@
 use subxt::backend::legacy::LegacyRpcMethods;
 use subxt::OnlineClient;
-use config::{Config, ConfigError, File};
+use config::{Config, File};
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -32,39 +32,66 @@ pub struct Event {
     event_key: String,
 }
 
+#[derive(Debug)]
+pub enum BlockchainError {
+    ConnectionFailed(String),
+    ConfigError(String),
+}
+
+impl std::fmt::Display for BlockchainError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BlockchainError::ConnectionFailed(msg) => write!(f, "Blockchain Connection Error: {}", msg),
+            BlockchainError::ConfigError(msg) => write!(f, "Blockchain Config Error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for BlockchainError {}
+
 impl BlockchainAudit {
-    pub async fn new() -> Result<BlockchainAudit, ConfigError> {
+    pub async fn new() -> Result<BlockchainAudit, BlockchainError> {
         let mut settings = Config::default();
-        settings.merge(File::with_name("config/settings.toml"))?;
+        settings.merge(File::with_name("config/settings.toml"))
+            .map_err(|e| BlockchainError::ConfigError(e.to_string()))?;
 
-        let enable_blockchain: bool = settings.get("enable_blockchain")?;
-        let ws_url: String = settings.get("substrate.ws_url")?;
-
+        let ws_url: String = settings.get("substrate.ws_url")
+            .map_err(|e| BlockchainError::ConfigError(e.to_string()))?;
         
-        // Create the RPC client
-        let rpc_client = RpcClient::from_url(&ws_url).await.expect("Failed to create RPC client");
+        // Attempt to create RPC client
+        let rpc_client = RpcClient::from_url(&ws_url).await
+            .map_err(|e| BlockchainError::ConnectionFailed(
+                format!("Failed to connect to blockchain at {}: {}. Please ensure the node is running.", ws_url, e)
+            ))?;
 
-        // Use this to construct our RPC methods
-        let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client.clone());
         // Create the API client
-        let api = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client).await.expect("Failed to create BlockChain Connection");
-        println!("Connection with BlockChain Node established.");
+        let api = OnlineClient::<PolkadotConfig>::from_rpc_client(rpc_client.clone()).await
+            .map_err(|e| BlockchainError::ConnectionFailed(
+                format!("Failed to establish blockchain connection: {}", e)
+            ))?;
+
+        let rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client);
+        println!("✅ Connection with BlockChain Node established.");
 
         let account_id: AccountId32 = dev::alice().public_key().into();
         let signer = dev::alice();
+        let (tx_sender, tx_receiver) = mpsc::channel();
+
         let rpc_clone = rpc.clone();
         let api_clone = api.clone();
         let signer_clone = signer.clone();
         let account_id_clone = account_id.clone();
 
-        let (tx_sender, tx_receiver) = mpsc::channel();
-
-        // Spawn the event sending thread
         thread::spawn(move || {
             let rt = Runtime::new().unwrap();
             rt.block_on(async move {
-                //NFSModule::event_handler(tx_receiver, api_clone, signer_clone, account_id_clone).await;
-                BlockchainAudit::event_handler(tx_receiver, api_clone, rpc_clone ,signer_clone, account_id_clone).await;
+                BlockchainAudit::event_handler(
+                    tx_receiver, 
+                    api_clone,
+                    rpc_clone,
+                    signer_clone, 
+                    account_id_clone
+                ).await;
             });
         });
 
@@ -74,7 +101,7 @@ impl BlockchainAudit {
             signer,
             tx_sender,
             rpc,
-            enable_blockchain,
+            enable_blockchain: true,
         })
     }
 
