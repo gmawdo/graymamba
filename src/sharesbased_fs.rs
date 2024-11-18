@@ -764,7 +764,7 @@ impl SharesFS {
 
     async fn commit_write(&self, id: fileid3) -> Result<(), DataStoreError> {
 
-        debug!("Starting commit process for file ID: {}", id);
+        warn!("Starting commit process for file ID: {}", id);
 
         let _permit = self.commit_semaphore.acquire().await.map_err(|_| DataStoreError::OperationFailed);
 
@@ -803,6 +803,7 @@ impl SharesFS {
         match disassemble(&base64_contents).await {
             Ok(shares) => {
                 // Attempt to write the shares to the data store
+                warn!("Writing shares to data store");
                 match self
                     .data_store
                     .hset(&format!("{}{}", hash_tag, path), "data", &shares)
@@ -959,6 +960,10 @@ impl NFSFileSystem for SharesFS {
             "size",
             &total_size.to_string()
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+
+        if self.is_likely_last_write(id, offset, data.len()).await? {
+            self.mark_write_as_complete(id).await?;
+        }
     
         if !path.contains("/objects/pack/") && (path.contains("/.git/") || path.ends_with(".git")) {
             self.commit_write(id).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
