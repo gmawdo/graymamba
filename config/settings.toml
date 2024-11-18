@@ -10,8 +10,8 @@ substrate.ws_url = "ws://127.0.0.1:9944"
 
 #Secret Sharing Configuration
 chunk_size = 48
-threshold = 1
-share_amount = 2
+threshold = 2
+share_amount = 3
 prime = "1602647667098023157650208502760830646118971559180602279760560620305846622963164828915087516998772696148300120393034934719"
 thread_number = 5
 enable_blockchain = true
