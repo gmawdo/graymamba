@@ -1,9 +1,8 @@
 [package]
 name = "graymamba"
-version = "2.0.1"
+version = "3.0.1"
 edition = "2021"
 description = "A Rust Secure Provenance Tracking Filesystem"
-homepage = "https://www.originmatters.co"
 repository = "https://github.com/gmawdo/secure-provenance-tracking-filesystem"
 readme = "README.md"
 keywords = ["nfs"]
@@ -46,8 +45,6 @@ redis = "0.25.3"
 r2d2_redis_cluster2 = "0.23.3"
 rocksdb = "0.22.0"
 
-# IPFS integration
-#iroh = { git = "https://github.com/n0-computer/iroh.git", branch = "main" }
 
 # Parallel processing
 rayon = "1.10.0"
@@ -57,22 +54,8 @@ tracing = "0.1.31"
 tracing-attributes = "0.1"
 env_logger = "0.11.3"
 
-# Blockchain integration
-subxt = "0.37.0"
-subxt-signer = "0.37.0"
 secretsharing = { path = "./secretsharing_wrapper" }
 wasmtime = "21.0.1"
-
-# Substrate specific
-frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
-frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
-pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
-pallet-identity = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
-pallet-staking = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
-sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
-sp-keyring = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
-sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
-sp-weights = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" }
 
 # Configuration and time
 once_cell = "1.19.0"
@@ -83,10 +66,26 @@ chrono = "0.4"
 tracing-subscriber = { version = "0.3", features = ["tracing-log"], optional = true }
 intaglio = { version = "1.6", optional = true }
 
+# required for Polkadot substrate, Aleph Zero blockchain integration
+#subxt = { version = "0.37.0", optional = true }
+#subxt-signer = { version = "0.37.0", optional = true }
+# Substrate specific
+#frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true  }
+#frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true  }
+#pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true }
+#pallet-identity = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true }
+#pallet-staking = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true }
+
+#sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
+#sp-keyring = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
+#sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
+#sp-weights = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
+
+
 [features]
 strict = []
 traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
-blockchain_audit = []
+irrefutable_audit = []
 
 [[bin]]
 name = "graymamba"

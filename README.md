@@ -96,10 +96,10 @@ Steps
  		$ `cargo build —release`
 		$ `scripts/run_nodes.sh`
 
-5. Now to Build the filesystem open terminal at secure-provenance-filesystem folder and run one of (note blockchain_audit features compiles in blockchain integration):
+5. Now to Build the filesystem open terminal at secure-provenance-filesystem folder and run one of (note iirefutable_audit feature compiles in blockchain tech integration):
 
        `cargo build --bin graymamba --features="traceability" --release`
-       `cargo build --bin graymamba --features="traceability,blockchain_audit" --release`
+       `cargo build --bin graymamba --features="traceability,irrefutable_audit" --release`
 
 6. Run the FileSystem:
       - Create below folder somewhere in System: 
