@@ -35,7 +35,6 @@ use async_trait::async_trait;
 
 use tracing::{debug, warn};
 
-use crate::irrefutable_audit::IrrefutableAudit;
 use graymamba::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 
 use lazy_static::lazy_static;
@@ -48,10 +47,13 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use secretsharing::{disassemble, reassemble};
 
+use crate::irrefutable_audit::{AuditEvent, IrrefutableAudit};
+use crate::irrefutable_audit::event_types::{DISASSEMBLED, REASSEMBLED};
+
 #[derive(Clone)]
 pub struct SharesFS {
     pub data_store: Arc<dyn DataStore>,
-    pub blockchain_audit: Option<Arc<dyn IrrefutableAudit>>, // Add NFSModule wrapped in Arc
+    pub irrefutable_audit: Option<Arc<dyn IrrefutableAudit>>, // Add NFSModule wrapped in Arc
     pub active_writes: Arc<Mutex<HashMap<fileid3, ActiveWrite>>>,
     pub commit_semaphore: Arc<Semaphore>,
     
@@ -86,16 +88,14 @@ impl SharesFS {
         Ok(())
     }
 
-    pub fn new(data_store: Arc<dyn DataStore>, blockchain_audit: Option<Arc<dyn IrrefutableAudit>>) -> SharesFS {
+    pub fn new(data_store: Arc<dyn DataStore>, irrefutable_audit: Option<Arc<dyn IrrefutableAudit>>) -> SharesFS {
         // Create shared components for active writes
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
 
-        
-
         SharesFS {
             data_store,
-            blockchain_audit,
+            irrefutable_audit,
             active_writes: active_writes.clone(),
             commit_semaphore: commit_semaphore.clone(),
         }
@@ -978,8 +978,17 @@ impl NFSFileSystem for SharesFS {
             user = parts[1];
         }
 
-        if let Some(blockchain_audit) = &self.blockchain_audit {
-            let _ = blockchain_audit.trigger_event(&creation_time, "disassembled", &path, user);
+        if let Some(irrefutable_audit) = &self.irrefutable_audit {
+            println!("Triggering disassembled event");
+            let event = AuditEvent {
+                creation_time: creation_time.clone(),
+                event_type: DISASSEMBLED.to_string(),
+                file_path: path.clone(),
+                event_key: user.to_string(),
+            };
+            if let Err(e) = irrefutable_audit.trigger_event(event).await {
+                warn!("Failed to trigger audit event: {}", e);
+            }
         }
     
         let metadata = self.get_metadata_from_id(id).await?;
@@ -1057,8 +1066,16 @@ impl NFSFileSystem for SharesFS {
             user = parts[1];
         }
     
-        if let Some(blockchain_audit) = &self.blockchain_audit {
-            let _ = blockchain_audit.trigger_event(&creation_time, "reassembled", &path, user);
+        if let Some(irrefutable_audit) = &self.irrefutable_audit {
+            let event = AuditEvent {
+                creation_time: creation_time.clone(),
+                event_type: REASSEMBLED.to_string(),
+                file_path: path.clone(),
+                event_key: user.to_string(),
+            };
+            if let Err(e) = irrefutable_audit.trigger_event(event).await {
+                warn!("Failed to trigger audit event: {}", e);
+            }
         }
     
         Ok((data_slice.to_vec(), eof))

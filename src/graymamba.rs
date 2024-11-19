@@ -5,13 +5,16 @@ use graymamba::tcp::{NFSTcp, NFSTcpListener};
 use graymamba::sharesbased_fs::SharesFS;
 use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
 
-#[cfg(feature = "blockchain_audit")]
-use graymamba::blockchain_audit::BlockchainAudit;
-#[cfg(feature = "blockchain_audit")]
+#[cfg(feature = "irrefutable_audit")]
+use graymamba::audit_system::AuditSystem;
+#[cfg(feature = "irrefutable_audit")]
 use graymamba::irrefutable_audit::IrrefutableAudit; 
 
 extern crate secretsharing;
 use config::{Config, File as ConfigFile};
+
+use tokio::signal;
+use std::io::Write;
 
 const HOSTPORT: u32 = 2049;
 
@@ -62,8 +65,8 @@ async fn main() {
 
     // Print enabled features
     println!("Enabled features:");
-    if cfg!(feature = "blockchain_audit") {
-        println!(" - blockchain_audit");
+    if cfg!(feature = "irrefutable_audit") {
+        println!(" - irrefutable_audit");
     }
 
     let _settings = load_config();
@@ -76,26 +79,23 @@ async fn main() {
     use graymamba::rocksdb_data_store::RocksDBDataStore;
     let _data_store2 = Arc::new(RocksDBDataStore::new("theROCKSDB").expect("Failed to create a data store"));
 
-    #[cfg(feature = "blockchain_audit")]
-    let blockchain_audit =    match BlockchainAudit::new().await {
+    #[cfg(feature = "irrefutable_audit")]
+    let audit_system =    match AuditSystem::new().await {
         Ok(audit) => {
-            println!("✅ Blockchain initialization successful");
+            println!("✅ Irrefutable audit initialisation successful");
             Some(Arc::new(audit) as Arc<dyn IrrefutableAudit>)
         },
 
         Err(e) => {
             eprintln!("❌ Fatal Error: {}", e);
-            eprintln!("\nRequired services:");
-            eprintln!(" - Aleph Zero blockchain node must be running");
-            eprintln!(" - Check your blockchain configuration in settings.toml");
             std::process::exit(1);
         }
     };
 
-    #[cfg(not(feature = "blockchain_audit"))]
-    let blockchain_audit = None;
+    #[cfg(not(feature = "irrefutable_audit"))]
+    let audit_system = None;
 
-    let shares_fs = SharesFS::new(data_store, blockchain_audit);
+    let shares_fs = SharesFS::new(data_store, audit_system.clone());
     let shares_fs_clone = shares_fs.clone();
     tokio::spawn(async move {
         shares_fs_clone.start_monitoring().await;
@@ -105,6 +105,29 @@ async fn main() {
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), shares_fs)
         .await
         .unwrap();
-    listener.handle_forever().await.unwrap();
+    // Start the listener in a separate task
+    let listener_handle = tokio::spawn(async move {
+        listener.handle_forever().await
+    });
+
+    // Wait for ctrl+c
+    match signal::ctrl_c().await {
+        Ok(()) => {
+            println!("Received shutdown signal");
+            std::io::stdout().flush().unwrap();  // Ensure output is displayed
+        }
+        Err(err) => {
+            eprintln!("Error handling ctrl-c: {}", err);
+            std::io::stderr().flush().unwrap();
+        }
+    }
+
+    // Perform cleanup
+    #[cfg(feature = "irrefutable_audit")]
+    if let Some(audit) = audit_system {
+        println!("Shutting down audit system...");
+        std::io::stdout().flush().unwrap();
+        audit.shutdown().unwrap();
+    }
 }
 
