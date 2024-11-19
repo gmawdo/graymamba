@@ -5,8 +5,9 @@ use graymamba::tcp::{NFSTcp, NFSTcpListener};
 use graymamba::sharesbased_fs::SharesFS;
 use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
 
+//use graymamba::audit_adapters::audit_system::AuditSystem;
 #[cfg(feature = "irrefutable_audit")]
-use graymamba::audit_adapters::audit_system::AuditSystem;
+use graymamba::audit_adapters::merkle_audit::MerkleBasedAuditSystem;
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::irrefutable_audit::IrrefutableAudit; 
 
@@ -80,7 +81,7 @@ async fn main() {
     let _data_store2 = Arc::new(RocksDBDataStore::new("theROCKSDB").expect("Failed to create a data store"));
 
     #[cfg(feature = "irrefutable_audit")]
-    let audit_system =    match AuditSystem::new().await {
+    let audit_system =    match MerkleBasedAuditSystem::new().await {
         Ok(audit) => {
             println!("✅ Irrefutable audit initialisation successful");
             Some(Arc::new(audit) as Arc<dyn IrrefutableAudit>)
