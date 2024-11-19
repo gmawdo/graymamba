@@ -756,7 +756,7 @@ impl SharesFS {
             };
     
             for id in to_commit {
-                warn!("Auto-committing write for id: {}", id);
+                debug!("Auto-committing write for id: {}", id);
                 let _ = self.commit_write(id).await;
             }
         }
@@ -764,7 +764,7 @@ impl SharesFS {
 
     async fn commit_write(&self, id: fileid3) -> Result<(), DataStoreError> {
 
-        warn!("Starting commit process for file ID: {}", id);
+        debug!("Starting commit process for file ID: {}", id);
 
         let _permit = self.commit_semaphore.acquire().await.map_err(|_| DataStoreError::OperationFailed);
 
@@ -803,7 +803,7 @@ impl SharesFS {
         match disassemble(&base64_contents).await {
             Ok(shares) => {
                 // Attempt to write the shares to the data store
-                warn!("Writing shares to data store");
+                debug!("Writing shares to data store");
                 match self
                     .data_store
                     .hset(&format!("{}{}", hash_tag, path), "data", &shares)
@@ -979,7 +979,7 @@ impl NFSFileSystem for SharesFS {
         }
 
         if let Some(irrefutable_audit) = &self.irrefutable_audit {
-            println!("Triggering disassembled event");
+            debug!("Triggering disassembled event");
             let event = AuditEvent {
                 creation_time: creation_time.clone(),
                 event_type: DISASSEMBLED.to_string(),

@@ -4,6 +4,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use crate::irrefutable_audit::{AuditEvent, IrrefutableAudit};
 
+use tracing::debug;
+
 /// Implementation of the IrrefutableAudit trait
 pub struct AuditSystem {
     sender: tokio_mpsc::Sender<AuditEvent>,
@@ -30,7 +32,7 @@ impl IrrefutableAudit for AuditSystem {
         println!("Spawning event handler");
         tokio::spawn(async move {
             while let Some(event) = receiver.recv().await {
-                println!("Received event: {:?}", event);
+                debug!("Received event: {:?}", event);
                 if let Err(e) = audit.process_event(event).await {
                     eprintln!("Error processing event: {}", e);
                 }
@@ -40,7 +42,7 @@ impl IrrefutableAudit for AuditSystem {
     }
 
     async fn process_event(&self, event: AuditEvent) -> Result<(), Box<dyn Error>> {
-        println!("Processing event: {:?}", event);
+        debug!("Processing event: {:?}", event);
         Ok(())
     }
 

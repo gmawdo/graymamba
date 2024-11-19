@@ -96,7 +96,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
             rt.block_on(async move {
                 while let Ok(event) = receiver.recv() {
                     // Just process the event - no new connection needed
-                    println!("Processing event: {:?}", event);
+                    debug!("Processing event: {:?}", event);
                     // TODO: Add actual event processing logic here
                 }
             });
@@ -105,7 +105,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
     }
 
     async fn process_event(&self, event: AuditEvent) -> Result<(), Box<dyn Error>> {
-        println!("Processing event: {:?}", event);
+        debug("Processing event: {:?}", event);
 
         let event_type_bytes = event.event_type.clone().into_bytes();
         let creation_time = event.creation_time.into_bytes();

@@ -41,6 +41,8 @@ use tokio::sync::mpsc as tokio_mpsc;
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use tracing::debug;
+
 /// Represents an audit event that must be recorded
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -65,15 +67,11 @@ pub trait IrrefutableAudit: Send + Sync {
 
     /// Trigger a new audit event
     async fn trigger_event(&self, event: AuditEvent) -> Result<(), Box<dyn Error>> {
-        println!("Triggering event about to get_sender etc");
-        //self.get_sender()
-        //    .send(event)
-        //    .await
-        //.map_err(|e| Box::new(AuditError::EventProcessingError(e.to_string())) as Box<dyn Error>)
+        debug!("Triggering event about to get_sender etc");
 
         match self.get_sender().send(event.clone()).await {
             Ok(_) => {
-                println!("Successfully sent audit event: {:?}", event);
+                debug!("Successfully sent audit event: {:?}", event);
                 Ok(())
             }
             Err(e) => {
