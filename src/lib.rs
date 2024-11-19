@@ -37,7 +37,7 @@ pub mod vfs;
 
 pub mod irrefutable_audit;
 #[cfg(feature = "irrefutable_audit")]
-pub mod audit_system;
+pub mod audit_adapters;
 
 pub mod channel_buffer;
 

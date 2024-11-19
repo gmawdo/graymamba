@@ -6,7 +6,7 @@ use graymamba::sharesbased_fs::SharesFS;
 use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
 
 #[cfg(feature = "irrefutable_audit")]
-use graymamba::audit_system::AuditSystem;
+use graymamba::audit_adapters::audit_system::AuditSystem;
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::irrefutable_audit::IrrefutableAudit; 
 
@@ -106,7 +106,7 @@ async fn main() {
         .await
         .unwrap();
     // Start the listener in a separate task
-    let listener_handle = tokio::spawn(async move {
+    let _listener_handle = tokio::spawn(async move {
         listener.handle_forever().await
     });
 
@@ -125,7 +125,6 @@ async fn main() {
     // Perform cleanup
     #[cfg(feature = "irrefutable_audit")]
     if let Some(audit) = audit_system {
-        println!("Shutting down audit system...");
         std::io::stdout().flush().unwrap();
         audit.shutdown().unwrap();
     }
