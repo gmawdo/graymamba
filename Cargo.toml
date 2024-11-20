@@ -95,6 +95,9 @@ irrefutable_audit = []
 name = "graymamba"
 path = "src/graymamba.rs"
 required-features = ["traceability"]
+[[bin]]
+name = "audit_reader"
+path = "src/bin/audit_reader.rs"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["async_tokio"] }
