@@ -62,8 +62,16 @@ impl IrrefutableAudit for MerkleBasedAuditSystem {
             timestamp: chrono::Utc::now().timestamp() as u64,
         };
         
+        // Create a composite key: event_key:creation_time:file_path
+        let composite_key = format!(
+            "{}:{}:{}",
+            event.event_key,
+            event.creation_time,
+            event.file_path
+        );
+        
         let serialized = bincode::serialize(&stored_event)?;
-        self.db.put(event.event_key.as_bytes(), serialized)?;
+        self.db.put(composite_key.as_bytes(), serialized)?;
         
         Ok(())
     }
@@ -79,23 +87,41 @@ pub mod tests {
     use tokio::runtime::Runtime;
 
     #[test]
-    fn test_event_storage() {
+    fn test_multiple_event_storage() {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let audit_system = MerkleBasedAuditSystem::new().await.unwrap();
-            let event = AuditEvent {
+            
+            // Create two events with same event_key but different times/paths
+            let event1 = AuditEvent {
                 creation_time: "2023-10-01T12:00:00Z".to_string(),
                 event_type: "test_event".to_string(),
-                file_path: "/test/path".to_string(),
-                event_key: "test_key".to_string(),
+                file_path: "/test/path1".to_string(),
+                event_key: "Martha".to_string(),
             };
             
-            audit_system.process_event(event.clone()).await.unwrap();
+            let event2 = AuditEvent {
+                creation_time: "2023-10-01T12:01:00Z".to_string(),
+                event_type: "test_event".to_string(),
+                file_path: "/test/path2".to_string(),
+                event_key: "Martha".to_string(),
+            };
             
-            let stored_data = audit_system.db.get(event.event_key.as_bytes()).unwrap().unwrap();
-            let stored_event: StoredEvent = bincode::deserialize(&stored_data).unwrap();
+            audit_system.process_event(event1.clone()).await.unwrap();
+            audit_system.process_event(event2.clone()).await.unwrap();
             
-            assert_eq!(stored_event.event.event_key, event.event_key);
+            // Verify both events are stored
+            let key1 = format!("{}:{}:{}", event1.event_key, event1.creation_time, event1.file_path);
+            let key2 = format!("{}:{}:{}", event2.event_key, event2.creation_time, event2.file_path);
+            
+            let stored1 = audit_system.db.get(key1.as_bytes()).unwrap().unwrap();
+            let stored2 = audit_system.db.get(key2.as_bytes()).unwrap().unwrap();
+            
+            let stored_event1: StoredEvent = bincode::deserialize(&stored1).unwrap();
+            let stored_event2: StoredEvent = bincode::deserialize(&stored2).unwrap();
+            
+            assert_eq!(stored_event1.event.file_path, event1.file_path);
+            assert_eq!(stored_event2.event.file_path, event2.file_path);
         });
     }
 }
