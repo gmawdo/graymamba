@@ -27,7 +27,14 @@ impl IrrefutableAudit for MerkleBasedAuditSystem {
         println!("Initialising Merkle based audit system");
         let (sender, receiver) = tokio_mpsc::channel(100);
         
-        let db = Arc::new(DB::open_default("../RocksDBs/audit_db")?);
+        let mut opts = rocksdb::Options::default();
+        opts.create_if_missing(true);
+        opts.set_max_background_jobs(4);
+        opts.set_use_fsync(true);
+        opts.set_keep_log_file_num(10);
+        opts.set_allow_concurrent_memtable_write(true);
+        
+        let db = Arc::new(DB::open(&opts, "../RocksDBs/audit_db")?);
         
         let audit = Arc::new(MerkleBasedAuditSystem { sender, db });
         MerkleBasedAuditSystem::spawn_event_handler(audit.clone(), receiver)?;

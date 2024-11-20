@@ -13,8 +13,11 @@ struct StoredEvent {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Open the same DB path as used in MerkleBasedAuditSystem
-    let db = DB::open_default("../RocksDBs/audit_db")?;
+    let mut opts = rocksdb::Options::default();
+    opts.set_max_background_jobs(4);
+    opts.set_allow_concurrent_memtable_write(true);
+    // Open in read-only mode since we're just reading
+    let db = DB::open_for_read_only(&opts, "../RocksDBs/audit_db", false)?;
     
     println!("Reading audit events from database...\n");
     
@@ -26,16 +29,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         let key_str = String::from_utf8(key.to_vec())?;
         
         let stored_event: StoredEvent = bincode::deserialize(&value)?;
-        let timestamp = DateTime::<Utc>::from_timestamp(stored_event.timestamp as i64, 0)
+        let _timestamp = DateTime::<Utc>::from_timestamp(stored_event.timestamp as i64, 0)
             .unwrap()
             .to_rfc3339();
         
-        println!("Event Key: {}", key_str);
-        println!("Timestamp: {}", timestamp);
-        println!("Event Type: {}", stored_event.event.event_type);
-        println!("File Path: {}", stored_event.event.file_path);
-        println!("Creation Time: {}", stored_event.event.creation_time);
-        println!("-------------------\n");
+        println!("{:>12.12}, {}", stored_event.event.event_type.to_uppercase(), key_str.replace(":", " :: "));
     }
     
     Ok(())
