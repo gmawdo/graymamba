@@ -5,9 +5,10 @@ use graymamba::tcp::{NFSTcp, NFSTcpListener};
 use graymamba::sharesbased_fs::SharesFS;
 use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
 
-//use graymamba::audit_adapters::audit_system::AuditSystem;
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_audit::MerkleBasedAuditSystem;
+//use graymamba::audit_adapters::audit_system::AuditSystem; //simple template example
+//use graymamba::audit_adapters::substrate_audit::SubstrateAuditSystem; //code rescued with aleph-zero prototype but not compiled and tested
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::irrefutable_audit::IrrefutableAudit; 
 
