@@ -1,39 +1,77 @@
-use rocksdb::DB;
-use serde::{Serialize, Deserialize};
+use rocksdb::{DB, Options};
 use chrono::{DateTime, Utc};
 use std::error::Error;
-
-// Import the AuditEvent struct from the main library
 use graymamba::irrefutable_audit::AuditEvent;
-
-#[derive(Serialize, Deserialize, Debug)]
-struct StoredEvent {
-    event: AuditEvent,
-    timestamp: u64,
-}
+use graymamba::audit_adapters::merkle_tree::MerkleNode;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut opts = rocksdb::Options::default();
-    opts.set_max_background_jobs(4);
-    opts.set_allow_concurrent_memtable_write(true);
-    // Open in read-only mode since we're just reading
-    let db = DB::open_for_read_only(&opts, "../RocksDBs/audit_db", false)?;
+    let mut opts = Options::default();
+    opts.create_if_missing(true);
+    opts.create_missing_column_families(true);
     
-    println!("Reading audit events from database...\n");
+    // Define column families
+    let cfs = vec![
+        "current_tree",
+        "historical_roots",
+        "event_data",
+        "time_indices"
+    ];
     
-    // Iterate over all key-value pairs in the database
-    let iterator = db.iterator(rocksdb::IteratorMode::Start);
+    // Open the database in read-only mode
+    let db = DB::open_cf_for_read_only(&opts, "../RocksDBs/audit_merkle_db", &cfs, false)?;
     
-    for item in iterator {
+    println!("Reading audit events from Merkle tree database...\n");
+    println!("{:<24} {:<12} {:<40} {:<32}", "TIMESTAMP", "TYPE", "PATH", "MERKLE HASH");
+    println!("{}", "-".repeat(108));
+    
+    // Read from current tree
+    let cf_current = db.cf_handle("current_tree")
+        .ok_or("Failed to get current_tree column family")?;
+    
+    // Read from historical roots
+    let cf_historical = db.cf_handle("historical_roots")
+        .ok_or("Failed to get historical_roots column family")?;
+    
+    // Function to print events from a column family
+    let print_events = |cf: &rocksdb::ColumnFamily| -> Result<(), Box<dyn Error>> {
+        let iter = db.iterator_cf(cf, rocksdb::IteratorMode::Start);
+        
+        for item in iter {
+            let (_, value) = item?;
+            let node: MerkleNode = bincode::deserialize(&value)?;
+            
+            if let Some(event_data) = node.event_data {
+                let event: AuditEvent = bincode::deserialize(&event_data)?;
+                let timestamp = DateTime::<Utc>::from_timestamp(node.timestamp, 0)
+                    .unwrap()
+                    .to_rfc3339();
+                
+                let hash_preview = hex::encode(&node.hash[..4]);
+                
+                println!("{:<24} {:<12} {:<40} {:<32}", 
+                    timestamp,
+                    event.event_type.to_uppercase(),
+                    event.file_path,
+                    format!("{}...", hash_preview)
+                );
+            }
+        }
+        Ok(())
+    };
+    
+    println!("\nCurrent Window Events:");
+    print_events(cf_current)?;
+    
+    println!("\nHistorical Root Hashes:");
+    let hist_iter = db.iterator_cf(cf_historical, rocksdb::IteratorMode::Start);
+    for item in hist_iter {
         let (key, value) = item?;
-        let key_str = String::from_utf8(key.to_vec())?;
-        
-        let stored_event: StoredEvent = bincode::deserialize(&value)?;
-        let _timestamp = DateTime::<Utc>::from_timestamp(stored_event.timestamp as i64, 0)
-            .unwrap()
-            .to_rfc3339();
-        
-        println!("{:>12.12}, {}", stored_event.event.event_type.to_uppercase(), key_str.replace(":", " :: "));
+        let window_key = String::from_utf8(key.to_vec())?;
+        let root: MerkleNode = bincode::deserialize(&value)?;
+        println!("Window: {}, Root Hash: {}", 
+            window_key,
+            hex::encode(&root.hash)
+        );
     }
     
     Ok(())

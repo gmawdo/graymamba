@@ -1,55 +1,59 @@
+use super::merkle_tree::TimeWindowedMerkleTree;
+use crate::irrefutable_audit::{AuditEvent, IrrefutableAudit};
+use async_trait::async_trait;
 use std::error::Error;
 use tokio::sync::mpsc as tokio_mpsc;
-use async_trait::async_trait;
 use std::sync::Arc;
-use crate::irrefutable_audit::{AuditEvent, IrrefutableAudit};
-
 use tracing::debug;
-
-use rocksdb::DB;
-use serde::{Serialize, Deserialize};
-
-/// Implementation of the IrrefutableAudit trait
-#[derive(Serialize, Deserialize)]
-struct StoredEvent {
-    event: AuditEvent,
-    timestamp: u64,
-}
 
 pub struct MerkleBasedAuditSystem {
     sender: tokio_mpsc::Sender<AuditEvent>,
-    db: Arc<DB>,
+    merkle_tree: Arc<parking_lot::RwLock<TimeWindowedMerkleTree>>,
 }
 
 #[async_trait]
 impl IrrefutableAudit for MerkleBasedAuditSystem {
     async fn new() -> Result<Self, Box<dyn Error>> {
-        println!("Initialising Merkle based audit system");
+        println!("Attaching and initialising a Merkle based audit system");
         let (sender, receiver) = tokio_mpsc::channel(100);
+        let merkle_tree = Arc::new(parking_lot::RwLock::new(
+            TimeWindowedMerkleTree::new("../RocksDBs/audit_merkle_db")?
+        ));
         
-        let mut opts = rocksdb::Options::default();
-        opts.create_if_missing(true);
-        opts.set_max_background_jobs(4);
-        opts.set_use_fsync(true);
-        opts.set_keep_log_file_num(10);
-        opts.set_allow_concurrent_memtable_write(true);
+        let audit = Arc::new(Self { 
+            sender, 
+            merkle_tree 
+        });
         
-        let db = Arc::new(DB::open(&opts, "../RocksDBs/audit_db")?);
+        Self::spawn_event_handler(audit.clone(), receiver)?;
         
-        let audit = Arc::new(MerkleBasedAuditSystem { sender, db });
-        MerkleBasedAuditSystem::spawn_event_handler(audit.clone(), receiver)?;
-        Ok(MerkleBasedAuditSystem { sender: audit.get_sender().clone(), db: audit.db.clone() })
+        Ok(Self { 
+            sender: audit.get_sender().clone(),
+            merkle_tree: audit.merkle_tree.clone()
+        })
     }
 
     fn get_sender(&self) -> &tokio_mpsc::Sender<AuditEvent> {
         &self.sender
     }
 
+    async fn process_event(&self, event: AuditEvent) -> Result<(), Box<dyn Error>> {
+        debug!("Processing event: {:?}", event);
+        
+        // Serialize the event
+        let event_bytes = bincode::serialize(&event)?;
+        
+        // Insert into Merkle tree
+        self.merkle_tree.write().insert_event(&event_bytes)?;
+        
+        Ok(())
+    }
+
     fn spawn_event_handler(
-        audit: Arc<dyn IrrefutableAudit>, 
+        audit: Arc<dyn IrrefutableAudit>,
         mut receiver: tokio_mpsc::Receiver<AuditEvent>
     ) -> Result<(), Box<dyn Error>> {
-        println!("Spawning event handler");
+        println!("Spawning handler for audit events");
         tokio::spawn(async move {
             while let Some(event) = receiver.recv().await {
                 debug!("Received event: {:?}", event);
@@ -61,35 +65,15 @@ impl IrrefutableAudit for MerkleBasedAuditSystem {
         Ok(())
     }
 
-    async fn process_event(&self, event: AuditEvent) -> Result<(), Box<dyn Error>> {
-        debug!("Processing event: {:?}", event);
-        
-        let stored_event = StoredEvent {
-            event: event.clone(),
-            timestamp: chrono::Utc::now().timestamp() as u64,
-        };
-        
-        // Create a composite key: event_key:creation_time:file_path
-        let composite_key = format!(
-            "{}:{}:{}",
-            event.event_key,
-            event.creation_time,
-            event.file_path
-        );
-        
-        let serialized = bincode::serialize(&stored_event)?;
-        self.db.put(composite_key.as_bytes(), serialized)?;
-        
-        Ok(())
-    }
-
     fn shutdown(&self) -> Result<(), Box<dyn Error>> {
-        println!("Shutting down audit system.");
+        println!("Shutting down Merkle based audit system.");
         Ok(())
     }
 }
+
 #[cfg(test)]
-pub mod tests {
+use crate::audit_adapters::merkle_tree::MerkleNode;
+mod tests {
     use super::*;
     use tokio::runtime::Runtime;
 
@@ -114,21 +98,30 @@ pub mod tests {
                 event_key: "Martha".to_string(),
             };
             
+            // Process both events
             audit_system.process_event(event1.clone()).await.unwrap();
             audit_system.process_event(event2.clone()).await.unwrap();
             
-            // Verify both events are stored
-            let key1 = format!("{}:{}:{}", event1.event_key, event1.creation_time, event1.file_path);
-            let key2 = format!("{}:{}:{}", event2.event_key, event2.creation_time, event2.file_path);
+            // Get the merkle tree and verify both events are stored
+            let tree = audit_system.merkle_tree.read();
+            let cf_current = tree.db.cf_handle("current_tree").unwrap();
             
-            let stored1 = audit_system.db.get(key1.as_bytes()).unwrap().unwrap();
-            let stored2 = audit_system.db.get(key2.as_bytes()).unwrap().unwrap();
+            // Verify events exist in the tree
+            let iter = tree.db.iterator_cf(cf_current, rocksdb::IteratorMode::Start);
+            let mut found_events = 0;
             
-            let stored_event1: StoredEvent = bincode::deserialize(&stored1).unwrap();
-            let stored_event2: StoredEvent = bincode::deserialize(&stored2).unwrap();
+            for item in iter {
+                let (_, value) = item.unwrap();
+                let node: MerkleNode = bincode::deserialize(&value).unwrap();
+                if let Some(event_data) = node.event_data {
+                    let stored_event: AuditEvent = bincode::deserialize(&event_data).unwrap();
+                    if stored_event.event_key == "Martha" {
+                        found_events += 1;
+                    }
+                }
+            }
             
-            assert_eq!(stored_event1.event.file_path, event1.file_path);
-            assert_eq!(stored_event2.event.file_path, event2.file_path);
+            assert_eq!(found_events, 2, "Both events should be stored in the Merkle tree");
         });
     }
 }

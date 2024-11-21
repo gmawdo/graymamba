@@ -85,6 +85,8 @@ intaglio = { version = "1.6", optional = true }
 #sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
 #sp-weights = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
 
+sha2 = "0.10"
+parking_lot = "0.12"
 
 [features]
 strict = []

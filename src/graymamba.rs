@@ -78,8 +78,8 @@ async fn main() {
     use graymamba::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
-    use graymamba::rocksdb_data_store::RocksDBDataStore;
-    let _data_store2 = Arc::new(RocksDBDataStore::new("theROCKSDB").expect("Failed to create a data store"));
+    //use graymamba::rocksdb_data_store::RocksDBDataStore;
+    //let _data_store2 = Arc::new(RocksDBDataStore::new("theROCKSDB").expect("Failed to create a data store"));
 
     #[cfg(feature = "irrefutable_audit")]
     let audit_system =    match MerkleBasedAuditSystem::new().await {
