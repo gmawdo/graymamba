@@ -69,6 +69,30 @@ impl IrrefutableAudit for MerkleBasedAuditSystem {
         println!("Shutting down Merkle based audit system.");
         Ok(())
     }
+
+}
+
+impl MerkleBasedAuditSystem {
+    #[cfg(test)]
+    async fn new_test_instance() -> Result<Self, Box<dyn Error>> {
+        println!("Attaching and initialising a test Merkle based audit system");
+        let (sender, receiver) = tokio_mpsc::channel(100);
+        let merkle_tree = Arc::new(parking_lot::RwLock::new(
+            TimeWindowedMerkleTree::new("../RocksDBs/test_audit_merkle_db")?
+        ));
+        
+        let audit = Arc::new(Self { 
+            sender, 
+            merkle_tree 
+        });
+        
+        Self::spawn_event_handler(audit.clone(), receiver)?;
+        
+        Ok(Self { 
+            sender: audit.get_sender().clone(),
+            merkle_tree: audit.merkle_tree.clone()
+        })
+    }
 }
 
 #[cfg(test)]
@@ -81,7 +105,7 @@ mod tests {
     use std::fs;
 
     fn cleanup_test_db() {
-        let _ = fs::remove_dir_all("../RocksDBs/audit_merkle_db");
+        let _ = fs::remove_dir_all("../RocksDBs/test_audit_merkle_db");
     }
 
     #[test]
@@ -92,7 +116,7 @@ mod tests {
         let rt = Runtime::new()?;
         let result = rt.block_on(async {
             println!("Creating new audit system...");
-            let audit_system = MerkleBasedAuditSystem::new().await?;
+            let audit_system = MerkleBasedAuditSystem::new_test_instance().await?;
             
             // Create two events with same event_key but different times/paths
             let event1 = AuditEvent {
@@ -130,7 +154,9 @@ mod tests {
             
             println!("Iterating over events in the tree");
             for item in iter {
-                let (key, value) = item?;
+                let (key_bytes, value_bytes) = item?;
+                let key = key_bytes.to_vec();
+                let value = value_bytes.to_vec();
                 println!("Found key: {}", String::from_utf8_lossy(&key));
                 let node: MerkleNode = bincode::deserialize(&value)?;
                 if let Some(event_data) = &node.event_data {
