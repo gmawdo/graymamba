@@ -44,9 +44,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             
             if let Some(event_data) = node.event_data {
                 let event: AuditEvent = bincode::deserialize(&event_data)?;
-                let timestamp = DateTime::<Utc>::from_timestamp(node.timestamp, 0)
+                let timestamp = DateTime::<Utc>::from_timestamp_micros(node.timestamp)
                     .unwrap()
-                    .to_rfc3339();
+                    .to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
                 
                 let hash_preview = hex::encode(&node.hash[..4]);
                 

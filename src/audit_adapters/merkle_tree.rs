@@ -86,12 +86,13 @@ impl TimeWindowedMerkleTree {
         let cf_current = self.db.cf_handle("current_tree")
             .ok_or("Failed to get current_tree CF")?;
 
-        // Create a new leaf node
-        let leaf = MerkleNode::new_leaf(event_data, now.timestamp());
+        // Create a new leaf node using the same timestamp
+        let timestamp = now.timestamp_micros();
+        let leaf = MerkleNode::new_leaf(event_data, timestamp);
         let serialized = bincode::serialize(&leaf)?;
         
-        // Use monotonically increasing timestamp as key for ordering
-        let key = format!("leaf:{}:{}", now.timestamp_micros(), hex::encode(&leaf.hash[..4]));
+        // Use the same timestamp for key ordering
+        let key = format!("leaf:{}:{}", timestamp, hex::encode(&leaf.hash[..4]));
         self.db.put_cf(cf_current, key.as_bytes(), serialized)?;
 
         Ok(())
