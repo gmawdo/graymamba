@@ -1,8 +1,10 @@
 use rocksdb::{DB, Options};
 use chrono::{DateTime, Utc};
 use std::error::Error;
-use graymamba::irrefutable_audit::AuditEvent;
+
+#[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_tree::MerkleNode;
+use graymamba::irrefutable_audit::AuditEvent;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut opts = Options::default();

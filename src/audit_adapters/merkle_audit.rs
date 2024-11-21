@@ -72,16 +72,27 @@ impl IrrefutableAudit for MerkleBasedAuditSystem {
 }
 
 #[cfg(test)]
-use crate::audit_adapters::merkle_tree::MerkleNode;
 mod tests {
     use super::*;
     use tokio::runtime::Runtime;
+    use crate::irrefutable_audit::AuditEvent;
+    use crate::audit_adapters::merkle_tree::MerkleNode;
+    use rocksdb;
+    use std::fs;
+
+    fn cleanup_test_db() {
+        let _ = fs::remove_dir_all("../RocksDBs/audit_merkle_db");
+    }
 
     #[test]
-    fn test_multiple_event_storage() {
-        let rt = Runtime::new().unwrap();
-        rt.block_on(async {
-            let audit_system = MerkleBasedAuditSystem::new().await.unwrap();
+    fn test_multiple_event_storage() -> Result<(), Box<dyn Error>> {
+        println!("Starting test_multiple_event_storage");
+        cleanup_test_db();
+
+        let rt = Runtime::new()?;
+        let result = rt.block_on(async {
+            println!("Creating new audit system...");
+            let audit_system = MerkleBasedAuditSystem::new().await?;
             
             // Create two events with same event_key but different times/paths
             let event1 = AuditEvent {
@@ -93,35 +104,53 @@ mod tests {
             
             let event2 = AuditEvent {
                 creation_time: "2023-10-01T12:01:00Z".to_string(),
-                event_type: "test_event".to_string(),
+                event_type: "test_event2".to_string(),
                 file_path: "/test/path2".to_string(),
                 event_key: "Martha".to_string(),
             };
             
             // Process both events
-            audit_system.process_event(event1.clone()).await.unwrap();
-            audit_system.process_event(event2.clone()).await.unwrap();
+            println!("Processing event 1: {:?}", event1);
+            audit_system.process_event(event1.clone()).await?;
+            println!("Successfully processed event 1");
+
+            println!("Processing event 2: {:?}", event2);
+            audit_system.process_event(event2.clone()).await?;
+            println!("Successfully processed event 2");
             
             // Get the merkle tree and verify both events are stored
+            println!("Reading from Merkle tree...");
             let tree = audit_system.merkle_tree.read();
-            let cf_current = tree.db.cf_handle("current_tree").unwrap();
+            let cf_current = tree.db.cf_handle("current_tree")
+                .ok_or("Failed to get current_tree column family")?;
             
             // Verify events exist in the tree
             let iter = tree.db.iterator_cf(cf_current, rocksdb::IteratorMode::Start);
             let mut found_events = 0;
             
+            println!("Iterating over events in the tree");
             for item in iter {
-                let (_, value) = item.unwrap();
-                let node: MerkleNode = bincode::deserialize(&value).unwrap();
-                if let Some(event_data) = node.event_data {
-                    let stored_event: AuditEvent = bincode::deserialize(&event_data).unwrap();
+                let (key, value) = item?;
+                println!("Found key: {}", String::from_utf8_lossy(&key));
+                let node: MerkleNode = bincode::deserialize(&value)?;
+                if let Some(event_data) = &node.event_data {
+                    let stored_event: AuditEvent = bincode::deserialize(event_data)?;
+                    println!("Found event: {:?}", stored_event);
                     if stored_event.event_key == "Martha" {
                         found_events += 1;
                     }
                 }
             }
             
-            assert_eq!(found_events, 2, "Both events should be stored in the Merkle tree");
+            println!("Found {} events", found_events);
+            if found_events != 2 {
+                return Err("Both events should be stored in the Merkle tree".into());
+            }
+            Ok(())
         });
+
+        cleanup_test_db();
+        println!("Test completed");
+        result
     }
 }
