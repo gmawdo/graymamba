@@ -43,9 +43,11 @@ use std::sync::Arc;
 
 use tracing::debug;
 
+use serde::{Serialize, Deserialize};
+
 /// Represents an audit event that must be recorded
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuditEvent {
     pub creation_time: String,
     pub event_type: String,

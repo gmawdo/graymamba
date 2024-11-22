@@ -5,9 +5,10 @@ use graymamba::tcp::{NFSTcp, NFSTcpListener};
 use graymamba::sharesbased_fs::SharesFS;
 use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
 
-//use graymamba::audit_adapters::audit_system::AuditSystem;
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_audit::MerkleBasedAuditSystem;
+//use graymamba::audit_adapters::audit_system::AuditSystem; //simple template example
+//use graymamba::audit_adapters::substrate_audit::SubstrateAuditSystem; //code rescued with aleph-zero prototype but not compiled and tested
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::irrefutable_audit::IrrefutableAudit; 
 
@@ -77,8 +78,8 @@ async fn main() {
     use graymamba::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
-    use graymamba::rocksdb_data_store::RocksDBDataStore;
-    let _data_store2 = Arc::new(RocksDBDataStore::new("theROCKSDB").expect("Failed to create a data store"));
+    //use graymamba::rocksdb_data_store::RocksDBDataStore;
+    //let _data_store2 = Arc::new(RocksDBDataStore::new("theROCKSDB").expect("Failed to create a data store"));
 
     #[cfg(feature = "irrefutable_audit")]
     let audit_system =    match MerkleBasedAuditSystem::new().await {
