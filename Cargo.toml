@@ -50,9 +50,6 @@ rocksdb = "0.22.0"
 # Parallel processing
 rayon = "1.10.0"
 
-# Secret sharing
-secretsharing = { path = "./secretsharing_wrapper" }
-
 # WASM runtime
 wasmtime = "21.0.1"
 
@@ -87,6 +84,10 @@ intaglio = { version = "1.6", optional = true }
 
 sha2 = "0.10"
 parking_lot = "0.12"
+
+shamir_secret_sharing = "0.1.1"
+dashmap = "6.0.1"
+flate2 = "1.0.31"
 
 [features]
 strict = []

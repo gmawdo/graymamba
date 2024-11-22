@@ -1,3 +1,0 @@
-cargo:rustc-link-search=native=/Users/rameez/Desktop/secretsharing/target/release
-cargo:rustc-link-lib=static=secretsharing
-cargo:rustc-link-lib=framework=Security

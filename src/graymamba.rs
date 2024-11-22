@@ -12,7 +12,6 @@ use graymamba::audit_adapters::merkle_audit::MerkleBasedAuditSystem;
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::irrefutable_audit::IrrefutableAudit; 
 
-extern crate secretsharing;
 use config::{Config, File as ConfigFile};
 
 use tokio::signal;
