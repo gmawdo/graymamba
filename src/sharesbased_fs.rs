@@ -45,7 +45,7 @@ lazy_static! {
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-use secretsharing::{disassemble, reassemble};
+use crate::secret_sharing::secret_sharing::SecretSharingService;
 
 use crate::irrefutable_audit::{AuditEvent, IrrefutableAudit};
 use crate::irrefutable_audit::event_types::{DISASSEMBLED, REASSEMBLED};
@@ -56,6 +56,7 @@ pub struct SharesFS {
     pub irrefutable_audit: Option<Arc<dyn IrrefutableAudit>>, // Add NFSModule wrapped in Arc
     pub active_writes: Arc<Mutex<HashMap<fileid3, ActiveWrite>>>,
     pub commit_semaphore: Arc<Semaphore>,
+    pub secret_sharing: Arc<SecretSharingService>,
     
 }
 
@@ -89,15 +90,16 @@ impl SharesFS {
     }
 
     pub fn new(data_store: Arc<dyn DataStore>, irrefutable_audit: Option<Arc<dyn IrrefutableAudit>>) -> SharesFS {
-        // Create shared components for active writes
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
-        let commit_semaphore = Arc::new(Semaphore::new(10)); // Adjust based on your system's capabilities
+        let commit_semaphore = Arc::new(Semaphore::new(10));
+        let secret_sharing = Arc::new(SecretSharingService::new().expect("Failed to initialize SecretSharingService"));
 
         SharesFS {
             data_store,
             irrefutable_audit,
-            active_writes: active_writes.clone(),
-            commit_semaphore: commit_semaphore.clone(),
+            active_writes,
+            commit_semaphore,
+            secret_sharing,
         }
     }
     // New method to start monitoring
@@ -703,7 +705,7 @@ impl SharesFS {
         // Retrieve the current file content (Base64 encoded) from store
         let store_value: String = (self.data_store.hget(&format!("{}{}", hash_tag, path),"data").await).unwrap_or_default();
     if !store_value.is_empty() {
-        match reassemble(&store_value).await {
+        match self.secret_sharing.reassemble(&store_value).await {
             Ok(reconstructed_secret) => {
                     // Decode the base64 string to a byte array
                     STANDARD.decode(&reconstructed_secret).unwrap_or_default()
@@ -800,7 +802,7 @@ impl SharesFS {
         let base64_contents = STANDARD.encode(&contents); // Convert byte array (Vec<u8>) to a base64 encoded string
         
 
-        match disassemble(&base64_contents).await {
+        match self.secret_sharing.disassemble(&base64_contents).await {
             Ok(shares) => {
                 // Attempt to write the shares to the data store
                 debug!("Writing shares to data store");

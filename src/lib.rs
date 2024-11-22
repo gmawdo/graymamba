@@ -45,4 +45,6 @@ pub mod file_metadata;
 
 pub mod sharesbased_fs;
 
+pub mod secret_sharing;
+
 pub mod test_store;
