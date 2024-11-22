@@ -1,5 +1,3 @@
-pub mod secret_sharing {
-
 use shamir_secret_sharing::ShamirSecretSharing;
 use config::{Config, File};
 use serde::Deserialize;
@@ -79,7 +77,7 @@ impl SecretSharingService {
         
         let all_chunk_shares: Vec<HashMap<String, Vec<String>>> = self.pool.install(|| {
             chunks.par_iter().map(|chunk| {
-                let secret_bigint = BigInt::from_bytes_be(Sign::Plus, &chunk);
+                let secret_bigint = BigInt::from_bytes_be(Sign::Plus, chunk);
                 let shares = self.sss.split(secret_bigint);
     
                 let mut chunk_map = HashMap::new();
@@ -163,5 +161,4 @@ impl SecretSharingService {
             Err(e) => Err(e.to_string())
         }
     }
-}
 }

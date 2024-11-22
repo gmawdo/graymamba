@@ -45,7 +45,7 @@ lazy_static! {
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-use crate::secret_sharing::secret_sharing::SecretSharingService;
+use crate::secret_sharing::SecretSharingService;
 
 use crate::irrefutable_audit::{AuditEvent, IrrefutableAudit};
 use crate::irrefutable_audit::event_types::{DISASSEMBLED, REASSEMBLED};
