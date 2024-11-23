@@ -93,29 +93,38 @@ impl SecretSharingService {
             }).collect()
         });
 
+        // Print each share value
+        for share in &all_chunk_shares {
+            println!("{:?}", share);
+        }
+
+        // Convert the collection to a JSON array
         let json_value = serde_json::to_vec(&all_chunk_shares)?;
+
+        // Print the JSON document
+        println!("{}", String::from_utf8(json_value.clone()).unwrap());
+
+        /*
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(&json_value)?;
         let compressed_data = encoder.finish()?;                
-        
-        
-        Ok(general_purpose::STANDARD.encode(&compressed_data))
+        Ok(general_purpose::STANDARD.encode(&compressed_data))*/
 
-        
-
-    
-        // let redis_value = serde_json::to_string(&all_chunk_shares)?;
-        // Ok(redis_value)
+        //Ok(general_purpose::STANDARD.encode(&json_value))
+        Ok(String::from_utf8(json_value)?)
     }
 
     pub async fn re_assembly(&self, redis_value: &str) -> Result<String, anyhow::Error> {
 
-        let compressed_data = general_purpose::STANDARD.decode(redis_value)?;
+        /*let compressed_data = general_purpose::STANDARD.decode(redis_value)?;
         let mut decoder = ZlibDecoder::new(Vec::new());
         decoder.write_all(&compressed_data)?;
-        let json_data = decoder.finish()?;
-        
-        let shares: Vec<HashMap<String, Vec<String>>> = serde_json::from_slice(&json_data)?;
+        let json_data = decoder.finish()?;*/
+
+        //let json_data = general_purpose::STANDARD.decode(redis_value)?;
+        //let shares: Vec<HashMap<String, Vec<String>>> = serde_json::from_slice(&json_data)?;
+
+        let shares: Vec<HashMap<String, Vec<String>>> = serde_json::from_str(redis_value)?;
     
         // let shares: Vec<HashMap<String, Vec<String>>> = serde_json::from_str(redis_value)?;
     
