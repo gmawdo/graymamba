@@ -6,12 +6,15 @@ use std::str::FromStr;
 use std::collections::HashMap;
 use rayon::prelude::*;
 use rayon::ThreadPool;
-use base64::{engine::general_purpose, Engine as _}; 
+#[cfg(feature = "compressed_store")]
+use base64::{engine::general_purpose, Engine as _};
+#[cfg(feature = "compressed_store")]
 use flate2::write::{ZlibEncoder, ZlibDecoder};
+#[cfg(feature = "compressed_store")]
 use flate2::Compression;
+#[cfg(feature = "compressed_store")]
 use std::io::Write;
 use anyhow::{Result, Error};
-//use tokio; // For async runtime support
 
 // Custom deserialization function for BigInt
 fn deserialize_bigint<'de, D>(deserializer: D) -> Result<BigInt, D::Error>
@@ -85,7 +88,7 @@ impl SecretSharingService {
                     "shares".to_string(),
                     shares
                         .into_iter()
-                        .take(self.settings.threshold)
+                        .take(self.settings.share_amount)
                         .map(|(_index, share)| share.to_str_radix(10))
                         .collect(),
                 );
@@ -93,37 +96,41 @@ impl SecretSharingService {
             }).collect()
         });
 
+        // Convert the collection to a JSON array
         let json_value = serde_json::to_vec(&all_chunk_shares)?;
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(&json_value)?;
-        let compressed_data = encoder.finish()?;                
-        
-        
-        Ok(general_purpose::STANDARD.encode(&compressed_data))
 
-        
-
-    
-        // let redis_value = serde_json::to_string(&all_chunk_shares)?;
-        // Ok(redis_value)
+        #[cfg(feature = "compressed_store")]
+        {
+            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(&json_value)?;
+            let compressed_data = encoder.finish()?;
+            return Ok(general_purpose::STANDARD.encode(&compressed_data));
+        }
+        #[cfg(not(feature = "compressed_store"))]
+        Ok(String::from_utf8(json_value)?)
     }
 
-    pub async fn re_assembly(&self, redis_value: &str) -> Result<String, anyhow::Error> {
-
-        let compressed_data = general_purpose::STANDARD.decode(redis_value)?;
-        let mut decoder = ZlibDecoder::new(Vec::new());
-        decoder.write_all(&compressed_data)?;
-        let json_data = decoder.finish()?;
-        
-        let shares: Vec<HashMap<String, Vec<String>>> = serde_json::from_slice(&json_data)?;
+    pub async fn re_assembly(&self, stored_value: &str) -> Result<String, anyhow::Error> {
+        let shares: Vec<HashMap<String, Vec<String>>>;
+        #[cfg(feature = "compressed_store")]
+        {
+            let compressed_data = general_purpose::STANDARD.decode(stored_value)?;
+            let mut decoder = ZlibDecoder::new(Vec::new());
+            decoder.write_all(&compressed_data)?;
+            let json_data = decoder.finish()?;
+            shares = serde_json::from_slice(&json_data)?;
+        }
     
-        // let shares: Vec<HashMap<String, Vec<String>>> = serde_json::from_str(redis_value)?;
+        #[cfg(not(feature = "compressed_store"))]
+        {
+            shares = serde_json::from_str(stored_value)?;
+        }
     
         let recovered_chunks: Vec<Vec<u8>> = self.pool.install(|| {
             shares.par_iter().map(|chunk_map| {
                 if let Some(chunk_shares) = chunk_map.get("shares") {
-                    if chunk_shares.len() != self.settings.threshold {
-                        return Vec::new(); // We expect exactly threshold number of shares
+                    if chunk_shares.len() < self.settings.threshold {
+                        return Vec::new(); // We expect at least threshold number of shares
                     }
                     let indices_and_shares: Vec<(usize, BigInt)> = chunk_shares
                         .iter()
@@ -135,7 +142,7 @@ impl SecretSharingService {
                         .collect();
     
                     //let recovered_secret = self.sss.recover(&indices_and_shares[0..self.sss.threshold as usize]);
-                    let recovered_secret = self.sss.recover(&indices_and_shares);
+                    let recovered_secret = self.sss.recover(&indices_and_shares[0..self.settings.threshold]);
                     recovered_secret.to_bytes_be().1
                 } else {
                     Vec::new()
