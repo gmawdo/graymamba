@@ -93,6 +93,7 @@ flate2 = "1.0.31"
 strict = []
 traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
 irrefutable_audit = []
+compressed_store = []
 
 [[bin]]
 name = "graymamba"

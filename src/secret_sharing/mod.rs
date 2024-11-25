@@ -6,12 +6,15 @@ use std::str::FromStr;
 use std::collections::HashMap;
 use rayon::prelude::*;
 use rayon::ThreadPool;
-//use base64::{engine::general_purpose, Engine as _}; 
-//use flate2::write::{ZlibEncoder, ZlibDecoder};
-//use flate2::Compression;
-//use std::io::Write;
+#[cfg(feature = "compressed_store")]
+use base64::{engine::general_purpose, Engine as _};
+#[cfg(feature = "compressed_store")]
+use flate2::write::{ZlibEncoder, ZlibDecoder};
+#[cfg(feature = "compressed_store")]
+use flate2::Compression;
+#[cfg(feature = "compressed_store")]
+use std::io::Write;
 use anyhow::{Result, Error};
-//use tokio; // For async runtime support
 
 // Custom deserialization function for BigInt
 fn deserialize_bigint<'de, D>(deserializer: D) -> Result<BigInt, D::Error>
@@ -96,26 +99,32 @@ impl SecretSharingService {
         // Convert the collection to a JSON array
         let json_value = serde_json::to_vec(&all_chunk_shares)?;
 
-        /* this commented becuase i wanted to see the shares as an array in redis as the shares are supposed to be in different locations
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(&json_value)?;
-        let compressed_data = encoder.finish()?;                
-        Ok(general_purpose::STANDARD.encode(&compressed_data))*/
-
+        #[cfg(feature = "compressed_store")]
+        {
+            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(&json_value)?;
+            let compressed_data = encoder.finish()?;
+            return Ok(general_purpose::STANDARD.encode(&compressed_data));
+        }
+        #[cfg(not(feature = "compressed_store"))]
         Ok(String::from_utf8(json_value)?)
     }
 
     pub async fn re_assembly(&self, stored_value: &str) -> Result<String, anyhow::Error> {
-
-        /*let compressed_data = general_purpose::STANDARD.decode(stored_value)?;
-        let mut decoder = ZlibDecoder::new(Vec::new());
-        decoder.write_all(&compressed_data)?;
-        let json_data = decoder.finish()?;*/
-
-        //let json_data = general_purpose::STANDARD.decode(stored_value)?;
-        //let shares: Vec<HashMap<String, Vec<String>>> = serde_json::from_slice(&json_data)?;
-
-        let shares: Vec<HashMap<String, Vec<String>>> = serde_json::from_str(stored_value)?;
+        let shares: Vec<HashMap<String, Vec<String>>>;
+        #[cfg(feature = "compressed_store")]
+        {
+            let compressed_data = general_purpose::STANDARD.decode(stored_value)?;
+            let mut decoder = ZlibDecoder::new(Vec::new());
+            decoder.write_all(&compressed_data)?;
+            let json_data = decoder.finish()?;
+            shares = serde_json::from_slice(&json_data)?;
+        }
+    
+        #[cfg(not(feature = "compressed_store"))]
+        {
+            shares = serde_json::from_str(stored_value)?;
+        }
     
         let recovered_chunks: Vec<Vec<u8>> = self.pool.install(|| {
             shares.par_iter().map(|chunk_map| {
