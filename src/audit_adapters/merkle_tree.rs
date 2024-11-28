@@ -22,7 +22,7 @@ pub struct MerkleNode {
 pub struct TimeWindowedMerkleTree {
     pub db: DB,
     pub current_window_start: DateTime<Utc>,
-    pub window_duration_hours: i64,
+    pub window_duration_minutes: i64,
 }
 
 impl MerkleNode {
@@ -72,7 +72,7 @@ impl TimeWindowedMerkleTree {
         Ok(Self {
             db,
             current_window_start: Utc::now(),
-            window_duration_hours: 24,
+            window_duration_minutes: 10,
         })
     }
 
@@ -80,7 +80,7 @@ impl TimeWindowedMerkleTree {
         let now = Utc::now();
         
         // Check if we need to rotate the window
-        if (now - self.current_window_start).num_hours() >= self.window_duration_hours {
+        if (now - self.current_window_start).num_minutes() >= self.window_duration_minutes {
             self.rotate_window()?;
         }
 
