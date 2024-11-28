@@ -1,3 +1,8 @@
+// We will add functions to:
+// Verify Merkle proofs
+// Check historical root consistency
+// Validate the audit trail
+
 use rocksdb::{DB, Options};
 use chrono::{DateTime, Utc};
 use std::error::Error;

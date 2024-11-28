@@ -1,8 +1,13 @@
-use sha2::{Sha256, Digest};
+// Key components of this module:
+// The Poseidon permutation function
+// The sponge construction for hashing
+// Field arithmetic using ark-ff
+
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
 use std::error::Error;
 use rocksdb::{DB, ColumnFamily, Options};
+use super::poseidon_hash::PoseidonHasher;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MerkleNode {
@@ -21,33 +26,30 @@ pub struct TimeWindowedMerkleTree {
 }
 
 impl MerkleNode {
-    pub fn new_leaf(data: &[u8], timestamp: i64) -> Self {
-        let mut hasher = Sha256::new();
-        hasher.update(data);
-        let hash = hasher.finalize().to_vec();
+    pub fn new_leaf(data: &[u8], timestamp: i64) -> Result<Self, Box<dyn Error>> {
+        let hasher = PoseidonHasher::new()?;
+        let hash = hasher.hash_leaf(data);
 
-        MerkleNode {
+        Ok(MerkleNode {
             hash,
             timestamp,
             left_child: None,
             right_child: None,
             event_data: Some(data.to_vec()),
-        }
+        })
     }
 
-    pub fn new_internal(left: MerkleNode, right: MerkleNode) -> Self {
-        let mut hasher = Sha256::new();
-        hasher.update(&left.hash);
-        hasher.update(&right.hash);
-        let hash = hasher.finalize().to_vec();
+    pub fn new_internal(left: MerkleNode, right: MerkleNode) -> Result<Self, Box<dyn Error>> {
+        let hasher = PoseidonHasher::new()?;
+        let hash = hasher.hash_nodes(&left.hash, &right.hash);
 
-        MerkleNode {
+        Ok(MerkleNode {
             hash,
             timestamp: std::cmp::max(left.timestamp, right.timestamp),
             left_child: Some(Box::new(left)),
             right_child: Some(Box::new(right)),
             event_data: None,
-        }
+        })
     }
 }
 
@@ -88,7 +90,7 @@ impl TimeWindowedMerkleTree {
 
         // Create a new leaf node using the same timestamp
         let timestamp = now.timestamp_micros();
-        let leaf = MerkleNode::new_leaf(event_data, timestamp);
+        let leaf = MerkleNode::new_leaf(event_data, timestamp)?;
         let serialized = bincode::serialize(&leaf)?;
         
         // Use the same timestamp for key ordering
@@ -150,7 +152,7 @@ impl TimeWindowedMerkleTree {
             for chunk in nodes.chunks(2) {
                 match chunk {
                     [left, right] => {
-                        new_nodes.push(MerkleNode::new_internal(left.clone(), right.clone()));
+                        new_nodes.push(MerkleNode::new_internal(left.clone(), right.clone())?);
                     }
                     [left] => {
                         // If odd number of nodes, promote the last one

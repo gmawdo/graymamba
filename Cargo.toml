@@ -89,6 +89,10 @@ shamir_secret_sharing = "0.1.1"
 dashmap = "6.0.1"
 flate2 = "1.0.31"
 
+ark-ff = "0.4.0"
+ark-bn254 = "0.4.0"
+ark-serialize = "0.4.0"
+
 [features]
 strict = []
 traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
