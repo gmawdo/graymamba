@@ -93,6 +93,8 @@ ark-ff = "0.4.0"
 ark-bn254 = "0.4.0"
 ark-serialize = "0.4.0"
 
+iced = "0.10.0"
+
 [features]
 strict = []
 traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
