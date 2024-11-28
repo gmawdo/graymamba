@@ -23,12 +23,16 @@ struct AuditViewer {
     historical_roots: String,
     error_message: Option<String>,
     current_theme: Theme,
+    selected_window: Option<i64>,
+    window_events: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     ToggleTheme,
     Refresh,
+    SelectWindow(i64),
+    CloseModal,
 }
 
 impl Application for AuditViewer {
@@ -43,6 +47,8 @@ impl Application for AuditViewer {
             historical_roots: String::new(),
             error_message: None,
             current_theme: Theme::Light,
+            selected_window: None,
+            window_events: None,
         };
         
         if let Err(e) = viewer.load_audit_data() {
@@ -66,15 +72,22 @@ impl Application for AuditViewer {
                 };
             }
             Message::Refresh => {
-                // Clear existing data
                 self.current_events.clear();
                 self.historical_roots.clear();
                 self.error_message = None;
-
-                // Reload data
                 if let Err(e) = self.load_audit_data() {
                     self.error_message = Some(e.to_string());
                 }
+            }
+            Message::SelectWindow(timestamp) => {
+                self.selected_window = Some(timestamp);
+                if let Err(e) = self.load_window_events(timestamp) {
+                    self.error_message = Some(e.to_string());
+                }
+            }
+            Message::CloseModal => {
+                self.selected_window = None;
+                self.window_events = None;
             }
         }
         Command::none()
@@ -137,9 +150,32 @@ impl Application for AuditViewer {
 
         let roots_area = Container::new(
             Scrollable::new(
-                Text::new(&self.historical_roots)
-                    .font(iced::Font::MONOSPACE)
-                    .size(12)
+                Column::new()
+                    .spacing(5)
+                    .push(
+                        self.historical_roots.lines()
+                            .filter(|line| !line.is_empty())
+                            .fold(
+                                Column::new().spacing(5),
+                                |column, line| {
+                                    if let Some((ts_str, content)) = line.split_once('|') {
+                                        if let Ok(ts) = ts_str.parse::<i64>() {
+                                            return column.push(
+                                                Row::new()
+                                                    .spacing(10)
+                                                    .push(Text::new(content).font(iced::Font::MONOSPACE))
+                                                    .push(
+                                                        Button::new(Text::new("View"))
+                                                            .on_press(Message::SelectWindow(ts))
+                                                            .style(theme::Button::Secondary)
+                                                    )
+                                            );
+                                        }
+                                    }
+                                    column.push(Text::new(line).font(iced::Font::MONOSPACE))
+                                }
+                            )
+                    )
             )
             .width(Length::Fill)
         )
@@ -198,7 +234,7 @@ impl AuditViewer {
                 let event: AuditEvent = bincode::deserialize(&event_data)?;
                 let timestamp = DateTime::<Utc>::from_timestamp_micros(node.timestamp)
                     .unwrap()
-                    .format("%Y-%m-%d %H:%M:%S.%6f UTC")
+                    .format("%Y-%m-%d %H:%M:%S UTC")
                     .to_string();
                 
                 let hash_preview = hex::encode(&node.hash[..4]);
@@ -242,7 +278,7 @@ impl AuditViewer {
             historical_roots.push((
                 timestamp.timestamp(),
                 format!(
-                    "Window: {}, Root Hash: {}\n",
+                    "Window: {}, Root Hash: {}",
                     timestamp.format("%Y-%m-%d %H:%M:%S UTC"),
                     hex::encode(&root.hash)
                 )
@@ -251,10 +287,79 @@ impl AuditViewer {
 
         // Sort historical roots by timestamp in reverse order
         historical_roots.sort_by(|a, b| b.0.cmp(&a.0));
-        // Join the sorted roots into the display string
+        
+        // Store timestamp and formatted string
         self.historical_roots = historical_roots.into_iter()
-            .map(|(_, root_str)| root_str)
+            .map(|(ts, root_str)| format!("{}|{}\n", ts, root_str))  // Store timestamp with the string
             .collect();
+
+        Ok(())
+    }
+
+    fn load_window_events(&mut self, timestamp: i64) -> Result<(), Box<dyn Error>> {
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        
+        let cfs = vec!["current_tree", "historical_roots", "event_data", "time_indices"];
+        let db = DB::open_cf_for_read_only(&opts, "../RocksDBs/audit_merkle_db", &cfs, false)?;
+
+        let cf_historical = db.cf_handle("historical_roots")
+            .ok_or("Failed to get historical_roots column family")?;
+        
+        let window_key = format!("window:{}", timestamp);
+        if let Some(value) = db.get_cf(cf_historical, window_key)? {
+            let root: MerkleNode = bincode::deserialize(&value)?;
+            
+            // Format events similar to current window display
+            let mut events = Vec::new();
+            self.collect_events_from_node(&root, &mut events)?;
+            
+            // Sort events by timestamp
+            events.sort_by(|a, b| b.0.cmp(&a.0));
+            
+            self.window_events = Some(
+                events.into_iter()
+                    .map(|(_, event_str)| event_str)
+                    .collect()
+            );
+        }
+
+        Ok(())
+    }
+
+    fn collect_events_from_node(
+        &self,
+        node: &MerkleNode,
+        events: &mut Vec<(i64, String)>
+    ) -> Result<(), Box<dyn Error>> {
+        if let Some(event_data) = &node.event_data {
+            let event: AuditEvent = bincode::deserialize(event_data)?;
+            let timestamp = DateTime::<Utc>::from_timestamp_micros(node.timestamp)
+                .unwrap()
+                .format("%Y-%m-%d %H:%M:%S UTC")
+                .to_string();
+            
+            let hash_preview = hex::encode(&node.hash[..4]);
+            
+            events.push((
+                node.timestamp,
+                format!(
+                    "{:<12} {:<24} {:<12} {:<40}\n",
+                    format!("{}...", hash_preview),
+                    timestamp,
+                    event.event_type.to_uppercase(),
+                    event.file_path
+                )
+            ));
+        }
+
+        if let Some(left) = &node.left_child {
+            self.collect_events_from_node(left, events)?;
+        }
+        if let Some(right) = &node.right_child {
+            self.collect_events_from_node(right, events)?;
+        }
 
         Ok(())
     }
