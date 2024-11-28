@@ -9,6 +9,8 @@ use iced::{
     alignment,
     theme::{self, Theme},
     Command,
+    Border,
+    Shadow,
 };
 use rocksdb::{DB, Options};
 use chrono::{DateTime, Utc, TimeZone};
@@ -33,6 +35,42 @@ enum Message {
     Refresh,
     SelectWindow(i64),
     CloseModal,
+}
+
+// Add this custom container style
+struct ModalContainer;
+
+impl container::StyleSheet for ModalContainer {
+    type Style = Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            text_color: None,
+            background: Some(Color::from_rgb(0.95, 0.95, 0.95).into()),
+            border: Border {
+                radius: 10.0.into(),
+                width: 2.0,
+                color: Color::BLACK,
+            },
+            shadow: Shadow::default(),
+        }
+    }
+}
+
+// Add this overlay style for the background
+struct Overlay;
+
+impl container::StyleSheet for Overlay {
+    type Style = Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            text_color: None,
+            background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.5).into()),
+            border: Border::default(),
+            shadow: Shadow::default(),
+        }
+    }
 }
 
 impl Application for AuditViewer {
@@ -208,42 +246,52 @@ impl Application for AuditViewer {
 
         // Add popup if window is selected
         if let Some(_) = self.selected_window {
-            content = content.push(
-                Container::new(
-                    Column::new()
-                        .spacing(20)
-                        .padding(20)
-                        .max_width(800)
-                        .push(
-                            Row::new()
-                                .push(Text::new("Historical Window Events").size(24))
-                                .push(
-                                    Container::new(
-                                        Button::new(Text::new("×").size(20))
-                                            .on_press(Message::CloseModal)
-                                            .style(theme::Button::Text)
-                                    )
-                                    .width(Length::Fill)
-                                    .align_x(alignment::Horizontal::Right)
-                                )
-                        )
-                        .push(
+            let modal_content: Element<_> = Container::new(
+                Column::new()
+                    .push(content)
+                    .push(
+                        Container::new(
                             Container::new(
-                                Scrollable::new(
-                                    Text::new(self.window_events.as_deref().unwrap_or("No events found"))
-                                        .font(iced::Font::MONOSPACE)
-                                        .size(12)
-                                )
+                                Column::new()
+                                    .spacing(20)
+                                    .max_width(800)
+                                    .push(
+                                        Row::new()
+                                            .push(Text::new("Historical Window Events").size(24))
+                                            .push(
+                                                Container::new(
+                                                    Button::new(Text::new("×").size(20))
+                                                        .on_press(Message::CloseModal)
+                                                        .style(theme::Button::Text)
+                                                )
+                                                .width(Length::Fill)
+                                                .align_x(alignment::Horizontal::Right)
+                                            )
+                                    )
+                                    .push(
+                                        Container::new(
+                                            Scrollable::new(
+                                                Text::new(self.window_events.as_deref().unwrap_or("No events found"))
+                                                    .font(iced::Font::MONOSPACE)
+                                                    .size(12)
+                                            )
+                                        )
+                                        .height(Length::Fixed(400.0))
+                                        .padding(10)
+                                        .style(theme::Container::Box)
+                                    )
                             )
-                            .height(Length::Fixed(400.0))
-                            .padding(10)
-                            .style(theme::Container::Box)
+                            .padding(20)
+                            .style(theme::Container::Custom(Box::new(ModalContainer)))
                         )
-                )
-                .width(Length::Fill)
-                .padding(20)
-                .style(theme::Container::Box)
-            );
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .center_x()
+                        .center_y()
+                        .style(theme::Container::Custom(Box::new(Overlay)))
+                    )
+            ).into();
+            content = Column::new().push(modal_content);
         }
 
         let content = if let Some(error) = &self.error_message {
