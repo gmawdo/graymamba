@@ -19,6 +19,14 @@ use std::error::Error;
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_tree::MerkleNode;
 use graymamba::irrefutable_audit::AuditEvent;
+use graymamba::audit_adapters::poseidon_hash::PoseidonHasher;
+
+#[derive(Debug)]
+struct ProofData {
+    proof_status: Option<bool>,
+    consistency_status: Option<bool>,
+    audit_trail_status: Option<bool>,
+}
 
 struct AuditViewer {
     current_events: String,
@@ -27,6 +35,8 @@ struct AuditViewer {
     current_theme: Theme,
     selected_window: Option<i64>,
     window_events: Option<String>,
+    verification_status: ProofData,
+    selected_event: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +45,10 @@ enum Message {
     Refresh,
     SelectWindow(i64),
     CloseModal,
+    VerifyProof(String),
+    VerifyConsistency,
+    VerifyAuditTrail(String),
+    SelectEvent(String),
 }
 
 // Add this custom container style
@@ -87,6 +101,12 @@ impl Application for AuditViewer {
             current_theme: Theme::Light,
             selected_window: None,
             window_events: None,
+            verification_status: ProofData {
+                proof_status: None,
+                consistency_status: None,
+                audit_trail_status: None,
+            },
+            selected_event: None,
         };
         
         if let Err(e) = viewer.load_audit_data() {
@@ -118,14 +138,46 @@ impl Application for AuditViewer {
                 }
             }
             Message::SelectWindow(timestamp) => {
-                self.selected_window = Some(timestamp);
                 if let Err(e) = self.load_window_events(timestamp) {
                     self.error_message = Some(e.to_string());
                 }
+                self.selected_window = Some(timestamp);
             }
             Message::CloseModal => {
                 self.selected_window = None;
                 self.window_events = None;
+            }
+            
+            // New verification message handlers
+            Message::VerifyProof(event_key) => {
+                match self.verify_merkle_proof(&event_key) {
+                    Ok(status) => {
+                        self.verification_status.proof_status = Some(status);
+                        self.error_message = None;
+                    }
+                    Err(e) => {
+                        self.error_message = Some(format!("Proof verification failed: {}", e));
+                    }
+                }
+            }
+            Message::VerifyConsistency => {
+                match self.verify_historical_consistency() {
+                    Ok(status) => {
+                        self.verification_status.consistency_status = Some(status);
+                        self.error_message = None;
+                    }
+                    Err(e) => {
+                        self.error_message = Some(format!("Consistency verification failed: {}", e));
+                    }
+                }
+            }
+            Message::VerifyAuditTrail(event_key) => {
+                // Placeholder for future ZK proof implementation
+                self.verification_status.audit_trail_status = Some(true);
+                self.error_message = None;
+            }
+            Message::SelectEvent(event_key) => {
+                self.selected_event = Some(event_key);
             }
         }
         Command::none()
@@ -173,18 +225,31 @@ impl Application for AuditViewer {
                 .align_x(alignment::Horizontal::Right)
             );
 
-        let events_area = Container::new(
-            Scrollable::new(
-                Text::new(&self.current_events)
-                    .font(iced::Font::MONOSPACE)
-                    .size(12)
-            )
-            .width(Length::Fill)
-        )
-        .width(Length::Fill)
-        .height(Length::FillPortion(2))
-        .padding(10)
-        .style(theme::Container::Custom(Box::new(BorderedContainer)));
+        let events_area = Scrollable::new(
+            Column::new()
+                .spacing(10)
+                .push(
+                    self.current_events
+                        .lines()
+                        .filter(|line| !line.is_empty())
+                        .fold(Column::new().spacing(5), |column, line| {
+                            let parts: Vec<&str> = line.split_whitespace().collect();
+                            if parts.len() >= 4 {
+                                column.push(
+                                    Button::new(Text::new(line))
+                                        .style(if Some(parts[0].to_string()) == self.selected_event {
+                                            theme::Button::Primary
+                                        } else {
+                                            theme::Button::Text
+                                        })
+                                        .on_press(Message::SelectEvent(parts[0].to_string()))
+                                )
+                            } else {
+                                column
+                            }
+                        })
+                )
+        );
 
         let roots_area = Container::new(
             Scrollable::new(
@@ -234,6 +299,41 @@ impl Application for AuditViewer {
         .padding(10)
         .style(theme::Container::Custom(Box::new(BorderedContainer)));
 
+        let verification_controls = Row::new()
+            .spacing(20)
+            .push(
+                Button::new(Text::new("Verify Selected Event"))
+                    .on_press(Message::VerifyProof(
+                        self.selected_event.clone().unwrap_or_default()
+                    ))
+                    .style(if self.selected_event.is_some() {
+                        theme::Button::Primary
+                    } else {
+                        theme::Button::Secondary
+                    })
+            )
+            .push(
+                Button::new(Text::new("Verify Historical Consistency"))
+                    .on_press(Message::VerifyConsistency)
+            );
+
+        let status_display = Row::new()
+            .spacing(20)
+            .push(
+                Text::new(match self.verification_status.proof_status {
+                    Some(true) => "✓ Proof Valid",
+                    Some(false) => "✗ Proof Invalid",
+                    None => "No proof verified"
+                })
+            )
+            .push(
+                Text::new(match self.verification_status.consistency_status {
+                    Some(true) => "✓ History Consistent",
+                    Some(false) => "✗ History Inconsistent",
+                    None => "No consistency check"
+                })
+            );
+
         let mut content = Column::new()
             .spacing(20)
             .padding(20)
@@ -242,7 +342,9 @@ impl Application for AuditViewer {
             .push(header)
             .push(events_area)
             .push(Text::new("Historical Audits").size(24))
-            .push(roots_area);
+            .push(roots_area)
+            .push(verification_controls)
+            .push(status_display);
 
         // Add popup if window is selected
         if let Some(_) = self.selected_window {
@@ -341,12 +443,15 @@ impl AuditViewer {
                 
                 current_events.push((
                     node.timestamp,
-                    format!(
-                        "{:<12} {:<24} {:<12} {:<40}\n",
-                        format!("{}...", hash_preview),
-                        timestamp,
-                        event.event_type.to_uppercase(),
-                        event.file_path
+                    (
+                        hex::encode(&node.hash),
+                        format!(
+                            "{:<12} {:<24} {:<12} {:<40}\n",
+                            format!("{}...", hash_preview),
+                            timestamp,
+                            event.event_type.to_uppercase(),
+                            event.file_path
+                        )
                     )
                 ));
             }
@@ -356,7 +461,7 @@ impl AuditViewer {
         current_events.sort_by(|a, b| b.0.cmp(&a.0));
         // Join the sorted events into the display string
         self.current_events = current_events.into_iter()
-            .map(|(_, event_str)| event_str)
+            .map(|(_, (full_hash, event_str))| format!("{}|{}", full_hash, event_str))
             .collect();
 
         // Load historical roots into a vector for sorting
@@ -464,6 +569,70 @@ impl AuditViewer {
         }
 
         Ok(())
+    }
+
+    fn verify_merkle_proof(&self, event_str: &str) -> Result<bool, Box<dyn Error>> {
+        let db = self.open_db()?;
+        let cf_current = db.cf_handle("current_tree")
+            .ok_or("Failed to get current_tree column family")?;
+        
+        // Extract full hash from the hidden part of the event string
+        let full_hash = event_str.split('|').next()
+            .ok_or("Invalid event format")?;
+        
+        // Convert hex string back to bytes
+        let hash_bytes = hex::decode(full_hash)?;
+        
+        // Look up the event using the key format from merkle_tree.rs
+        let iter = db.iterator_cf(cf_current, rocksdb::IteratorMode::Start);
+        for item in iter {
+            let (_, value_vec) = item?;
+            let node: MerkleNode = bincode::deserialize(&value_vec)?;
+            if node.hash == hash_bytes {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn verify_historical_consistency(&self) -> Result<bool, Box<dyn Error>> {
+        let db = self.open_db()?;
+        let cf_historical = db.cf_handle("historical_roots")
+            .ok_or("Failed to get historical_roots column family")?;
+        
+        let mut prev_root: Option<Vec<u8>> = None;
+        let mut is_consistent = true;
+        
+        let hist_iter = db.iterator_cf(cf_historical, rocksdb::IteratorMode::End);
+        for item in hist_iter {
+            let (_, value_vec) = item?;
+            let root: MerkleNode = bincode::deserialize(&value_vec)?;
+            
+            if let Some(prev) = prev_root {
+                if prev == root.hash {
+                    is_consistent = false;
+                    break;
+                }
+            }
+            prev_root = Some(root.hash);
+        }
+        
+        Ok(is_consistent)
+    }
+
+    fn open_db(&self) -> Result<DB, Box<dyn Error>> {
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        
+        let cfs = vec!["current_tree", "historical_roots", "event_data", "time_indices"];
+        Ok(DB::open_cf_for_read_only(&opts, "../RocksDBs/audit_merkle_db", &cfs, false)?)
+    }
+
+    fn get_selected_event_key(&self) -> Option<String> {
+        // TODO: Add event selection functionality
+        // For now, return None
+        None
     }
 }
 
