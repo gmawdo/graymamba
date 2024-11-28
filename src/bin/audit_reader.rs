@@ -198,7 +198,8 @@ impl AuditViewer {
                 let event: AuditEvent = bincode::deserialize(&event_data)?;
                 let timestamp = DateTime::<Utc>::from_timestamp_micros(node.timestamp)
                     .unwrap()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
+                    .format("%Y-%m-%d %H:%M:%S.%6f UTC")
+                    .to_string();
                 
                 let hash_preview = hex::encode(&node.hash[..4]);
                 
