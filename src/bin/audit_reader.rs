@@ -5,13 +5,13 @@
 
 use iced::{
     widget::{Column, Container, Text, Scrollable, container, Button, Row},
-    Element, Length, Sandbox, Settings, Color, Alignment,
+    Element, Length, Application, Settings, Color, Alignment,
     alignment,
-    Theme,
-    theme::self,
+    theme::{self, Theme},
+    Command,
 };
 use rocksdb::{DB, Options};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, TimeZone};
 use std::error::Error;
 
 #[cfg(feature = "irrefutable_audit")]
@@ -28,12 +28,16 @@ struct AuditViewer {
 #[derive(Debug, Clone)]
 enum Message {
     ToggleTheme,
+    Refresh,
 }
 
-impl Sandbox for AuditViewer {
+impl Application for AuditViewer {
     type Message = Message;
+    type Theme = Theme;
+    type Executor = iced::executor::Default;
+    type Flags = ();
 
-    fn new() -> Self {
+    fn new(_flags: ()) -> (Self, Command<Message>) {
         let mut viewer = AuditViewer {
             current_events: String::new(),
             historical_roots: String::new(),
@@ -41,32 +45,43 @@ impl Sandbox for AuditViewer {
             current_theme: Theme::Light,
         };
         
-        // Load data on startup
         if let Err(e) = viewer.load_audit_data() {
             viewer.error_message = Some(e.to_string());
         }
         
-        viewer
+        (viewer, Command::none())
     }
 
     fn title(&self) -> String {
         String::from("Audit Log Viewer")
     }
 
-    fn theme(&self) -> Theme {
-        self.current_theme.clone()
-    }
-
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::ToggleTheme => {
                 self.current_theme = match self.current_theme {
                     Theme::Light => Theme::Dark,
                     Theme::Dark => Theme::Light,
-                    _ => Theme::Dark,
+                    _ => Theme::Light,
                 };
             }
+            Message::Refresh => {
+                // Clear existing data
+                self.current_events.clear();
+                self.historical_roots.clear();
+                self.error_message = None;
+
+                // Reload data
+                if let Err(e) = self.load_audit_data() {
+                    self.error_message = Some(e.to_string());
+                }
+            }
         }
+        Command::none()
+    }
+
+    fn theme(&self) -> Theme {
+        self.current_theme.clone()
     }
 
     fn view(&self) -> Element<Message> {
@@ -82,8 +97,26 @@ impl Sandbox for AuditViewer {
             .push(Text::new("Current Window Events").size(24))
             .push(
                 Container::new(
-                    Button::new(theme_text)
-                        .on_press(Message::ToggleTheme)
+                    Row::new()
+                        .spacing(8)
+                        .push(
+                            Button::new(
+                                Text::new("Refresh")
+                                    .size(13)
+                            )
+                            .padding([4, 8])
+                            .on_press(Message::Refresh)
+                            .style(theme::Button::Secondary)
+                        )
+                        .push(
+                            Button::new(
+                                Text::new(theme_text)
+                                    .size(13)
+                            )
+                            .padding([4, 8])
+                            .on_press(Message::ToggleTheme)
+                            .style(theme::Button::Secondary)
+                        )
                 )
                 .width(Length::Fill)
                 .align_x(alignment::Horizontal::Right)
@@ -122,7 +155,7 @@ impl Sandbox for AuditViewer {
             .height(Length::Fill)
             .push(header)
             .push(events_area)
-            .push(Text::new("Historical Root Hashes").size(24))
+            .push(Text::new("Historical Audits").size(24))
             .push(roots_area);
 
         let content = if let Some(error) = &self.error_message {
@@ -151,12 +184,12 @@ impl AuditViewer {
         let cfs = vec!["current_tree", "historical_roots", "event_data", "time_indices"];
         let db = DB::open_cf_for_read_only(&opts, "../RocksDBs/audit_merkle_db", &cfs, false)?;
 
-        // Load current events
+        // Load current events into a vector first for sorting
+        let mut current_events = Vec::new();
         let cf_current = db.cf_handle("current_tree")
             .ok_or("Failed to get current_tree column family")?;
         
-        // Similar to your print_events function, but append to String instead
-        let iter = db.iterator_cf(cf_current, rocksdb::IteratorMode::Start);
+        let iter = db.iterator_cf(cf_current, rocksdb::IteratorMode::End);
         for item in iter {
             let (_, value) = item?;
             let node: MerkleNode = bincode::deserialize(&value)?;
@@ -169,31 +202,58 @@ impl AuditViewer {
                 
                 let hash_preview = hex::encode(&node.hash[..4]);
                 
-                self.current_events.push_str(&format!(
-                    "{:<12} {:<24} {:<12} {:<40}\n",
-                    format!("{}...", hash_preview),
-                    timestamp,
-                    event.event_type.to_uppercase(),
-                    event.file_path
+                current_events.push((
+                    node.timestamp,
+                    format!(
+                        "{:<12} {:<24} {:<12} {:<40}\n",
+                        format!("{}...", hash_preview),
+                        timestamp,
+                        event.event_type.to_uppercase(),
+                        event.file_path
+                    )
                 ));
             }
         }
 
-        // Load historical roots
+        // Sort current events by timestamp in reverse order
+        current_events.sort_by(|a, b| b.0.cmp(&a.0));
+        // Join the sorted events into the display string
+        self.current_events = current_events.into_iter()
+            .map(|(_, event_str)| event_str)
+            .collect();
+
+        // Load historical roots into a vector for sorting
+        let mut historical_roots = Vec::new();
         let cf_historical = db.cf_handle("historical_roots")
             .ok_or("Failed to get historical_roots column family")?;
         
-        let hist_iter = db.iterator_cf(cf_historical, rocksdb::IteratorMode::Start);
+        let hist_iter = db.iterator_cf(cf_historical, rocksdb::IteratorMode::End);
         for item in hist_iter {
             let (key, value) = item?;
             let window_key = String::from_utf8(key.to_vec())?;
             let root: MerkleNode = bincode::deserialize(&value)?;
-            self.historical_roots.push_str(&format!(
-                "Window: {}, Root Hash: {}\n",
-                window_key,
-                hex::encode(&root.hash)
+            
+            let timestamp = window_key.strip_prefix("window:")
+                .and_then(|ts| ts.parse::<i64>().ok())
+                .and_then(|ts| Utc.timestamp_opt(ts, 0).single())
+                .unwrap_or_else(|| Utc::now());
+            
+            historical_roots.push((
+                timestamp.timestamp(),
+                format!(
+                    "Window: {}, Root Hash: {}\n",
+                    timestamp.format("%Y-%m-%d %H:%M:%S UTC"),
+                    hex::encode(&root.hash)
+                )
             ));
         }
+
+        // Sort historical roots by timestamp in reverse order
+        historical_roots.sort_by(|a, b| b.0.cmp(&a.0));
+        // Join the sorted roots into the display string
+        self.historical_roots = historical_roots.into_iter()
+            .map(|(_, root_str)| root_str)
+            .collect();
 
         Ok(())
     }
@@ -207,8 +267,6 @@ impl container::StyleSheet for BorderedContainer {
 
     fn appearance(&self, _style: &Self::Style) -> container::Appearance {
         container::Appearance {
-            border_width: 1.0,
-            border_color: Color::BLACK,
             ..container::Appearance::default()
         }
     }

@@ -93,7 +93,7 @@ ark-ff = "0.4.0"
 ark-bn254 = "0.4.0"
 ark-serialize = "0.4.0"
 
-iced = "0.10.0"
+iced = { version = "0.12", features = ["advanced", "system"] }
 
 [features]
 strict = []
