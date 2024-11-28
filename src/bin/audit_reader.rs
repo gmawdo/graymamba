@@ -163,16 +163,28 @@ impl Application for AuditViewer {
                                             return column.push(
                                                 Row::new()
                                                     .spacing(10)
-                                                    .push(Text::new(content).font(iced::Font::MONOSPACE))
                                                     .push(
-                                                        Button::new(Text::new("View"))
-                                                            .on_press(Message::SelectWindow(ts))
-                                                            .style(theme::Button::Secondary)
+                                                        Text::new(content)
+                                                            .font(iced::Font::MONOSPACE)
+                                                            .size(12)
+                                                    )
+                                                    .push(
+                                                        Button::new(
+                                                            Text::new("View")
+                                                                .size(13)
+                                                        )
+                                                        .padding([4, 8])
+                                                        .on_press(Message::SelectWindow(ts))
+                                                        .style(theme::Button::Secondary)
                                                     )
                                             );
                                         }
                                     }
-                                    column.push(Text::new(line).font(iced::Font::MONOSPACE))
+                                    column.push(
+                                        Text::new(line)
+                                            .font(iced::Font::MONOSPACE)
+                                            .size(12)
+                                    )
                                 }
                             )
                     )
@@ -184,7 +196,7 @@ impl Application for AuditViewer {
         .padding(10)
         .style(theme::Container::Custom(Box::new(BorderedContainer)));
 
-        let content = Column::new()
+        let mut content = Column::new()
             .spacing(20)
             .padding(20)
             .max_width(2000)
@@ -193,6 +205,46 @@ impl Application for AuditViewer {
             .push(events_area)
             .push(Text::new("Historical Audits").size(24))
             .push(roots_area);
+
+        // Add popup if window is selected
+        if let Some(_) = self.selected_window {
+            content = content.push(
+                Container::new(
+                    Column::new()
+                        .spacing(20)
+                        .padding(20)
+                        .max_width(800)
+                        .push(
+                            Row::new()
+                                .push(Text::new("Historical Window Events").size(24))
+                                .push(
+                                    Container::new(
+                                        Button::new(Text::new("×").size(20))
+                                            .on_press(Message::CloseModal)
+                                            .style(theme::Button::Text)
+                                    )
+                                    .width(Length::Fill)
+                                    .align_x(alignment::Horizontal::Right)
+                                )
+                        )
+                        .push(
+                            Container::new(
+                                Scrollable::new(
+                                    Text::new(self.window_events.as_deref().unwrap_or("No events found"))
+                                        .font(iced::Font::MONOSPACE)
+                                        .size(12)
+                                )
+                            )
+                            .height(Length::Fixed(400.0))
+                            .padding(10)
+                            .style(theme::Container::Box)
+                        )
+                )
+                .width(Length::Fill)
+                .padding(20)
+                .style(theme::Container::Box)
+            );
+        }
 
         let content = if let Some(error) = &self.error_message {
             content.push(
@@ -275,12 +327,14 @@ impl AuditViewer {
                 .and_then(|ts| Utc.timestamp_opt(ts, 0).single())
                 .unwrap_or_else(|| Utc::now());
             
+            let hash_preview = hex::encode(&root.hash)[..8].to_string();
+            
             historical_roots.push((
                 timestamp.timestamp(),
                 format!(
-                    "Window: {}, Root Hash: {}",
+                    "Window: {}, Root Hash: {}...",
                     timestamp.format("%Y-%m-%d %H:%M:%S UTC"),
-                    hex::encode(&root.hash)
+                    hash_preview
                 )
             ));
         }
@@ -290,7 +344,7 @@ impl AuditViewer {
         
         // Store timestamp and formatted string
         self.historical_roots = historical_roots.into_iter()
-            .map(|(ts, root_str)| format!("{}|{}\n", ts, root_str))  // Store timestamp with the string
+            .map(|(ts, root_str)| format!("{}|{}\n", ts, root_str))
             .collect();
 
         Ok(())
