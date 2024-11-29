@@ -2,6 +2,13 @@ use ark_ff::{PrimeField, Field, Zero};
 use ark_bn254::Fr;
 use ark_serialize::CanonicalSerialize;
 use std::error::Error;
+use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+use ark_r1cs_std::{
+    fields::fp::FpVar,
+    prelude::*,
+    alloc::AllocVar,
+};
+use std::ops::{Add, Mul};
 
 // Constants for Poseidon
 const RATE: usize = 2;
@@ -47,6 +54,100 @@ impl PoseidonHasher {
         
         self.permute(&mut state);
         self.field_element_to_bytes(&state[0])
+    }
+
+    pub fn hash_leaf_gadget(
+        &self,
+        cs: ConstraintSystemRef<Fr>,
+        input: &FpVar<Fr>
+    ) -> Result<FpVar<Fr>, SynthesisError> {
+        // Initialize state variables
+        let mut state_vars = vec![FpVar::<Fr>::zero(); WIDTH];
+        state_vars[0] = input.clone();
+
+        // Apply the Poseidon permutation
+        // First half of full rounds
+        for r in 0..FULL_ROUNDS/2 {
+            self.full_round_gadget(&mut state_vars, r, &cs)?;
+        }
+        
+        // Partial rounds
+        for r in 0..PARTIAL_ROUNDS {
+            self.partial_round_gadget(&mut state_vars, FULL_ROUNDS/2 + r, &cs)?;
+        }
+        
+        // Second half of full rounds
+        for r in 0..FULL_ROUNDS/2 {
+            self.full_round_gadget(&mut state_vars, FULL_ROUNDS/2 + PARTIAL_ROUNDS + r, &cs)?;
+        }
+
+        Ok(state_vars[0].clone())
+    }
+
+    fn full_round_gadget(
+        &self,
+        state: &mut Vec<FpVar<Fr>>,
+        round: usize,
+        cs: &ConstraintSystemRef<Fr>
+    ) -> Result<(), SynthesisError> {
+        // Add round constants
+        for i in 0..WIDTH {
+            let constant = FpVar::<Fr>::new_constant(cs.clone(), self.round_constants[round][i])?;
+            let current_state = state[i].clone();
+            state[i] = current_state.add(&constant);
+        }
+        
+        // Apply S-box (x^5) to all elements
+        for i in 0..WIDTH {
+            let current_state = state[i].clone();
+            state[i] = current_state.pow_by_constant(&[5u64])?;
+        }
+        
+        // Apply MDS matrix
+        let old_state = state.clone();
+        for i in 0..WIDTH {
+            state[i] = FpVar::<Fr>::zero();
+            for j in 0..WIDTH {
+                let mds_element = FpVar::<Fr>::new_constant(cs.clone(), self.mds_matrix[i][j])?;
+                let product = old_state[j].clone().mul(&mds_element);
+                let current_sum = state[i].clone();
+                state[i] = current_sum.add(&product);
+            }
+        }
+        
+        Ok(())
+    }
+
+    fn partial_round_gadget(
+        &self,
+        state: &mut Vec<FpVar<Fr>>,
+        round: usize,
+        cs: &ConstraintSystemRef<Fr>
+    ) -> Result<(), SynthesisError> {
+        // Add round constants
+        for i in 0..WIDTH {
+            let constant = FpVar::<Fr>::new_constant(cs.clone(), self.round_constants[round][i])?;
+            let current_state = state[i].clone();
+            state[i] = current_state.add(&constant);
+        }
+        
+        // Apply S-box only to first element
+        let current_state = state[0].clone();
+        state[0] = current_state.pow_by_constant(&[5u64])?;
+        
+        // Apply MDS matrix
+        let old_state = state.clone();
+        for i in 0..WIDTH {
+            state[i] = FpVar::<Fr>::zero();
+            for j in 0..WIDTH {
+                let mds_element = FpVar::<Fr>::new_constant(cs.clone(), self.mds_matrix[i][j])?;
+                let product = old_state[j].clone().mul(&mds_element);
+                let current_sum = state[i].clone();
+                state[i] = current_sum.add(&product);
+            }
+        }
+        
+        Ok(())
     }
 
     // The following functions in PoseidonHasher are internal implementation details that support the two public functions above:
@@ -145,7 +246,7 @@ impl PoseidonHasher {
         }
     }
 
-    fn bytes_to_field_element(&self, bytes: &[u8]) -> Fr {
+    pub fn bytes_to_field_element(&self, bytes: &[u8]) -> Fr {
         Fr::from_be_bytes_mod_order(bytes)
     }
 
