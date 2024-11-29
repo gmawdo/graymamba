@@ -4,6 +4,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisE
 use ark_r1cs_std::{
     fields::fp::FpVar,
     alloc::AllocVar,
+    eq::EqGadget
 };
 use super::poseidon_hash::PoseidonHasher;
 use std::marker::PhantomData;
@@ -30,17 +31,38 @@ pub struct EventCommitmentCircuit {
 
 impl ConstraintSynthesizer<Fr> for EventCommitmentCircuit {
     fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
-        // Convert inputs to field elements using our PoseidonHasher's methods
-        let _event_hash_var = FpVar::<Fr>::new_input(cs.clone(), || {
+        // 1. Hash verification (already started)
+        let event_hash_var = FpVar::<Fr>::new_input(cs.clone(), || {
             Ok(self.hasher.bytes_to_field_element(&self.event_hash))
         })?;
         
-        let _prover_data_var = FpVar::<Fr>::new_witness(cs.clone(), || {
+        let prover_data_var = FpVar::<Fr>::new_witness(cs.clone(), || {
             Ok(self.hasher.bytes_to_field_element(&self.prover_data))
         })?;
 
-        // TODO: Implement hash_leaf_gadget
-        // For now, let's just create a placeholder that will fail compilation
-        unimplemented!("Need to implement hash_leaf_gadget for PoseidonHasher");
+        // Verify hash matches
+        let computed_hash = self.hasher.hash_leaf_gadget(cs.clone(), &prover_data_var)?;
+        computed_hash.enforce_equal(&event_hash_var)?;
+
+        // 2. Timestamp verification
+        let timestamp_var = FpVar::<Fr>::new_input(cs.clone(), || {
+            Ok(Fr::from(self.timestamp as u64))
+        })?;
+
+        let window_start_var = FpVar::<Fr>::new_input(cs.clone(), || {
+            Ok(Fr::from(self.window_start as u64))
+        })?;
+
+        let window_end_var = FpVar::<Fr>::new_input(cs.clone(), || {
+            Ok(Fr::from(self.window_end as u64))
+        })?;
+
+        // Enforce timestamp is within window
+        timestamp_var.enforce_cmp(&window_start_var, core::cmp::Ordering::Greater, false)?;
+        timestamp_var.enforce_cmp(&window_end_var, core::cmp::Ordering::Less, false)?;
+
+        // TODO: Add Merkle path verification next
+        
+        Ok(())
     }
 }
