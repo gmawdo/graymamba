@@ -17,6 +17,7 @@ const FULL_ROUNDS: usize = 8;
 const PARTIAL_ROUNDS: usize = 57;
 const WIDTH: usize = RATE + CAPACITY;
 
+#[derive(Clone)]
 pub struct PoseidonHasher {
     state: [Fr; WIDTH],
     round_constants: Vec<[Fr; WIDTH]>,
@@ -81,6 +82,37 @@ impl PoseidonHasher {
             self.full_round_gadget(&mut state_vars, FULL_ROUNDS/2 + PARTIAL_ROUNDS + r, &cs)?;
         }
 
+        Ok(state_vars[0].clone())
+    }
+
+    pub fn hash_nodes_gadget(
+        &self,
+        cs: ConstraintSystemRef<Fr>,
+        left: &FpVar<Fr>,
+        right: &FpVar<Fr>
+    ) -> Result<FpVar<Fr>, SynthesisError> {
+        // Initialize state with input nodes
+        let mut state_vars = vec![FpVar::<Fr>::zero(); WIDTH];
+        state_vars[0] = left.clone();
+        state_vars[1] = right.clone();
+        
+        // Apply the Poseidon permutation
+        // First half of full rounds
+        for r in 0..FULL_ROUNDS/2 {
+            self.full_round_gadget(&mut state_vars, r, &cs)?;
+        }
+        
+        // Partial rounds
+        for r in 0..PARTIAL_ROUNDS {
+            self.partial_round_gadget(&mut state_vars, FULL_ROUNDS/2 + r, &cs)?;
+        }
+        
+        // Second half of full rounds
+        for r in 0..FULL_ROUNDS/2 {
+            self.full_round_gadget(&mut state_vars, FULL_ROUNDS/2 + PARTIAL_ROUNDS + r, &cs)?;
+        }
+
+        // Return first element as hash output
         Ok(state_vars[0].clone())
     }
 
