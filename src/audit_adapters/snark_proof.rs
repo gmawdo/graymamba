@@ -7,7 +7,9 @@ use ark_r1cs_std::{
 };
 use super::poseidon_hash::PoseidonHasher;
 use std::marker::PhantomData;
+#[allow(unused_imports)]
 use ark_std::rand::{rngs::StdRng, SeedableRng};
+#[allow(unused_imports)]
 use crate::irrefutable_audit::AuditEvent;
 
 // here we have a complete circuit that proves:
@@ -97,7 +99,7 @@ impl EventCommitmentCircuit {
             })?;
 
             use ark_r1cs_std::boolean::Boolean;
-            let is_left_var = Boolean::new_witness(cs.clone(), || Ok(*is_left))?;
+            let _is_left_var = Boolean::new_witness(cs.clone(), || Ok(*is_left))?;
 
             // If is_left is true:
             //   hash(sibling || current)
@@ -114,6 +116,29 @@ impl EventCommitmentCircuit {
         }
 
         Ok(current_hash)
+    }
+}
+
+#[derive(Clone)]
+#[allow(dead_code)] //used in a test
+struct SimpleCircuit {
+    // Public input
+    pub number: u64,
+    _phantom: PhantomData<Fr>,
+}
+
+impl ConstraintSynthesizer<Fr> for SimpleCircuit {
+    fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
+        // Create variable for our public input
+        let a = FpVar::<Fr>::new_input(cs.clone(), || Ok(Fr::from(self.number)))?;
+        
+        // Create constant 1
+        let one = FpVar::<Fr>::new_constant(cs.clone(), Fr::from(1u64))?;
+        
+        // Assert that a equals 1
+        a.enforce_equal(&one)?;
+        
+        Ok(())
     }
 }
 
@@ -209,6 +234,31 @@ mod tests {
         let is_valid = Groth16::<Bn254>::verify(&vk, &public_inputs, &proof)?;
         assert!(is_valid, "Proof verification failed!");
 
+        Ok(())
+    }
+    #[tokio::test]
+    async fn test_simple_circuit() -> Result<(), Box<dyn std::error::Error>> {
+        let mut rng = StdRng::seed_from_u64(0u64);
+        
+        println!("1. Creating simple circuit...");
+        let circuit = SimpleCircuit {
+            number: 1u64,
+            _phantom: PhantomData,
+        };
+        
+        println!("2. Setting up circuit proof system...");
+        let (pk, vk) = Groth16::<Bn254>::circuit_specific_setup(circuit.clone(), &mut rng)?;
+        
+        println!("3. Generating proof...");
+        let proof = Groth16::<Bn254>::prove(&pk, circuit, &mut rng)?;
+        
+        println!("4. Verifying proof...");
+        let public_inputs = vec![Fr::from(1u64)];
+        let is_valid = Groth16::<Bn254>::verify(&vk, &public_inputs, &proof)?;
+        
+        assert!(is_valid, "Proof verification failed!");
+        println!("5. Proof verified successfully!");
+        
         Ok(())
     }
 }

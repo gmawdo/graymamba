@@ -19,7 +19,6 @@ use std::error::Error;
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_tree::MerkleNode;
 use graymamba::irrefutable_audit::AuditEvent;
-use graymamba::audit_adapters::poseidon_hash::PoseidonHasher;
 
 #[derive(Debug)]
 struct ProofData {
@@ -47,6 +46,7 @@ enum Message {
     CloseModal,
     VerifyProof(String),
     VerifyConsistency,
+    #[allow(dead_code)]
     VerifyAuditTrail(String),
     SelectEvent(String),
 }
@@ -171,7 +171,7 @@ impl Application for AuditViewer {
                     }
                 }
             }
-            Message::VerifyAuditTrail(event_key) => {
+            Message::VerifyAuditTrail(_event_key) => {
                 // Placeholder for future ZK proof implementation
                 self.verification_status.audit_trail_status = Some(true);
                 self.error_message = None;
@@ -628,7 +628,7 @@ impl AuditViewer {
         let cfs = vec!["current_tree", "historical_roots", "event_data", "time_indices"];
         Ok(DB::open_cf_for_read_only(&opts, "../RocksDBs/audit_merkle_db", &cfs, false)?)
     }
-
+    #[allow(dead_code)]
     fn get_selected_event_key(&self) -> Option<String> {
         // TODO: Add event selection functionality
         // For now, return None
