@@ -66,9 +66,9 @@ impl ConstraintSynthesizer<Fr> for EventCommitmentCircuit {
             Ok(Fr::from(self.window_end as u64))
         })?;
 
-        // Enforce timestamp is within window
-        timestamp_var.enforce_cmp(&window_start_var, core::cmp::Ordering::Greater, false)?;
-        timestamp_var.enforce_cmp(&window_end_var, core::cmp::Ordering::Less, false)?;
+        // Enforce timestamp is within window (inclusive)
+        timestamp_var.enforce_cmp(&window_start_var, core::cmp::Ordering::Greater, true)?;  // Greater or equal
+        timestamp_var.enforce_cmp(&window_end_var, core::cmp::Ordering::Less, true)?;      // Less or equal
 
         // 3. Merkle path verification
         let merkle_root_var = FpVar::<Fr>::new_input(cs.clone(), || {
@@ -99,20 +99,14 @@ impl EventCommitmentCircuit {
             })?;
 
             use ark_r1cs_std::boolean::Boolean;
-            let _is_left_var = Boolean::new_witness(cs.clone(), || Ok(*is_left))?;
+            let is_left_var = Boolean::new_witness(cs.clone(), || Ok(*is_left))?;
 
-            // If is_left is true:
-            //   hash(sibling || current)
-            // If is_left is false:
-            //   hash(current || sibling)
-            let (left, right) = if *is_left {
-                (&sibling_var, &current_hash)
-            } else {
-                (&current_hash, &sibling_var)
-            };
+            // Use Boolean::select to enforce the constraint
+            let left = Boolean::select(&is_left_var, &sibling_var, &current_hash)?;
+            let right = Boolean::select(&is_left_var, &current_hash, &sibling_var)?;
 
             // Use our PoseidonHasher's hash_nodes_gadget
-            current_hash = self.hasher.hash_nodes_gadget(cs.clone(), left, right)?;
+            current_hash = self.hasher.hash_nodes_gadget(cs.clone(), &left, &right)?;
         }
 
         Ok(current_hash)
@@ -186,8 +180,8 @@ mod tests {
         println!("5. Merkle root: {:?}", merkle_root);
         
         let merkle_path = vec![
-            (sibling1.clone(), true),   // true means sibling1 goes on left
-            (sibling2.clone(), true),   // true means sibling2 goes on left
+            (sibling1.clone(), false),   // false means event_hash goes on left
+            (sibling2.clone(), false),   // false means intermediate goes on left
         ];
         
         println!("6. Created merkle path with directions: {:?}", 
@@ -217,12 +211,38 @@ mod tests {
         };
 
         println!("8. Setting up circuit proof system...");
-        let (pk, vk) = Groth16::<Bn254>::circuit_specific_setup(circuit.clone(), &mut rng)?;
-        println!("9. Generated proving and verifying keys");
-        
-        let proof = Groth16::<Bn254>::prove(&pk, circuit, &mut rng)?;
-        println!("10. Generated proof");
+        let cs = ark_relations::r1cs::ConstraintSystem::<Fr>::new_ref();
+        println!("8.1. Setting goal...");
+        cs.set_optimization_goal(ark_relations::r1cs::OptimizationGoal::Constraints);
+        println!("8.2. Setting mode...");
+        cs.set_mode(ark_relations::r1cs::SynthesisMode::Prove { construct_matrices: true });
+        println!("8.3. Generating constraints...");
 
+        let cs_clone = cs.clone();
+        circuit.clone().generate_constraints(cs.clone())?;
+
+        let satisfied = cs.is_satisfied()?;
+        println!("Constraint satisfaction: {}", satisfied);
+        if !satisfied {
+            println!("Timestamp values:");
+            println!("  start: {}", window_start);
+            println!("  current: {}", timestamp);
+            println!("  end: {}", window_end);
+        }
+
+        // Print detailed constraint info
+        println!("Constraint System Debug Info:");
+        println!("Num constraints: {}", cs_clone.num_constraints());
+        println!("Num instance variables: {}", cs_clone.num_instance_variables());
+        println!("Num witness variables: {}", cs_clone.num_witness_variables());
+
+        let (pk, vk) = Groth16::<Bn254>::circuit_specific_setup(circuit.clone(), &mut rng)?;
+        println!("12. Generated proving and verifying keys");
+
+        let proof = Groth16::<Bn254>::prove(&pk, circuit, &mut rng)?;
+        println!("13. Generated proof");
+
+        println!("14. Starting verification...");
         let public_inputs = vec![
             hasher.bytes_to_field_element(&event_hash),
             Fr::from(1696161600u64),  // timestamp
@@ -232,6 +252,8 @@ mod tests {
         ];
 
         let is_valid = Groth16::<Bn254>::verify(&vk, &public_inputs, &proof)?;
+        println!("15. Verification result: {}", is_valid);
+
         assert!(is_valid, "Proof verification failed!");
 
         Ok(())
@@ -240,7 +262,7 @@ mod tests {
     async fn test_simple_circuit() -> Result<(), Box<dyn std::error::Error>> {
         let mut rng = StdRng::seed_from_u64(0u64);
         
-        println!("1. Creating simple circuit...");
+        println!("\n1. Creating simple circuit...");
         let circuit = SimpleCircuit {
             number: 1u64,
             _phantom: PhantomData,
@@ -257,7 +279,7 @@ mod tests {
         let is_valid = Groth16::<Bn254>::verify(&vk, &public_inputs, &proof)?;
         
         assert!(is_valid, "Proof verification failed!");
-        println!("5. Proof verified successfully!");
+        println!("5. Proof verified successfully!\n\n");
         
         Ok(())
     }
