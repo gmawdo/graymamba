@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 use std::sync::Once;
 use std::time::SystemTime;
 
-use crate::data_store::DataStore;
+use crate::backingstore::data_store::DataStore;
 
 #[derive(Default, Debug)]
 pub struct DirEntry {

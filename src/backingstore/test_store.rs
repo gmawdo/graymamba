@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::data_store::{DataStore, DataStoreError, DataStoreResult};
-use crate::data_store::KeyType;
+use crate::backingstore::data_store::{DataStore, DataStoreError, DataStoreResult};
+use crate::backingstore::data_store::KeyType;
 
 pub struct TestDataStore {
     data: Arc<RwLock<HashMap<String, String>>>,

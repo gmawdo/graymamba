@@ -7,12 +7,6 @@ pub mod kernel;
 
 mod write_counter;
 
-pub mod data_store;
-
-pub mod redis_data_store;
-
-pub mod rocksdb_data_store;
-
 pub mod fs_util;
 
 pub mod irrefutable_audit;
@@ -27,4 +21,4 @@ pub mod sharesbased_fs;
 
 pub mod secret_sharing;
 
-pub mod test_store;
+pub mod backingstore;

@@ -22,7 +22,7 @@ use crate::kernel::api::nfs::sattr3;
 
 use graymamba::file_metadata::FileMetadata;
 
-use graymamba::data_store::{DataStore,DataStoreError,DataStoreResult};
+use graymamba::backingstore::data_store::{DataStore,DataStoreError,DataStoreResult};
 
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;

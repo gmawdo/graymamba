@@ -9,7 +9,7 @@ use tracing::debug;
 
 use anyhow::Result;
 
-use crate::data_store::KeyType;
+use crate::backingstore::data_store::KeyType;
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]

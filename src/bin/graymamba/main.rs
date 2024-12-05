@@ -74,10 +74,10 @@ async fn main() {
 
     set_namespace_id_and_hashtag().await;
     
-    use graymamba::redis_data_store::RedisDataStore;
+    use graymamba::backingstore::redis_data_store::RedisDataStore;
     let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
-    //use graymamba::rocksdb_data_store::RocksDBDataStore;
+    //use graymamba::backingstore::rocksdb_data_store::RocksDBDataStore;
     //let _data_store2 = Arc::new(RocksDBDataStore::new("theROCKSDB").expect("Failed to create a data store"));
 
     #[cfg(feature = "irrefutable_audit")]
