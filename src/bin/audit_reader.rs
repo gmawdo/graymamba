@@ -197,142 +197,172 @@ impl Application for AuditViewer {
         let header = Row::new()
             .width(Length::Fill)
             .align_items(Alignment::Center)
-            .push(Text::new("Current Window Events").size(24))
+            .push(Text::new("Audit Log Viewer").size(24))
             .push(
                 Container::new(
                     Row::new()
                         .spacing(8)
                         .push(
-                            Button::new(
-                                Text::new("Refresh")
-                                    .size(13)
-                            )
-                            .padding([4, 8])
-                            .on_press(Message::Refresh)
-                            .style(theme::Button::Secondary)
+                            Button::new(Text::new("Refresh").size(13))
+                                .padding([4, 8])
+                                .on_press(Message::Refresh)
+                                .style(theme::Button::Secondary)
                         )
                         .push(
-                            Button::new(
-                                Text::new(theme_text)
-                                    .size(13)
-                            )
-                            .padding([4, 8])
-                            .on_press(Message::ToggleTheme)
-                            .style(theme::Button::Secondary)
+                            Button::new(Text::new(theme_text).size(13))
+                                .padding([4, 8])
+                                .on_press(Message::ToggleTheme)
+                                .style(theme::Button::Secondary)
                         )
                 )
                 .width(Length::Fill)
                 .align_x(alignment::Horizontal::Right)
             );
 
-        let events_area = Scrollable::new(
+        // Current Events Panel
+        let events_panel = Container::new(
             Column::new()
                 .spacing(10)
+                .push(Text::new("Current Events").size(20))
                 .push(
-                    self.current_events
-                        .lines()
-                        .filter(|line| !line.is_empty())
-                        .fold(Column::new().spacing(5), |column, line| {
-                            let parts: Vec<&str> = line.split_whitespace().collect();
-                            if parts.len() >= 4 {
-                                column.push(
-                                    Button::new(Text::new(line))
-                                        .style(if Some(parts[0].to_string()) == self.selected_event {
-                                            theme::Button::Primary
-                                        } else {
-                                            theme::Button::Text
-                                        })
-                                        .on_press(Message::SelectEvent(parts[0].to_string()))
-                                )
+                    Container::new(
+                        Scrollable::new(
+                            if self.current_events.is_empty() {
+                                Column::new().push(Text::new("No current events available"))
                             } else {
-                                column
-                            }
-                        })
-                )
-        );
-
-        let roots_area = Container::new(
-            Scrollable::new(
-                Column::new()
-                    .spacing(5)
-                    .push(
-                        self.historical_roots.lines()
-                            .filter(|line| !line.is_empty())
-                            .fold(
-                                Column::new().spacing(5),
-                                |column, line| {
-                                    if let Some((ts_str, content)) = line.split_once('|') {
-                                        if let Ok(ts) = ts_str.parse::<i64>() {
-                                            return column.push(
-                                                Row::new()
-                                                    .spacing(10)
-                                                    .push(
-                                                        Text::new(content)
-                                                            .font(iced::Font::MONOSPACE)
-                                                            .size(12)
-                                                    )
-                                                    .push(
-                                                        Button::new(
-                                                            Text::new("View")
-                                                                .size(13)
-                                                        )
-                                                        .padding([4, 8])
-                                                        .on_press(Message::SelectWindow(ts))
-                                                        .style(theme::Button::Secondary)
-                                                    )
-                                            );
+                                self.current_events
+                                    .lines()
+                                    .filter(|line| !line.is_empty())
+                                    .fold(Column::new().spacing(5), |column, line| {
+                                        let parts: Vec<&str> = line.split_whitespace().collect();
+                                        if parts.len() >= 4 {
+                                            column.push(
+                                                Button::new(Text::new(line))
+                                                    .style(if Some(parts[0].to_string()) == self.selected_event {
+                                                        theme::Button::Primary
+                                                    } else {
+                                                        theme::Button::Text
+                                                    })
+                                                    .on_press(Message::SelectEvent(parts[0].to_string()))
+                                            )
+                                        } else {
+                                            column
                                         }
-                                    }
-                                    column.push(
-                                        Text::new(line)
-                                            .font(iced::Font::MONOSPACE)
-                                            .size(12)
-                                    )
-                                }
-                            )
+                                    })
+                            }
+                        )
                     )
-            )
-            .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding(10)
+                    .style(theme::Container::Custom(Box::new(BorderedContainer)))
+                )
         )
-        .width(Length::Fill)
-        .height(Length::FillPortion(1))
-        .padding(10)
-        .style(theme::Container::Custom(Box::new(BorderedContainer)));
+        .height(Length::FillPortion(1));
 
-        let verification_controls = Row::new()
-            .spacing(20)
+        // Historical Roots Panel
+        let roots_panel = Container::new(
+            Column::new()
+                .spacing(10)
+                .push(Text::new("Historical Audits").size(20))
+                .push(
+                    Container::new(
+                        Scrollable::new(
+                            if self.historical_roots.is_empty() {
+                                Column::new().push(Text::new("No historical audits available"))
+                            } else {
+                                self.historical_roots
+                                    .lines()
+                                    .filter(|line| !line.is_empty())
+                                    .fold(Column::new().spacing(5), |column, line| {
+                                        if let Some((ts_str, content)) = line.split_once('|') {
+                                            if let Ok(ts) = ts_str.parse::<i64>() {
+                                                return column.push(
+                                                    Row::new()
+                                                        .spacing(10)
+                                                        .push(
+                                                            Text::new(content)
+                                                                .font(iced::Font::MONOSPACE)
+                                                                .size(12)
+                                                        )
+                                                        .push(
+                                                            Button::new(Text::new("View").size(13))
+                                                                .padding([4, 8])
+                                                                .on_press(Message::SelectWindow(ts))
+                                                                .style(theme::Button::Secondary)
+                                                        )
+                                                );
+                                            }
+                                        }
+                                        column.push(
+                                            Text::new(line)
+                                                .font(iced::Font::MONOSPACE)
+                                                .size(12)
+                                        )
+                                    })
+                            }
+                        )
+                    )
+                    .height(Length::Fill)
+                    .padding(10)
+                    .style(theme::Container::Custom(Box::new(BorderedContainer)))
+                )
+        )
+        .height(Length::FillPortion(1));
+
+        // Define verification controls
+        let verification_controls = Column::new()
+            .spacing(10)
             .push(
                 Button::new(Text::new("Verify Selected Event"))
                     .on_press(Message::VerifyProof(
                         self.selected_event.clone().unwrap_or_default()
                     ))
-                    .style(if self.selected_event.is_some() {
-                        theme::Button::Primary
-                    } else {
-                        theme::Button::Secondary
-                    })
+                    .style(theme::Button::Secondary)
             )
             .push(
                 Button::new(Text::new("Verify Historical Consistency"))
                     .on_press(Message::VerifyConsistency)
+                    .style(theme::Button::Secondary)
             );
 
-        let status_display = Row::new()
-            .spacing(20)
+        // Define status display
+        let status_display = Column::new()
+            .spacing(10)
             .push(
-                Text::new(match self.verification_status.proof_status {
-                    Some(true) => "✓ Proof Valid",
-                    Some(false) => "✗ Proof Invalid",
-                    None => "No proof verified"
-                })
+                Text::new(format!(
+                    "Proof Status: {}",
+                    self.verification_status.proof_status
+                        .map(|s| if s { "Valid" } else { "Invalid" })
+                        .unwrap_or("Unknown")
+                ))
             )
             .push(
-                Text::new(match self.verification_status.consistency_status {
-                    Some(true) => "✓ History Consistent",
-                    Some(false) => "✗ History Inconsistent",
-                    None => "No consistency check"
-                })
+                Text::new(format!(
+                    "Consistency Status: {}",
+                    self.verification_status.consistency_status
+                        .map(|s| if s { "Consistent" } else { "Inconsistent" })
+                        .unwrap_or("Unknown")
+                ))
             );
+
+        // Verification Panel
+        let verification_panel = Container::new(
+            Column::new()
+                .spacing(10)
+                .push(Text::new("Verification Controls").size(20))
+                .push(
+                    Container::new(
+                        Column::new()
+                            .spacing(20)
+                            .push(verification_controls)
+                            .push(status_display)
+                    )
+                    .height(Length::Fill)
+                    .padding(10)
+                    .style(theme::Container::Custom(Box::new(BorderedContainer)))
+                )
+        )
+        .height(Length::FillPortion(1));
 
         let mut content = Column::new()
             .spacing(20)
@@ -340,70 +370,17 @@ impl Application for AuditViewer {
             .max_width(2000)
             .height(Length::Fill)
             .push(header)
-            .push(events_area)
-            .push(Text::new("Historical Audits").size(24))
-            .push(roots_area)
-            .push(verification_controls)
-            .push(status_display);
+            .push(events_panel)
+            .push(roots_panel)
+            .push(verification_panel);
 
-        // Add popup if window is selected
-        if let Some(_) = self.selected_window {
-            let modal_content: Element<_> = Container::new(
-                Column::new()
-                    .push(content)
-                    .push(
-                        Container::new(
-                            Container::new(
-                                Column::new()
-                                    .spacing(20)
-                                    .max_width(800)
-                                    .push(
-                                        Row::new()
-                                            .push(Text::new("Historical Window Events").size(24))
-                                            .push(
-                                                Container::new(
-                                                    Button::new(Text::new("×").size(20))
-                                                        .on_press(Message::CloseModal)
-                                                        .style(theme::Button::Text)
-                                                )
-                                                .width(Length::Fill)
-                                                .align_x(alignment::Horizontal::Right)
-                                            )
-                                    )
-                                    .push(
-                                        Container::new(
-                                            Scrollable::new(
-                                                Text::new(self.window_events.as_deref().unwrap_or("No events found"))
-                                                    .font(iced::Font::MONOSPACE)
-                                                    .size(12)
-                                            )
-                                        )
-                                        .height(Length::Fixed(400.0))
-                                        .padding(10)
-                                        .style(theme::Container::Box)
-                                    )
-                            )
-                            .padding(20)
-                            .style(theme::Container::Custom(Box::new(ModalContainer)))
-                        )
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .center_x()
-                        .center_y()
-                        .style(theme::Container::Custom(Box::new(Overlay)))
-                    )
-            ).into();
-            content = Column::new().push(modal_content);
-        }
-
-        let content = if let Some(error) = &self.error_message {
-            content.push(
+        // Add error message if present
+        if let Some(error) = &self.error_message {
+            content = content.push(
                 Text::new(error)
                     .style(Color::from_rgb(0.8, 0.0, 0.0))
-            )
-        } else {
-            content
-        };
+            );
+        }
 
         Container::new(content)
             .width(Length::Fill)
@@ -644,7 +621,14 @@ impl container::StyleSheet for BorderedContainer {
 
     fn appearance(&self, _style: &Self::Style) -> container::Appearance {
         container::Appearance {
-            ..container::Appearance::default()
+            text_color: None,
+            background: Some(Color::from_rgb(0.95, 0.95, 0.95).into()),
+            border: Border {
+                radius: 5.0.into(),
+                width: 1.0,
+                color: Color::BLACK,
+            },
+            shadow: Shadow::default(),
         }
     }
 }
