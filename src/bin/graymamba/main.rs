@@ -10,7 +10,7 @@ use graymamba::audit_adapters::merkle_audit::MerkleBasedAuditSystem;
 //use graymamba::audit_adapters::audit_system::AuditSystem; //simple template example
 //use graymamba::audit_adapters::substrate_audit::SubstrateAuditSystem; //code rescued with aleph-zero prototype but not compiled and tested
 #[cfg(feature = "irrefutable_audit")]
-use graymamba::irrefutable_audit::IrrefutableAudit; 
+use graymamba::audit_adapters::irrefutable_audit::IrrefutableAudit; 
 
 use config::{Config, File as ConfigFile};
 

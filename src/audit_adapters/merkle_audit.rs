@@ -1,5 +1,5 @@
 use super::merkle_tree::TimeWindowedMerkleTree;
-use crate::irrefutable_audit::{AuditEvent, IrrefutableAudit};
+use crate::audit_adapters::irrefutable_audit::{AuditEvent, IrrefutableAudit};
 use async_trait::async_trait;
 use std::error::Error;
 use tokio::sync::mpsc as tokio_mpsc;
@@ -99,7 +99,7 @@ impl MerkleBasedAuditSystem {
 mod tests {
     use super::*;
     use tokio::runtime::Runtime;
-    use crate::irrefutable_audit::AuditEvent;
+    use crate::audit_adapters::irrefutable_audit::AuditEvent;
     use crate::audit_adapters::merkle_tree::MerkleNode;
     use rocksdb;
     use std::fs;

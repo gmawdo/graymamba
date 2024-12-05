@@ -9,7 +9,6 @@ mod write_counter;
 
 pub mod fs_util;
 
-pub mod irrefutable_audit;
 #[cfg(feature = "irrefutable_audit")]
 pub mod audit_adapters;
 

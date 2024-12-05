@@ -10,7 +10,7 @@ use std::marker::PhantomData;
 #[allow(unused_imports)]
 use ark_std::rand::{rngs::StdRng, SeedableRng};
 #[allow(unused_imports)]
-use crate::irrefutable_audit::AuditEvent;
+use crate::audit_adapters::irrefutable_audit::AuditEvent;
 
 // here we have a complete circuit that proves:
 //  - Hash commitment matches event data

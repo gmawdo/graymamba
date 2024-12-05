@@ -1,4 +1,4 @@
-use crate::irrefutable_audit::{IrrefutableAudit, AuditEvent, AuditError};
+use crate::audit_adapters::irrefutable_audit::{IrrefutableAudit, AuditEvent, AuditError};
 use async_trait::async_trait;
 use std::error::Error;
 

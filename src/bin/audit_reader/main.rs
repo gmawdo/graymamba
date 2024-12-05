@@ -20,7 +20,7 @@ use std::error::Error;
 
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_tree::MerkleNode;
-use graymamba::irrefutable_audit::AuditEvent;
+use graymamba::audit_adapters::irrefutable_audit::AuditEvent;
 
 #[derive(Debug)]
 struct ProofData {

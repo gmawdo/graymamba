@@ -2,7 +2,7 @@ use std::error::Error;
 use tokio::sync::mpsc as tokio_mpsc;
 use async_trait::async_trait;
 use std::sync::Arc;
-use crate::irrefutable_audit::{AuditEvent, IrrefutableAudit};
+use crate::audit_adapters::irrefutable_audit::{AuditEvent, IrrefutableAudit};
 
 use tracing::debug;
 
