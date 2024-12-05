@@ -35,6 +35,7 @@ fn get_generation_number() -> u64 {
 }
 
 /// What capabilities are supported
+#[derive(Clone)]
 pub enum VFSCapabilities {
     ReadOnly,
     ReadWrite,
