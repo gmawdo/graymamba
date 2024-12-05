@@ -1,4 +1,4 @@
-use crate::kernel::nfs::*;
+use crate::kernel::api::nfs::*;
 use std::fs::Metadata;
 use std::fs::Permissions;
 

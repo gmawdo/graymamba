@@ -1,10 +1,10 @@
 #![allow(clippy::upper_case_acronyms)]
 #![allow(dead_code)]
-use crate::kernel::context::RPCContext;
-use crate::kernel::nfs;
-use crate::kernel::rpc::*;
-use crate::kernel::vfs::VFSCapabilities;
-use crate::kernel::xdr::*;
+use crate::kernel::protocol::context::RPCContext;
+use crate::kernel::api::nfs;
+use crate::kernel::protocol::rpc::*;
+use crate::kernel::vfs::vfs::VFSCapabilities;
+use crate::kernel::protocol::xdr::*;
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::FromPrimitive;

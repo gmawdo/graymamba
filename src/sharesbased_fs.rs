@@ -4,7 +4,7 @@ use tokio::time::Instant;
 use std::sync::{Arc, RwLock};
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
-use crate::kernel::nfs::fileid3;
+use crate::kernel::api::nfs::fileid3;
 use std::collections::HashMap;
 use tokio::sync::{Mutex, Semaphore};
 use graymamba::channel_buffer::ActiveWrite;
@@ -15,9 +15,9 @@ use tokio::time::Duration;
 use std::os::unix::fs::PermissionsExt;
 use chrono::{Local, DateTime};
 
-use crate::kernel::nfs::*;
-use crate::kernel::nfs::nfsstat3;
-use crate::kernel::nfs::sattr3;
+use crate::kernel::api::nfs::*;
+use crate::kernel::api::nfs::nfsstat3;
+use crate::kernel::api::nfs::sattr3;
 
 
 use graymamba::file_metadata::FileMetadata;
@@ -35,7 +35,7 @@ use async_trait::async_trait;
 
 use tracing::{debug, warn};
 
-use crate::kernel::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
+use crate::kernel::vfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 
 use lazy_static::lazy_static;
 lazy_static! {

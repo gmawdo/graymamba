@@ -1,11 +1,11 @@
-use crate::kernel::nfs;
-use crate::kernel::nfs::fileid3;
+use crate::kernel::api::nfs;
+use crate::kernel::api::nfs::fileid3;
 use std::os::unix::fs::PermissionsExt;
-use crate::kernel::nfs::nfsstat3;
-use crate::kernel::nfs::ftype3;
-use crate::kernel::nfs::specdata3;
-use crate::kernel::nfs::nfstime3;
-use crate::kernel::nfs::fattr3;
+use crate::kernel::api::nfs::nfsstat3;
+use crate::kernel::api::nfs::ftype3;
+use crate::kernel::api::nfs::specdata3;
+use crate::kernel::api::nfs::nfstime3;
+use crate::kernel::api::nfs::fattr3;
 
 #[derive(Debug, Clone)]
 pub struct FileMetadata {

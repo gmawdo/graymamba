@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 
-use graymamba::kernel::tcp::{NFSTcp, NFSTcpListener};
+use graymamba::kernel::protocol::tcp::{NFSTcp, NFSTcpListener};
 use graymamba::sharesbased_fs::SharesFS;
 use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
 

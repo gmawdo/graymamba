@@ -1,4 +1,4 @@
-use crate::kernel::nfs::*;
+use crate::kernel::api::nfs::*;
 use async_trait::async_trait;
 
 use std::cmp::Ordering;

@@ -1,6 +1,6 @@
-use crate::kernel::context::RPCContext;
-use crate::kernel::rpcwire::*;
-use crate::kernel::vfs::NFSFileSystem;
+use crate::kernel::protocol::context::RPCContext;
+use crate::kernel::protocol::rpcwire::*;
+use crate::kernel::vfs::vfs::NFSFileSystem;
 use anyhow;
 use async_trait::async_trait;
 use std::net::SocketAddr;
@@ -194,7 +194,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
             let context = RPCContext {
                 local_port: self.port,
                 client_addr: socket.peer_addr().unwrap().to_string(),
-                auth: crate::kernel::rpc::auth_unix::default(),
+                auth: crate::kernel::protocol::rpc::auth_unix::default(),
                 vfs: self.arcfs.clone(),
                 mount_signal: self.mount_signal.clone(),
             };
