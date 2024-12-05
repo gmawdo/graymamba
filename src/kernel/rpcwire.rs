@@ -3,18 +3,18 @@ use std::io::Cursor;
 use std::io::{Read, Write};
 use tracing::{error, trace, warn};
 
-use crate::context::RPCContext;
-use crate::rpc::*;
-use crate::xdr::*;
+use crate::kernel::context::RPCContext;
+use crate::kernel::rpc::*;
+use crate::kernel::xdr::*;
 
-use crate::mount;
-use crate::mount_handlers;
+use crate::kernel::mount;
+use crate::kernel::mount_handlers;
 
-use crate::nfs;
-use crate::nfs_handlers;
+use crate::kernel::nfs;
+use crate::kernel::nfs_handlers;
 
-use crate::portmap;
-use crate::portmap_handlers;
+use crate::kernel::portmap;
+use crate::kernel::portmap_handlers;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;

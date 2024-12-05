@@ -3,7 +3,7 @@
 // And its nice to keep the original RFC names and case
 #![allow(non_camel_case_types)]
 
-use crate::xdr::*;
+use crate::kernel::xdr::*;
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::FromPrimitive;
