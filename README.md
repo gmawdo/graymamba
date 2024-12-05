@@ -100,7 +100,7 @@ Steps
 
        `cargo build --bin graymamba --features="traceability" --release`
        `cargo build --bin graymamba --features="traceability,irrefutable_audit" --release`
-       `cargo test --features irrefutable_audit`
+       `cargo test --features irrefutable_audit -- --nocapture`
        `cargo build --bin audit_reader --features="traceability,irrefutable_audit" --release`
        `cargo clippy --features="traceability,irrefutable_audit"`
        `cargo run --bin graymamba --features=traceability,irrefutable_audit`
