@@ -1,7 +1,7 @@
-use crate::context::RPCContext;
-use crate::mount::*;
-use crate::rpc::*;
-use crate::xdr::*;
+use crate::kernel::protocol::context::RPCContext;
+use crate::kernel::api::mount::*;
+use crate::kernel::protocol::rpc::*;
+use crate::kernel::protocol::xdr::*;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::{FromPrimitive, ToPrimitive};
 use std::io::{Read, Write};
@@ -9,7 +9,7 @@ use tracing::debug;
 
 use anyhow::Result;
 
-use crate::data_store::KeyType;
+use crate::backingstore::data_store::KeyType;
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]

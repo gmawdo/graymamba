@@ -1,11 +1,10 @@
-use graymamba::nfs;
-use nfs::fileid3;
+use crate::kernel::api::nfs::fileid3;
 use std::os::unix::fs::PermissionsExt;
-use nfs::nfsstat3;
-use nfs::ftype3;
-use nfs::specdata3;
-use nfs::nfstime3;
-use nfs::fattr3;
+use crate::kernel::api::nfs::nfsstat3;
+use crate::kernel::api::nfs::ftype3;
+use crate::kernel::api::nfs::specdata3;
+use crate::kernel::api::nfs::nfstime3;
+use crate::kernel::api::nfs::fattr3;
 
 #[derive(Debug, Clone)]
 pub struct FileMetadata {

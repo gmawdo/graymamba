@@ -1,7 +1,7 @@
-use crate::context::RPCContext;
-use crate::portmap;
-use crate::rpc::*;
-use crate::xdr::*;
+use crate::kernel::protocol::context::RPCContext;
+use crate::kernel::api::portmap;
+use crate::kernel::protocol::rpc::*;
+use crate::kernel::protocol::xdr::*;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::FromPrimitive;
 use std::io::{Read, Write};

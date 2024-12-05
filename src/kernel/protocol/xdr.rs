@@ -2,7 +2,7 @@ use byteorder::BigEndian;
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 pub type XDREndian = BigEndian;
-use crate::nfs::nfsstring;
+use crate::kernel::api::nfs::nfsstring;
 
 /// See https://datatracker.ietf.org/doc/html/rfc1014
 

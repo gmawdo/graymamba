@@ -3,7 +3,7 @@ use r2d2::Pool;
 use std::error::Error as StdError;
 use r2d2_redis_cluster2::Commands;
 use async_trait::async_trait;
-use crate::data_store::{DataStore, DataStoreError};
+use crate::backingstore::data_store::{DataStore, DataStoreError};
 use config::{Config, File as ConfigFile, ConfigError};
 
 use std::time::SystemTime;
@@ -12,7 +12,7 @@ use std::time::UNIX_EPOCH;
 use r2d2_redis_cluster2::{r2d2, RedisClusterConnectionManager};
 
 use tracing::warn;
-use crate::data_store::KeyType;
+use crate::backingstore::data_store::KeyType;
 
 pub fn get_redis_cluster_pool() -> Result<Pool<RedisClusterConnectionManager>, Box<dyn StdError>> {
     RedisClusterPool::get_redis_cluster_pool()

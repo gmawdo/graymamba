@@ -1,8 +1,8 @@
 use rocksdb::{DB, Options};
 use async_trait::async_trait;
-use crate::data_store::{DataStore, DataStoreError};
+use crate::backingstore::data_store::{DataStore, DataStoreError};
 
-use crate::data_store::KeyType;
+use crate::backingstore::data_store::KeyType;
 
 use std::fmt;
 

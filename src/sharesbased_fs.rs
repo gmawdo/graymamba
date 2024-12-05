@@ -4,7 +4,7 @@ use tokio::time::Instant;
 use std::sync::{Arc, RwLock};
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
-use graymamba::nfs::fileid3;
+use crate::kernel::api::nfs::fileid3;
 use std::collections::HashMap;
 use tokio::sync::{Mutex, Semaphore};
 use graymamba::channel_buffer::ActiveWrite;
@@ -15,14 +15,14 @@ use tokio::time::Duration;
 use std::os::unix::fs::PermissionsExt;
 use chrono::{Local, DateTime};
 
-use graymamba::nfs::*;
-use graymamba::nfs::nfsstat3;
-use graymamba::nfs::sattr3;
+use crate::kernel::api::nfs::*;
+use crate::kernel::api::nfs::nfsstat3;
+use crate::kernel::api::nfs::sattr3;
 
 
 use graymamba::file_metadata::FileMetadata;
 
-use graymamba::data_store::{DataStore,DataStoreError,DataStoreResult};
+use graymamba::backingstore::data_store::{DataStore,DataStoreError,DataStoreResult};
 
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -35,7 +35,7 @@ use async_trait::async_trait;
 
 use tracing::{debug, warn};
 
-use graymamba::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
+use crate::kernel::vfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 
 use lazy_static::lazy_static;
 lazy_static! {
@@ -47,8 +47,8 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::secret_sharing::SecretSharingService;
 
-use crate::irrefutable_audit::{AuditEvent, IrrefutableAudit};
-use crate::irrefutable_audit::event_types::{DISASSEMBLED, REASSEMBLED};
+use crate::audit_adapters::irrefutable_audit::{AuditEvent, IrrefutableAudit};
+use crate::audit_adapters::irrefutable_audit::event_types::{DISASSEMBLED, REASSEMBLED};
 
 #[derive(Clone)]
 pub struct SharesFS {

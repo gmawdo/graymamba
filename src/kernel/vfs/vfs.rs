@@ -1,11 +1,11 @@
-use crate::nfs::*;
+use crate::kernel::api::nfs::*;
 use async_trait::async_trait;
 
 use std::cmp::Ordering;
 use std::sync::Once;
 use std::time::SystemTime;
 
-use crate::data_store::DataStore;
+use crate::backingstore::data_store::DataStore;
 
 #[derive(Default, Debug)]
 pub struct DirEntry {
@@ -35,6 +35,7 @@ fn get_generation_number() -> u64 {
 }
 
 /// What capabilities are supported
+#[derive(Clone)]
 pub enum VFSCapabilities {
     ReadOnly,
     ReadWrite,

@@ -110,11 +110,11 @@ compressed_store = []
 
 [[bin]]
 name = "graymamba"
-path = "src/graymamba.rs"
+path = "src/bin/graymamba/main.rs"
 required-features = ["traceability"]
 [[bin]]
 name = "audit_reader"
-path = "src/bin/audit_reader.rs"
+path = "src/bin/audit_reader/main.rs"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["async_tokio"] }

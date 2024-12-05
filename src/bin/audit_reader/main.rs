@@ -20,7 +20,7 @@ use std::error::Error;
 
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_tree::MerkleNode;
-use graymamba::irrefutable_audit::AuditEvent;
+use graymamba::audit_adapters::irrefutable_audit::AuditEvent;
 
 #[derive(Debug)]
 struct ProofData {
@@ -50,42 +50,6 @@ enum Message {
     #[allow(dead_code)]
     VerifyAuditTrail(String),
     SelectEvent(String),
-}
-
-// Add this custom container style
-struct ModalContainer;
-
-impl container::StyleSheet for ModalContainer {
-    type Style = Theme;
-
-    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
-        container::Appearance {
-            text_color: None,
-            background: Some(Color::from_rgb(0.95, 0.95, 0.95).into()),
-            border: Border {
-                radius: 10.0.into(),
-                width: 2.0,
-                color: Color::BLACK,
-            },
-            shadow: Shadow::default(),
-        }
-    }
-}
-
-// Add this overlay style for the background
-struct Overlay;
-
-impl container::StyleSheet for Overlay {
-    type Style = Theme;
-
-    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
-        container::Appearance {
-            text_color: None,
-            background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.5).into()),
-            border: Border::default(),
-            shadow: Shadow::default(),
-        }
-    }
 }
 
 impl Application for AuditViewer {
