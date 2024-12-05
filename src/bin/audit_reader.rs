@@ -338,12 +338,6 @@ impl Application for AuditViewer {
         .height(Length::FillPortion(1))
         .width(Length::FillPortion(1));
 
-        // Create a row for historical audit and details
-        let historical_row = Row::new()
-            .spacing(20)
-            .push(roots_panel.width(Length::FillPortion(1)))
-            .push(historical_details);
-
         // Define verification controls
         let verification_controls = Column::new()
             .spacing(10)
@@ -399,15 +393,25 @@ impl Application for AuditViewer {
         )
         .height(Length::FillPortion(1));
 
+        // Create a row for historical audit, verification panel, and details
+        let historical_row = Row::new()
+            .spacing(20)
+            .push(roots_panel.width(Length::FillPortion(2)))
+            .push(
+                verification_panel
+                    .width(Length::FillPortion(1))
+                    .height(Length::FillPortion(1))
+            )
+            .push(historical_details.width(Length::FillPortion(2)));
+
         let mut content = Column::new()
             .spacing(20)
             .padding(20)
-            .max_width(2500)  // Increased max width to accommodate the extra panel
+            .max_width(2500)
             .height(Length::Fill)
             .push(header)
             .push(events_panel)
-            .push(historical_row)  // Use the row instead of just roots_panel
-            .push(verification_panel);
+            .push(historical_row);  // verification_panel is now part of historical_row
 
         // Add error message if present
         if let Some(error) = &self.error_message {
@@ -671,7 +675,7 @@ impl container::StyleSheet for BorderedContainer {
 fn main() -> iced::Result {
     AuditViewer::run(Settings {
         window: window::Settings {
-            size: Size {width: 1400.0, height: 900.0},  // Width: 1600px, Height: 900px
+            size: Size {width: 1400.0, height: 700.0},  // Width: 1600px, Height: 900px
             position: window::Position::Centered,
             ..window::Settings::default()
         },
