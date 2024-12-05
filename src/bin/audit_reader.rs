@@ -43,7 +43,6 @@ enum Message {
     ToggleTheme,
     Refresh,
     SelectWindow(i64),
-    CloseModal,
     VerifyProof(String),
     VerifyConsistency,
     #[allow(dead_code)]
@@ -140,12 +139,9 @@ impl Application for AuditViewer {
             Message::SelectWindow(timestamp) => {
                 if let Err(e) = self.load_window_events(timestamp) {
                     self.error_message = Some(e.to_string());
+                } else {
+                    self.selected_window = Some(timestamp);
                 }
-                self.selected_window = Some(timestamp);
-            }
-            Message::CloseModal => {
-                self.selected_window = None;
-                self.window_events = None;
             }
             
             // New verification message handlers
@@ -237,13 +233,17 @@ impl Application for AuditViewer {
                                         let parts: Vec<&str> = line.split_whitespace().collect();
                                         if parts.len() >= 4 {
                                             column.push(
-                                                Button::new(Text::new(line))
-                                                    .style(if Some(parts[0].to_string()) == self.selected_event {
-                                                        theme::Button::Primary
-                                                    } else {
-                                                        theme::Button::Text
-                                                    })
-                                                    .on_press(Message::SelectEvent(parts[0].to_string()))
+                                                Button::new(
+                                                    Text::new(line)
+                                                        .font(iced::Font::MONOSPACE)
+                                                        .size(12)
+                                                )
+                                                .style(if Some(parts[0].to_string()) == self.selected_event {
+                                                    theme::Button::Primary
+                                                } else {
+                                                    theme::Button::Text
+                                                })
+                                                .on_press(Message::SelectEvent(parts[0].to_string()))
                                             )
                                         } else {
                                             column
@@ -309,6 +309,39 @@ impl Application for AuditViewer {
         )
         .height(Length::FillPortion(1));
 
+        // Historical Details Panel
+        let historical_details = Container::new(
+            Column::new()
+                .spacing(10)
+                .push(Text::new("Historical Details").size(20))
+                .push(
+                    Container::new(
+                        Scrollable::new(
+                            if let Some(content) = &self.window_events {
+                                Text::new(content)
+                                    .font(iced::Font::MONOSPACE)
+                                    .size(10)  // Smaller font size
+                            } else {
+                                Text::new("Select a historical audit to view details")
+                                    .font(iced::Font::MONOSPACE)
+                                    .size(10)
+                            }
+                        )
+                    )
+                    .height(Length::Fill)
+                    .padding(10)
+                    .style(theme::Container::Custom(Box::new(BorderedContainer)))
+                )
+        )
+        .height(Length::FillPortion(1))
+        .width(Length::FillPortion(1));
+
+        // Create a row for historical audit and details
+        let historical_row = Row::new()
+            .spacing(20)
+            .push(roots_panel.width(Length::FillPortion(1)))
+            .push(historical_details);
+
         // Define verification controls
         let verification_controls = Column::new()
             .spacing(10)
@@ -367,11 +400,11 @@ impl Application for AuditViewer {
         let mut content = Column::new()
             .spacing(20)
             .padding(20)
-            .max_width(2000)
+            .max_width(2500)  // Increased max width to accommodate the extra panel
             .height(Length::Fill)
             .push(header)
             .push(events_panel)
-            .push(roots_panel)
+            .push(historical_row)  // Use the row instead of just roots_panel
             .push(verification_panel);
 
         // Add error message if present
