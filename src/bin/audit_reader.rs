@@ -11,6 +11,8 @@ use iced::{
     Command,
     Border,
     Shadow,
+    window,
+    Size,
 };
 use rocksdb::{DB, Options};
 use chrono::{DateTime, Utc, TimeZone};
@@ -236,7 +238,7 @@ impl Application for AuditViewer {
                                                 Button::new(
                                                     Text::new(line)
                                                         .font(iced::Font::MONOSPACE)
-                                                        .size(12)
+                                                        .size(10)
                                                 )
                                                 .style(if Some(parts[0].to_string()) == self.selected_event {
                                                     theme::Button::Primary
@@ -282,7 +284,7 @@ impl Application for AuditViewer {
                                                         .push(
                                                             Text::new(content)
                                                                 .font(iced::Font::MONOSPACE)
-                                                                .size(12)
+                                                                .size(10)
                                                         )
                                                         .push(
                                                             Button::new(Text::new("View").size(13))
@@ -296,7 +298,7 @@ impl Application for AuditViewer {
                                         column.push(
                                             Text::new(line)
                                                 .font(iced::Font::MONOSPACE)
-                                                .size(12)
+                                                .size(10)
                                         )
                                     })
                             }
@@ -666,7 +668,13 @@ impl container::StyleSheet for BorderedContainer {
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    AuditViewer::run(Settings::default())?;
-    Ok(())
+fn main() -> iced::Result {
+    AuditViewer::run(Settings {
+        window: window::Settings {
+            size: Size {width: 1400.0, height: 900.0},  // Width: 1600px, Height: 900px
+            position: window::Position::Centered,
+            ..window::Settings::default()
+        },
+        ..Settings::default()
+    })
 }
