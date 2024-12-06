@@ -7,3 +7,6 @@ pub mod router;  // Main handler router
 
 // Re-export main handler to make for simple import a la use crate::kernel::handlers::handle_nfs;
 pub use router::handle_nfs;
+
+#[cfg(test)]
+pub mod nfs_handler_tests;
