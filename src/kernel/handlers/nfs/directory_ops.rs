@@ -5,6 +5,7 @@ use crate::kernel::api::nfs;
 use crate::kernel::protocol::rpc::*;
 use crate::kernel::vfs::vfs::VFSCapabilities;
 use crate::kernel::protocol::xdr::*;
+use crate::kernel::handlers::nfs::write_counter::WriteCounter;
 use std::io::{Read, Write};
 use tracing::{debug, error, trace};
 
@@ -99,7 +100,7 @@ pub async fn nfsproc3_readdirplus(
 
             // this is a wrapper around a writer that also just counts the number of bytes
             // written
-            let mut counting_output = crate::write_counter::WriteCounter::new(output);
+            let mut counting_output = WriteCounter::new(output);
 
             make_success_reply(xid).serialize(&mut counting_output)?;
             nfs::nfsstat3::NFS3_OK.serialize(&mut counting_output)?;
