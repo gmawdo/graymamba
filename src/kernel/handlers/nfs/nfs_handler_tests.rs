@@ -3,7 +3,7 @@ use crate::kernel::protocol::context::RPCContext;
 use crate::kernel::vfs::mock::MockNFSFileSystem;
 use crate::kernel::protocol::rpc::auth_unix;
 use std::sync::Arc;
-use crate::kernel::handlers::nfs_handlers::nfsproc3_create;
+use crate::kernel::handlers::nfs::file_ops::nfsproc3_create;
 
 #[tokio::test]
 async fn test_nfsproc3_create_readonly() {

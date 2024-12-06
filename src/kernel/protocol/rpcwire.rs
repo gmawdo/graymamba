@@ -11,9 +11,9 @@ use crate::kernel::api::mount;
 use crate::kernel::api::nfs;
 use crate::kernel::api::portmap;
 
-use crate::kernel::handlers::mount_handlers;
+use crate::kernel::handlers::nfs::router::handle_nfs;
 
-use crate::kernel::handlers::nfs_handlers;
+use crate::kernel::handlers::mount_handlers;
 
 use crate::kernel::handlers::portmap_handlers;
 use tokio::io::AsyncReadExt;
@@ -44,7 +44,7 @@ async fn handle_rpc(
             return Ok(());
         }
         if call.prog == nfs::PROGRAM {
-            nfs_handlers::handle_nfs(xid, call, input, output, &context).await
+            handle_nfs(xid, call, input, output, &context).await
         } else if call.prog == portmap::PROGRAM {
             portmap_handlers::handle_portmap(xid, call, input, output, &context)
         } else if call.prog == mount::PROGRAM {
