@@ -3,7 +3,6 @@ use crate::kernel::protocol::rpc::*;
 use std::io::{Read, Write};
 use tracing::{debug, error};
 use crate::kernel::api::nfs;
-use crate::kernel::vfs::api::VFSCapabilities;
 use crate::kernel::protocol::xdr::*;
 
 #[allow(non_camel_case_types)]
@@ -20,13 +19,7 @@ pub async fn nfsproc3_symlink(
     output: &mut impl Write,
     context: &RPCContext,
 ) -> Result<(), anyhow::Error> {
-    // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        make_success_reply(xid).serialize(output)?;
-        nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs::wcc_data::default().serialize(output)?;
-        return Ok(());
-    }
+
     let mut args = SYMLINK3args::default();
     args.deserialize(input)?;
 

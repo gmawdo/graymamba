@@ -3,7 +3,6 @@
 use crate::kernel::protocol::context::RPCContext;
 use crate::kernel::api::nfs;
 use crate::kernel::protocol::rpc::*;
-use crate::kernel::vfs::api::VFSCapabilities;
 use crate::kernel::protocol::xdr::*;
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -113,13 +112,6 @@ pub async fn nfsproc3_write(
     output: &mut impl Write,
     context: &RPCContext,
 ) -> Result<(), anyhow::Error> {
-    // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        make_success_reply(xid).serialize(output)?;
-        nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs::wcc_data::default().serialize(output)?;
-        return Ok(());
-    }
 
     let mut args = WRITE3args::default();
     args.deserialize(input)?;
@@ -196,13 +188,7 @@ pub async fn nfsproc3_create(
     output: &mut impl Write,
     context: &RPCContext,
 ) -> Result<(), anyhow::Error> {
-    // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        make_success_reply(xid).serialize(output)?;
-        nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs::wcc_data::default().serialize(output)?;
-        return Ok(());
-    }
+
 
     let mut dirops = nfs::diropargs3::default();
     dirops.deserialize(input)?;
@@ -338,13 +324,7 @@ pub async fn nfsproc3_remove(
     output: &mut impl Write,
     context: &RPCContext,
 ) -> Result<(), anyhow::Error> {
-    // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        make_success_reply(xid).serialize(output)?;
-        nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs::wcc_data::default().serialize(output)?;
-        return Ok(());
-    }
+
 
     let mut dirops = nfs::diropargs3::default();
     dirops.deserialize(input)?;
@@ -422,13 +402,7 @@ pub async fn nfsproc3_rename(
     output: &mut impl Write,
     context: &RPCContext,
 ) -> Result<(), anyhow::Error> {
-    // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        make_success_reply(xid).serialize(output)?;
-        nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs::wcc_data::default().serialize(output)?;
-        return Ok(());
-    }
+
 
     let mut fromdirops = nfs::diropargs3::default();
     let mut todirops = nfs::diropargs3::default();
