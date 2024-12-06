@@ -1,4 +1,3 @@
-pub mod common;  // Common utilities and types
 pub mod basic_ops;  // NULL, GETATTR, ACCESS, etc.
 pub mod directory_ops;  // LOOKUP, READDIR, etc. 
 pub mod file_ops;  // READ, WRITE, CREATE, etc.

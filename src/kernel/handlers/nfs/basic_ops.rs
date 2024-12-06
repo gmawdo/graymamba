@@ -5,11 +5,20 @@ use crate::kernel::api::nfs;
 use crate::kernel::protocol::rpc::*;
 use crate::kernel::vfs::vfs::VFSCapabilities;
 use crate::kernel::protocol::xdr::*;
-use byteorder::{ReadBytesExt, WriteBytesExt};
-use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::cast::FromPrimitive;
 use std::io::{Read, Write};
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error};
+
+pub fn nfsproc3_null(
+    xid: u32,
+    _: &mut impl Read,
+    output: &mut impl Write,
+) -> Result<(), anyhow::Error> {
+    debug!("nfsproc3_null({:?}) ", xid);
+    let msg = make_success_reply(xid);
+    debug!("\t{:?} --> {:?}", xid, msg);
+    msg.serialize(output)?;
+    Ok(())
+}
 
 pub async fn nfsproc3_getattr(
     xid: u32,
