@@ -9,9 +9,6 @@ mod write_counter;
 
 pub mod fs_util;
 
-#[cfg(feature = "irrefutable_audit")]
-pub mod audit_adapters;
-
 pub mod channel_buffer;
 
 pub mod file_metadata;
@@ -21,3 +18,6 @@ pub mod sharesbased_fs;
 pub mod secret_sharing;
 
 pub mod backingstore;
+
+#[cfg(feature = "irrefutable_audit")]
+pub mod audit_adapters;
