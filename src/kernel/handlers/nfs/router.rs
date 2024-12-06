@@ -14,6 +14,8 @@ use crate::kernel::handlers::nfs::link_ops::*;
 use crate::kernel::handlers::nfs::fs_ops::*;
 use crate::kernel::handlers::nfs::basic_ops::*;
 
+use crate::kernel::vfs::api::VFSCapabilities;
+
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
@@ -62,6 +64,26 @@ pub async fn handle_nfs(
         return Ok(());
     }
     let prog = NFSProgram::from_u32(call.proc).unwrap_or(NFSProgram::INVALID);
+
+    // Check for write operations on read-only filesystem
+    match prog {
+        NFSProgram::NFSPROC3_WRITE | 
+        NFSProgram::NFSPROC3_CREATE | 
+        NFSProgram::NFSPROC3_SETATTR |
+        NFSProgram::NFSPROC3_REMOVE |
+        NFSProgram::NFSPROC3_RMDIR |
+        NFSProgram::NFSPROC3_RENAME |
+        NFSProgram::NFSPROC3_MKDIR |
+        NFSProgram::NFSPROC3_SYMLINK => {
+            if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
+                make_success_reply(xid).serialize(output)?;
+                nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
+                nfs::wcc_data::default().serialize(output)?;
+                return Ok(());
+            }
+        }
+        _ => {}
+    }
 
     match prog {
         NFSProgram::NFSPROC3_NULL => nfsproc3_null(xid, input, output)?,
