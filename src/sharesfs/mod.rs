@@ -37,7 +37,7 @@ use async_trait::async_trait;
 
 use tracing::{debug, warn};
 
-use crate::kernel::vfs::vfs::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
+use crate::kernel::vfs::api::{DirEntry, NFSFileSystem, ReadDirResult, VFSCapabilities};
 
 use lazy_static::lazy_static;
 lazy_static! {

@@ -3,7 +3,7 @@
 use crate::kernel::protocol::context::RPCContext;
 use crate::kernel::api::nfs;
 use crate::kernel::protocol::rpc::*;
-use crate::kernel::vfs::vfs::VFSCapabilities;
+use crate::kernel::vfs::api::VFSCapabilities;
 use crate::kernel::protocol::xdr::*;
 use std::io::{Read, Write};
 use tracing::{debug, error};

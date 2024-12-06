@@ -3,7 +3,7 @@ use crate::kernel::protocol::rpc::*;
 use std::io::{Read, Write};
 use tracing::{debug, error};
 use crate::kernel::api::nfs;
-use crate::kernel::vfs::vfs::VFSCapabilities;
+use crate::kernel::vfs::api::VFSCapabilities;
 use crate::kernel::protocol::xdr::*;
 
 #[allow(non_camel_case_types)]

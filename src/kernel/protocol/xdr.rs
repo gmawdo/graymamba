@@ -5,7 +5,6 @@ pub type XDREndian = BigEndian;
 use crate::kernel::api::nfs::nfsstring;
 
 /// See https://datatracker.ietf.org/doc/html/rfc1014
-
 #[allow(clippy::upper_case_acronyms)]
 pub trait XDR {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()>;
