@@ -13,7 +13,7 @@ pub mod channel_buffer;
 
 pub mod file_metadata;
 
-pub mod sharesbased_fs;
+pub mod sharesfs;
 
 pub mod secret_sharing;
 

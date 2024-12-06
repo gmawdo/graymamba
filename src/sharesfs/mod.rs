@@ -1,3 +1,5 @@
+mod metadata;
+
 use std::collections::BTreeSet;
 use std::ops::Bound;
 use tokio::time::Instant;
@@ -928,14 +930,8 @@ impl NFSFileSystem for SharesFS {
         Err(nfsstat3::NFS3ERR_NOENT)
     }
     
-    async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3> {       
-        //warn!("graymamba getattr {:?}", id);
-        let metadata = self.get_metadata_from_id(id).await?;
-        let path = self.get_path_from_id(id).await?;
-        debug!("Stat {:?}: {:?}", path, &metadata);
-        let fattr = FileMetadata::metadata_to_fattr3(id, &metadata).await?;
-        Ok(fattr)
-        
+    async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3> {
+        self.get_attribute(id).await
     }
 
     async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
