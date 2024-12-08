@@ -3,7 +3,6 @@
 use crate::kernel::protocol::context::RPCContext;
 use crate::kernel::api::nfs;
 use crate::kernel::protocol::rpc::*;
-use crate::kernel::vfs::vfs::VFSCapabilities;
 use crate::kernel::protocol::xdr::*;
 use std::io::{Read, Write};
 use tracing::{debug, error};
@@ -82,12 +81,6 @@ pub async fn nfsproc3_setattr(
     output: &mut impl Write,
     context: &RPCContext,
 ) -> Result<(), anyhow::Error> {
-    if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        make_success_reply(xid).serialize(output)?;
-        nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs::wcc_data::default().serialize(output)?;
-        return Ok(());
-    }
     let mut args = SETATTR3args::default();
     args.deserialize(input)?;
     debug!("nfsproc3_setattr({:?},{:?}) ", xid, args);

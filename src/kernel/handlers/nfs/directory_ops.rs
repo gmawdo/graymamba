@@ -3,8 +3,8 @@
 use crate::kernel::protocol::context::RPCContext;
 use crate::kernel::api::nfs;
 use crate::kernel::protocol::rpc::*;
-use crate::kernel::vfs::vfs::VFSCapabilities;
 use crate::kernel::protocol::xdr::*;
+use crate::kernel::handlers::nfs::write_counter::WriteCounter;
 use std::io::{Read, Write};
 use tracing::{debug, error, trace};
 
@@ -99,7 +99,7 @@ pub async fn nfsproc3_readdirplus(
 
             // this is a wrapper around a writer that also just counts the number of bytes
             // written
-            let mut counting_output = crate::write_counter::WriteCounter::new(output);
+            let mut counting_output = WriteCounter::new(output);
 
             make_success_reply(xid).serialize(&mut counting_output)?;
             nfs::nfsstat3::NFS3_OK.serialize(&mut counting_output)?;
@@ -189,13 +189,6 @@ pub async fn nfsproc3_mkdir(
     output: &mut impl Write,
     context: &RPCContext,
 ) -> Result<(), anyhow::Error> {
-    // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), VFSCapabilities::ReadWrite) {
-        make_success_reply(xid).serialize(output)?;
-        nfs::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs::wcc_data::default().serialize(output)?;
-        return Ok(());
-    }
     let mut args = MKDIR3args::default();
     args.deserialize(input)?;
 

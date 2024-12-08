@@ -1,4 +1,4 @@
-use crate::kernel::vfs::vfs::NFSFileSystem;
+use crate::kernel::vfs::api::NFSFileSystem;
 use std::fmt;
 use std::sync::Arc;
 use tokio::sync::mpsc;

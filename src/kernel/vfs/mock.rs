@@ -1,4 +1,4 @@
-use super::vfs::*;
+use super::api::*;
 use crate::kernel::api::nfs::*;
 use crate::backingstore::data_store::{DataStore, DataStoreError, KeyType};
 use async_trait::async_trait;
@@ -88,7 +88,7 @@ impl DataStore for MockDataStore {
 }
 
 pub struct MockNFSFileSystem {
-    capabilities: super::vfs::VFSCapabilities,
+    capabilities: super::api::VFSCapabilities,
     files: Arc<RwLock<HashMap<fileid3, fattr3>>>,
     next_fileid: Arc<RwLock<u64>>,
     data_store: MockDataStore
@@ -97,7 +97,7 @@ pub struct MockNFSFileSystem {
 impl MockNFSFileSystem {
     pub fn new_readonly() -> Self {
         Self {
-            capabilities: super::vfs::VFSCapabilities::ReadOnly,
+            capabilities: super::api::VFSCapabilities::ReadOnly,
             files: Arc::new(RwLock::new(HashMap::new())),
             next_fileid: Arc::new(RwLock::new(1)),
             data_store: MockDataStore {}
@@ -106,7 +106,7 @@ impl MockNFSFileSystem {
     
     pub fn new_readwrite() -> Self {
         Self {
-            capabilities: super::vfs::VFSCapabilities::ReadWrite,
+            capabilities: super::api::VFSCapabilities::ReadWrite,
             files: Arc::new(RwLock::new(HashMap::new())),
             next_fileid: Arc::new(RwLock::new(1)),
             data_store: MockDataStore {}

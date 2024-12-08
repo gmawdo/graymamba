@@ -1,6 +1,6 @@
 use crate::kernel::protocol::context::RPCContext;
 use crate::kernel::protocol::rpcwire::*;
-use crate::kernel::vfs::vfs::NFSFileSystem;
+use crate::kernel::vfs::api::NFSFileSystem;
 use anyhow;
 use async_trait::async_trait;
 use std::net::SocketAddr;

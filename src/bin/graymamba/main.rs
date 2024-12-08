@@ -1,9 +1,7 @@
 use std::sync::Arc;
-
-
 use graymamba::kernel::protocol::tcp::{NFSTcp, NFSTcpListener};
-use graymamba::sharesbased_fs::SharesFS;
-use graymamba::sharesbased_fs::{NAMESPACE_ID, HASH_TAG};
+use graymamba::sharesfs::{NAMESPACE_ID, HASH_TAG};
+use graymamba::sharesfs::SharesFS;
 
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_audit::MerkleBasedAuditSystem;

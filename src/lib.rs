@@ -5,15 +5,15 @@ extern crate self as graymamba;
 
 pub mod kernel;
 
-mod write_counter;
+//mod write_counter;
 
-pub mod fs_util;
+//pub mod fs_util_dead;
 
 pub mod channel_buffer;
 
 pub mod file_metadata;
 
-pub mod sharesbased_fs;
+pub mod sharesfs;
 
 pub mod secret_sharing;
 
