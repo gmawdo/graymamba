@@ -5,6 +5,7 @@ use crate::backingstore::data_store::{DataStore, DataStoreError};
 use crate::backingstore::data_store::KeyType;
 
 use std::fmt;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 impl fmt::Display for RocksDBDataStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -27,14 +28,107 @@ impl RocksDBDataStore {
 
 #[async_trait]
 impl DataStore for RocksDBDataStore {
-    async fn authenticate_user(&self, _userkey: &str) -> KeyType {
-        // Implement user authentication logic
-        unimplemented!("User authentication not implemented for RocksDB")
+    async fn authenticate_user(&self, username: &str) -> KeyType {
+        // Create a key with the format "user:{username}"
+        let user_key = format!("user:{}", username);
+
+        // Check if the user exists in the database
+        match self.db.get(user_key.as_bytes()) {
+            Ok(Some(_)) => KeyType::Usual,  // User exists
+            Ok(None) => KeyType::Usual,  // User does not exist - force existence!!!!
+            Err(_) => KeyType::None,  // Operation failed
+        }
     }
 
-    async fn init_user_directory(&self, _mount_path: &str) -> Result<(), DataStoreError> {
-        // Implement directory initialization logic
-        unimplemented!("Directory initialization not implemented for RocksDB")
+    async fn init_user_directory(&self, mount_path: &str) -> Result<(), DataStoreError> {
+        let hash_tag = "{graymamba}";
+        let path = format!("/{}", "graymamba");
+        let key = format!("{}:{}", hash_tag, mount_path);
+
+        // Check if the directory already exists
+        if self.db.get(key.as_bytes()).is_ok() {
+            return Ok(());
+        }
+
+        let node_type = "0";
+        let size = 0;
+        let permissions = 777;
+        let score = if mount_path == "/" { 1.0 } else { 2.0 };
+
+        let nodes = format!("{}:/{}_nodes", hash_tag, "graymamba");
+        let key_exists: bool = self.db.get(&nodes).map_err(|_| DataStoreError::OperationFailed)?.is_some();
+
+        let fileid: u64 = if key_exists {
+            let current_id = self.db.get(format!("{}:/{}_next_fileid", hash_tag, "graymamba").as_bytes())
+                .map_err(|_| DataStoreError::OperationFailed)?
+                .and_then(|v| String::from_utf8(v).ok())
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
+            current_id + 1
+        } else {
+            1
+        };
+
+        let system_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let epoch_seconds = system_time.as_secs();
+        let epoch_nseconds = system_time.subsec_nanos();
+
+        // Add to sorted set (equivalent to Redis ZADD)
+        let nodes_key = format!("zset:{}:/{}_nodes:{}", hash_tag, "graymamba", mount_path);
+        self.db.put(nodes_key.as_bytes(), score.to_string().as_bytes())
+            .map_err(|_| DataStoreError::OperationFailed)?;
+
+        let size_str = size.to_string();
+        let permissions_str = permissions.to_string();
+        let epoch_seconds_str = epoch_seconds.to_string();
+        let epoch_nseconds_str = epoch_nseconds.to_string();
+        let fileid_str = fileid.to_string();
+
+        // Now create the vector with references to our stored strings
+        let hash_fields = vec![
+            ("ftype", node_type),
+            ("size", &size_str),
+            ("permissions", &permissions_str),
+            ("change_time_secs", &epoch_seconds_str),
+            ("change_time_nsecs", &epoch_nseconds_str),
+            ("modification_time_secs", &epoch_seconds_str),
+            ("modification_time_nsecs", &epoch_nseconds_str),
+            ("access_time_secs", &epoch_seconds_str),
+            ("access_time_nsecs", &epoch_nseconds_str),
+            ("birth_time_secs", &epoch_seconds_str),
+            ("birth_time_nsecs", &epoch_nseconds_str),
+            ("fileid", &fileid_str),
+        ];
+
+        // Store hash fields (equivalent to Redis HSET)
+        for (field, value) in hash_fields {
+            let hash_key = format!("{}:{}:{}", hash_tag, mount_path, field);
+            self.db.put(hash_key.as_bytes(), value.as_bytes())
+                .map_err(|_| DataStoreError::OperationFailed)?;
+        }
+
+        // Set path to id mapping
+        let path_to_id_key = format!("{}:{}_path_to_id", hash_tag, path);
+        self.db.put(
+            format!("{}:{}", path_to_id_key, mount_path).as_bytes(),
+            fileid_str.as_bytes()
+        ).map_err(|_| DataStoreError::OperationFailed)?;
+
+        // Set id to path mapping
+        let id_to_path_key = format!("{}:{}_id_to_path", hash_tag, path);
+        self.db.put(
+            format!("{}:{}", id_to_path_key, fileid_str).as_bytes(),
+            mount_path.as_bytes()
+        ).map_err(|_| DataStoreError::OperationFailed)?;
+
+        if fileid == 1 {
+            self.db.put(
+                format!("{}:/{}_next_fileid", hash_tag, path).as_bytes(),
+                b"1"
+            ).map_err(|_| DataStoreError::OperationFailed)?;
+        }
+
+        Ok(())
     }
 
     async fn get(&self, key: &str) -> Result<String, DataStoreError> {
