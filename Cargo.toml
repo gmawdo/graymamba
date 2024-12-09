@@ -102,6 +102,8 @@ ark-snark = "0.4.0"
 
 iced = { version = "0.12", features = ["advanced", "system"] }
 
+tempfile = "3.14.0"
+
 [features]
 strict = []
 traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]

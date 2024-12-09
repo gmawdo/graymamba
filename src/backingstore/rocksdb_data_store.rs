@@ -7,6 +7,8 @@ use crate::backingstore::data_store::KeyType;
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use tracing::debug;
+
 impl fmt::Display for RocksDBDataStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "RocksDBDataStore")
@@ -41,15 +43,15 @@ impl DataStore for RocksDBDataStore {
     }
 
     async fn init_user_directory(&self, mount_path: &str) -> Result<(), DataStoreError> {
+        debug!("init_user_directory({:?})", mount_path);
         let hash_tag = "{graymamba}";
         let path = format!("/{}", "graymamba");
         let key = format!("{}:{}", hash_tag, mount_path);
 
         // Check if the directory already exists
-        if self.db.get(key.as_bytes()).is_ok() {
+        if let Ok(Some(_)) = self.db.get(key.as_bytes()) {
             return Ok(());
         }
-
         let node_type = "0";
         let size = 0;
         let permissions = 777;
