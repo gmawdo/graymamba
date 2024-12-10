@@ -117,6 +117,9 @@ required-features = ["traceability"]
 [[bin]]
 name = "audit_reader"
 path = "src/bin/audit_reader/main.rs"
+[[bin]]
+name = "qrocks"
+path = "src/bin/qrocks/main.rs"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["async_tokio"] }
