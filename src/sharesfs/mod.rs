@@ -905,6 +905,7 @@ impl NFSFileSystem for SharesFS {
     }
  
     async fn lookup(&self, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3> {
+        debug!("lookup: {:?}", filename);
         let filename_str = OsStr::from_bytes(filename).to_str().ok_or(nfsstat3::NFS3ERR_IO)?;
 
         // Handle the root directory case
@@ -937,6 +938,8 @@ impl NFSFileSystem for SharesFS {
     async fn write(&self, id: fileid3, offset: u64, data: &[u8]) -> Result<fattr3, nfsstat3> {
         let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         let path = self.get_path_from_id(id).await?;
+
+        debug!("write: {:?}", path);
     
         let channel = {
             let mut active_writes = self.active_writes.lock().await;
@@ -993,13 +996,15 @@ impl NFSFileSystem for SharesFS {
         FileMetadata::metadata_to_fattr3(id, &metadata).await
     }
 
-    async fn read(&self, id: fileid3, offset: u64, count: u32) -> Result<(Vec<u8>, bool), nfsstat3> {           
+    async fn read(&self, id: fileid3, offset: u64, count: u32) -> Result<(Vec<u8>, bool), nfsstat3> {
         let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
     
         let path: String = self.data_store.hget(
             &format!("{}/{}_id_to_path", hash_tag, namespace_id),
             &id.to_string()
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
+
+        debug!("read: {:?}", path);
         
         // For pack files, read from active writes if present
         if path.contains("/objects/pack/") {
@@ -1138,6 +1143,8 @@ impl NFSFileSystem for SharesFS {
     ) -> Result<ReadDirResult, nfsstat3> {
         let path = self.get_path_from_id(dirid).await?;
         let children = self.get_direct_children(&path).await?;
+
+        debug!("readdir: {:?}", path);
         
         let children_set: BTreeSet<_> = children.into_iter().collect();
         
@@ -1181,6 +1188,8 @@ impl NFSFileSystem for SharesFS {
             &id.to_string()
         ).await
             .unwrap_or_else(|_| String::new());
+
+        debug!("setattr: {:?}", path);
 
         match setattr.atime {
             set_atime::SET_TO_SERVER_TIME => {
@@ -1298,6 +1307,8 @@ impl NFSFileSystem for SharesFS {
         } else {
             format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""))
         };
+
+        debug!("create: {:?}", new_file_path);
 
         // Check if file already exists
         let exists: bool = match self.data_store.zscore(
@@ -1424,6 +1435,8 @@ impl NFSFileSystem for SharesFS {
             format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""))
         };
 
+        debug!("remove: {:?}", new_dir_path);
+
         let ftype_result = self.get_ftype(new_dir_path.clone()).await;
         
         match ftype_result {
@@ -1457,6 +1470,8 @@ impl NFSFileSystem for SharesFS {
         } else {
             format!("{}/{}", from_path, objectname_osstr.to_str().unwrap_or(""))
         };
+
+        debug!("rename: {:?} {:?}", from_path, new_from_path);
 
             // Check if the source file exists in the share store
             let from_exists: bool = match self.data_store.zscore(
@@ -1528,6 +1543,8 @@ impl NFSFileSystem for SharesFS {
             format!("{}/{}", parent_path, objectname_osstr.to_str().unwrap_or(""))
         };
 
+        debug!("mkdir: {:?}", new_dir_path);
+
         // let key2 = format!("{}/{}_path_to_id", hash_tag, namespace_id);
 
         // Check if directory already exists
@@ -1572,7 +1589,6 @@ impl NFSFileSystem for SharesFS {
     if linkname.is_empty() || symlink.is_empty() {
         return Err(nfsstat3::NFS3ERR_INVAL);
     }
-
     
     //let mut conn = self.pool.get_connection();  
 
@@ -1596,6 +1612,7 @@ impl NFSFileSystem for SharesFS {
     //Convert symlink to string
     let symlink_osstr = OsStr::from_bytes(symlink).to_os_string();
 
+    debug!("symlink: {:?}", symlink_osstr);
     // Construct the full symlink path
     let objectname_osstr = OsStr::from_bytes(linkname).to_os_string();
                 
@@ -1710,6 +1727,8 @@ impl NFSFileSystem for SharesFS {
                 return Err(nfsstat3::NFS3ERR_STALE);
             }
         };
+
+        debug!("readlink: {:?}", path);
     
         // Retrieve the symlink target using the path
         let symlink_target: String = match self.data_store.hget(

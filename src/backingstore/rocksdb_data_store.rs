@@ -147,6 +147,7 @@ impl DataStore for RocksDBDataStore {
     }
     
     async fn set(&self, key: &str, value: &str) -> Result<(), DataStoreError> {
+        debug!("rocksdb set({}) = {}", key, value);
         self.db.put(key.as_bytes(), value.as_bytes())
             .map_err(|_| DataStoreError::OperationFailed)
     }
@@ -162,6 +163,7 @@ impl DataStore for RocksDBDataStore {
     }
 
     async fn hset(&self, key: &str, field: &str, value: &str) -> Result<(), DataStoreError> {
+        debug!("rocksdb hset({}:{}) = {}", key, field, value);
         let full_key = format!("{}:{}", key, field);
         self.set(&full_key, value).await
     }
