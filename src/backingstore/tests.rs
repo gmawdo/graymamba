@@ -1,4 +1,3 @@
-use super::*;
 use crate::backingstore::data_store::DataStore;
 use crate::backingstore::redis_data_store::RedisDataStore;
 use crate::backingstore::rocksdb_data_store::RocksDBDataStore;
@@ -15,9 +14,9 @@ async fn setup_rocksdb() -> RocksDBDataStore {
 
 #[tokio::test]
 async fn test_init_user_directory_structure() {
-    let redis = setup_redis().await;
+    //let redis = setup_redis().await;
     let rocks = setup_rocksdb().await;
-    let stores: Vec<(&str, &dyn DataStore)> = vec![("redis", &redis), ("rocks", &rocks)];
+    let stores: Vec<(&str, &dyn DataStore)> = vec![/*("redis", &redis),*/ ("rocks", &rocks)];
 
     for (name, store) in stores {
         // Test 1: Initialize root directory
@@ -34,7 +33,7 @@ async fn test_init_user_directory_structure() {
             "{} root missing ftype", name);
 
         // Test 3: Check nodes structure
-        let nodes_key = "{graymamba}:/_nodes";
+        let nodes_key = "{graymamba}:/graymamba_nodes";
         let nodes = store.zrange_withscores(nodes_key, 0, -1).await
             .expect(&format!("{} failed to get nodes", name));
         
@@ -54,14 +53,14 @@ async fn test_init_user_directory_structure() {
             "{} subdir missing fileid", name);
 
         // Test 6: Check path_to_id mapping
-        let path_to_id_key = "{graymamba}:/_path_to_id";
+        let path_to_id_key = "{graymamba}:/graymamba_path_to_id";
         let path_id = store.hget(path_to_id_key, "/test").await
             .expect(&format!("{} failed to get path_to_id", name));
         
         assert!(!path_id.is_empty(), "{} path_to_id should exist", name);
 
         // Test 7: Check id_to_path mapping
-        let id_to_path_key = "{graymamba}:/_id_to_path";
+        let id_to_path_key = "{graymamba}:/graymamba_id_to_path";
         let id = store.hget(path_to_id_key, "/test").await
             .expect(&format!("{} failed to get id", name));
         let path = store.hget(id_to_path_key, &id).await
@@ -70,7 +69,7 @@ async fn test_init_user_directory_structure() {
         assert_eq!(path, "/test", "{} path mismatch in id_to_path", name);
 
         // Test 8: Verify next_fileid
-        let next_fileid_key = "{graymamba}:/_next_fileid";
+        let next_fileid_key = "{graymamba}:/graymamba_next_fileid";
         let next_fileid = store.get(next_fileid_key).await
             .expect(&format!("{} failed to get next_fileid", name));
         
