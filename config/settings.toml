@@ -19,10 +19,11 @@ thread_number = 5
 #[account]
 #name = "Alice"
 
-[logging]
-level = "warn"
 #"error" => tracing::Level::ERROR,
 #"warn" => tracing::Level::WARN,
 #"info" => tracing::Level::INFO,
 #"debug" => tracing::Level::DEBUG,
 #"trace" => tracing::Level::TRACE,
+[logging]
+level = "warn"
+module_filter = ["graymamba::sharesfs=debug", "graymamba::kernel::handlers::nfs=debug"]

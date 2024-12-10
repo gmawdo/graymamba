@@ -14,6 +14,7 @@ use config::{Config, File as ConfigFile};
 
 use tokio::signal;
 use std::io::Write;
+use tracing_subscriber::EnvFilter;
 
 const HOSTPORT: u32 = 2049;
 
@@ -26,39 +27,45 @@ async fn set_namespace_id_and_hashtag() {
     hash_tag.push_str(&format!("{{{}}}:", namespace_id));
 }
 
-// Load settings from the configuration file
-fn load_config() -> Config {
+#[tokio::main]
+async fn main() {
+    // Load settings but skip logging config since we've already set it up
     let mut settings = Config::default();
     settings
         .merge(ConfigFile::with_name("config/settings.toml"))
         .expect("Failed to load configuration");
 
-    // Retrieve log level from the configuration
-    let log_level = settings
+    // Retrieve log settings from configuration
+    let base_level = settings
         .get::<String>("logging.level")
         .unwrap_or_else(|_| "warn".to_string());
 
-    // Convert string to Level
-    let level = match log_level.to_lowercase().as_str() {
-        "error" => tracing::Level::ERROR,
-        "warn" => tracing::Level::WARN,
-        "info" => tracing::Level::INFO,
-        "debug" => tracing::Level::DEBUG,
-        "trace" => tracing::Level::TRACE,
-        _ => tracing::Level::WARN, // Default to WARN if invalid
-    };
+    // Build the filter with both base level and all module directives
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| {
+            let mut filter = EnvFilter::new(&base_level);
+            if let Ok(filters) = settings.get::<Vec<String>>("logging.module_filter") {
+                for module_filter in filters {
+                    filter = filter.add_directive(module_filter.parse().unwrap());
+                }
+            }
+            filter
+        });
+    println!("filter: {:?}", filter);
 
+    // Single initialization with combined settings
     tracing_subscriber::fmt()
-        .with_max_level(level)
+        .with_env_filter(filter)
         .with_writer(std::io::stderr)
+        .with_target(false)  // Don't show target module
+        .with_thread_ids(false)  // Don't show thread IDs
+        .with_thread_names(false)  // Don't show thread names
+        .with_file(true)  // Don't show file names
+        .with_line_number(true)  // Don't show line numbers
+        .with_level(true)  // Do show log levels
+        .compact()  // Use compact formatting
         .init();
 
-    settings
-}
-
-#[tokio::main]
-async fn main() {
-    // Load settings from the configuration file
     let version = env!("CARGO_PKG_VERSION");
     println!("Application version: {}", version);
 
@@ -68,15 +75,14 @@ async fn main() {
         println!(" - irrefutable_audit");
     }
 
-    let _settings = load_config();
-
     set_namespace_id_and_hashtag().await;
     
-    use graymamba::backingstore::redis_data_store::RedisDataStore;
-    let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
+    //use graymamba::backingstore::redis_data_store::RedisDataStore;
+    //let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
-    //use graymamba::backingstore::rocksdb_data_store::RocksDBDataStore;
-    //let _data_store2 = Arc::new(RocksDBDataStore::new("theROCKSDB").expect("Failed to create a data store"));
+    use graymamba::backingstore::rocksdb_data_store::RocksDBDataStore;
+    let data_store = Arc::new(RocksDBDataStore::new("../RocksDBs/yellowduck").expect("Failed to create a data store"));
+    
 
     #[cfg(feature = "irrefutable_audit")]
     let audit_system =    match MerkleBasedAuditSystem::new().await {
