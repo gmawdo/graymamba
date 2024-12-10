@@ -43,7 +43,6 @@ impl DataStore for RocksDBDataStore {
     }
 
     async fn init_user_directory(&self, mount_path: &str) -> Result<(), DataStoreError> {
-        debug!("init_user_directory({:?})", mount_path);
         let hash_tag = "{graymamba}";
         let path = format!("/{}", "graymamba");
         let key = format!("{}:{}", hash_tag, mount_path);
@@ -61,12 +60,18 @@ impl DataStore for RocksDBDataStore {
         let key_exists: bool = self.db.get(&nodes).map_err(|_| DataStoreError::OperationFailed)?.is_some();
 
         let fileid: u64 = if key_exists {
-            let current_id = self.db.get(format!("{}:/{}_next_fileid", hash_tag, "graymamba").as_bytes())
+            // Get and increment the next file ID atomically
+            let next_fileid_key = format!("{}:/{}^_next_fileid", hash_tag, "graymamba");
+            let current_id = self.db.get(next_fileid_key.as_bytes())
                 .map_err(|_| DataStoreError::OperationFailed)?
                 .and_then(|v| String::from_utf8(v).ok())
                 .and_then(|s| s.parse::<u64>().ok())
                 .unwrap_or(0);
-            current_id + 1
+            let new_id = current_id + 1;
+            // Save the incremented value
+            self.db.put(next_fileid_key.as_bytes(), new_id.to_string().as_bytes())
+                .map_err(|_| DataStoreError::OperationFailed)?;
+            new_id
         } else {
             1
         };
@@ -125,7 +130,7 @@ impl DataStore for RocksDBDataStore {
 
         if fileid == 1 {
             self.db.put(
-                format!("{}:/{}_next_fileid", hash_tag, path).as_bytes(),
+                format!("{}:{}_next_fileid", hash_tag, path).as_bytes(),
                 b"1"
             ).map_err(|_| DataStoreError::OperationFailed)?;
         }
@@ -216,12 +221,16 @@ impl DataStore for RocksDBDataStore {
     //we'll consider using a more sophisticated storage scheme
     //(like storing scores as sortable byte strings in the key)
 
-    async fn zrange_withscores(&self, key: &str, start: isize, stop: isize) 
-        -> Result<Vec<(String, f64)>, DataStoreError> {
+    async fn zrange_withscores(&self, key: &str, _start: isize, _stop: isize) 
+        -> Result<Vec<(String, f64)>, DataStoreError> 
+    {
         let mut results = Vec::new();
-        let prefix = format!("zset:{}:", key);
         
-        // Collect all members and scores
+        // The key format should match what we use in zadd
+        // In zadd we use: format!("zset:{}:/{}_nodes:{}", hash_tag, "graymamba", mount_path)
+        let prefix = format!("zset:{}", key);
+
+        // Iterate over all entries with this prefix
         let iter = self.db.prefix_iterator(prefix.as_bytes());
         for item in iter {
             let (key_bytes, value_bytes) = item.map_err(|_| DataStoreError::OperationFailed)?;
@@ -231,27 +240,24 @@ impl DataStore for RocksDBDataStore {
                 .map_err(|_| DataStoreError::OperationFailed)?;
             let score_str = String::from_utf8(value_bytes.to_vec())
                 .map_err(|_| DataStoreError::OperationFailed)?;
-            
+
             // Extract member from the key (remove prefix)
-            if let Some(member) = full_key.strip_prefix(&prefix) {
+            if let Some(member) = full_key.strip_prefix(&format!("{}:", prefix)) {
                 let score = score_str.parse::<f64>()
                     .map_err(|_| DataStoreError::OperationFailed)?;
+                
                 results.push((member.to_string(), score));
             }
         }
-
-        // Sort by score
+        // Sort results by score (to match Redis behavior)
         results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Apply range
+        // Apply range limits if needed
         let len = results.len() as isize;
-        let normalized_start = if start < 0 { len + start } else { start };
-        let normalized_stop = if stop < 0 { len + stop } else { stop };
-        
-        let start_idx = normalized_start.clamp(0, len) as usize;
-        let stop_idx = (normalized_stop + 1).clamp(0, len) as usize;
+        let start = if _start < 0 { (len + _start).max(0) } else { _start.min(len) } as usize;
+        let stop = if _stop < 0 { (len + _stop + 1).max(0) } else { (_stop + 1).min(len) } as usize;
 
-        Ok(results[start_idx..stop_idx].to_vec())
+        Ok(results[start..stop].to_vec())
     }
 
 /*
