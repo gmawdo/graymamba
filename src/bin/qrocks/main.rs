@@ -1,11 +1,8 @@
 use iced::{
     widget::{Column, Container, Text, Scrollable, Button, Row, TextInput},
     Element, Length, Application, Settings, Color, Alignment,
-    alignment,
     theme::{self, Theme},
     Command,
-    Border,
-    Shadow,
     window,
     Size,
 };
@@ -112,7 +109,8 @@ impl Application for DBExplorer {
                     &self.db_path_input,
                 )
                 .padding(8)
-                .size(16),
+                .size(16)
+                .on_input(Message::SetDBPath),
             )
             .push(
                 Button::new(Text::new("Open DB"))
@@ -142,7 +140,8 @@ impl Application for DBExplorer {
             &self.filter_text
         )
         .padding(8)
-        .size(16);
+        .size(16)
+        .on_input(Message::FilterChanged);
 
         let keys_panel = Container::new(
             Column::new()
@@ -190,12 +189,18 @@ impl Application for DBExplorer {
                                 .iter()
                                 .fold(Column::new().spacing(5), |column, value| {
                                     column.push(
-                                        Text::new(value)
-                                            .font(iced::Font::MONOSPACE)
-                                            .size(12),
+                                        Container::new(
+                                            Text::new(Self::format_value_with_wrapping(value, 70))
+                                                .font(iced::Font::MONOSPACE)
+                                                .size(12)
+                                        )
+                                        .width(Length::Fill)
+                                        .style(theme::Container::Box)
+                                        .padding(10)
                                     )
                                 }),
-                        ),
+                        )
+                        .width(Length::Fill),
                     )
                     .height(Length::Fill)
                     .style(theme::Container::Box),
@@ -286,6 +291,15 @@ impl DBExplorer {
         }
         
         Ok(())
+    }
+
+    fn format_value_with_wrapping(value: &str, chars_per_line: usize) -> String {
+        value.chars()
+            .collect::<Vec<char>>()
+            .chunks(chars_per_line)
+            .map(|chunk| chunk.iter().collect::<String>())
+            .collect::<Vec<String>>()
+            .join("\n")
     }
 }
 
