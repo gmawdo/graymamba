@@ -322,11 +322,18 @@ impl SharesFS {
             score
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
+        let permissions = if let set_mode3::mode(mode) = setattr.mode {
+            debug!(" -- set permissions {:?} {:?}", path, mode);
+            Self::mode_unmask_setattr(mode).to_string()
+        } else {
+            "777".to_string() // Default permissions if none specified
+        };
+
         let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path), 
     &[
             ("ftype", node_type),
             ("size", &size.to_string()),
-            //("permissions", &permissions.to_string()),
+            ("permissions", &permissions),
             ("change_time_secs", &epoch_seconds.to_string()),
             ("change_time_nsecs", &epoch_nseconds.to_string()),
             ("modification_time_secs", &epoch_seconds.to_string()),
@@ -337,19 +344,7 @@ impl SharesFS {
             ("birth_time_nsecs", &epoch_nseconds.to_string()),
             ("fileid", &fileid.to_string())
             ]).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-            if let set_mode3::mode(mode) = setattr.mode {
-                debug!(" -- set permissions {:?} {:?}", path, mode);
-                let mode_value = Self::mode_unmask_setattr(mode);
-    
-                // Update the permissions metadata of the file
-                let _ = self.data_store.hset(
-                    &format!("{}{}", hash_tag, path),
-                    "permissions",
-                    &mode_value.to_string()
-                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-                
-            }
-        // let _ = self.data_store.hset(&format!("{}{}", hash_tag, path), "data", "").await.map_err(|_| nfsstat3::NFS3ERR_IO);
+
         let _ = self.data_store.hset(&format!("{}/{}_path_to_id", hash_tag, namespace_id), path, &fileid.to_string()).await.map_err(|_| nfsstat3::NFS3ERR_IO);
         let _ = self.data_store.hset(&format!("{}/{}_id_to_path", hash_tag, namespace_id), &fileid.to_string(), path).await.map_err(|_| nfsstat3::NFS3ERR_IO);
 
@@ -1586,84 +1581,92 @@ impl NFSFileSystem for SharesFS {
 
     async fn symlink(&self, dirid: fileid3, linkname: &filename3, symlink: &nfspath3, attr: &sattr3) -> Result<(fileid3, fattr3), nfsstat3> {
         // Validate input parameters
-    if linkname.is_empty() || symlink.is_empty() {
-        return Err(nfsstat3::NFS3ERR_INVAL);
-    }
-    
-    //let mut conn = self.pool.get_connection();  
-
-    let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;   
-
-    // Get the current system time for metadata timestamps
-    let system_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap();
-        let epoch_seconds = system_time.as_secs();
-        let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
+        if linkname.is_empty() || symlink.is_empty() {
+            return Err(nfsstat3::NFS3ERR_INVAL);
+        }
         
+        //let mut conn = self.pool.get_connection();  
 
-    // Get the directory path from the directory ID
-    let dir_path: String = self.data_store.hget(
-        &format!("{}/{}_id_to_path", hash_tag, namespace_id),
-        &dirid.to_string()
-    ).await
-        .map_err(|_| nfsstat3::NFS3ERR_IO)?;
+        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;   
 
-    //Convert symlink to string
-    let symlink_osstr = OsStr::from_bytes(symlink).to_os_string();
+        // Get the current system time for metadata timestamps
+        let system_time = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap();
+            let epoch_seconds = system_time.as_secs();
+            let epoch_nseconds = system_time.subsec_nanos(); // Capture nanoseconds part
+            
 
-    debug!("symlink: {:?}", symlink_osstr);
-    // Construct the full symlink path
-    let objectname_osstr = OsStr::from_bytes(linkname).to_os_string();
-                
-        let symlink_path: String = if dir_path == "/" {
-            format!("/{}", objectname_osstr.to_str().unwrap_or(""))
-        } else {
-            format!("{}/{}", dir_path, objectname_osstr.to_str().unwrap_or(""))
-        };
+        // Get the directory path from the directory ID
+        let dir_path: String = self.data_store.hget(
+            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
+            &dirid.to_string()
+        ).await
+            .map_err(|_| nfsstat3::NFS3ERR_IO)?;
 
-        let symlink_exists: bool = match self.data_store.zscore(
-            &format!("{}/{}_nodes", hash_tag, namespace_id),
-            &symlink_path
+        //Convert symlink to string
+        let symlink_osstr = OsStr::from_bytes(symlink).to_os_string();
+
+        debug!("symlink: {:?}", symlink_osstr);
+        // Construct the full symlink path
+        let objectname_osstr = OsStr::from_bytes(linkname).to_os_string();
+                    
+            let symlink_path: String = if dir_path == "/" {
+                format!("/{}", objectname_osstr.to_str().unwrap_or(""))
+            } else {
+                format!("{}/{}", dir_path, objectname_osstr.to_str().unwrap_or(""))
+            };
+
+            let symlink_exists: bool = match self.data_store.zscore(
+                &format!("{}/{}_nodes", hash_tag, namespace_id),
+                &symlink_path
+            ).await {
+                Ok(Some(_)) => true,
+                Ok(None) => false,
+                Err(e) => {
+                    eprintln!("Error checking if symlink exists: {:?}", e);
+                    false
+                }
+            };
+
+        if symlink_exists {
+            return Err(nfsstat3::NFS3ERR_EXIST);
+        }
+
+        // Generate a new file ID for the symlink
+        let symlink_id: fileid3 = match self.data_store.incr(
+            &format!("{}/{}_next_fileid", hash_tag, namespace_id)
         ).await {
-            Ok(Some(_)) => true,
-            Ok(None) => false,
+            Ok(id) => id.try_into().unwrap(),
             Err(e) => {
-                eprintln!("Error checking if symlink exists: {:?}", e);
-                false
+                eprintln!("Error incrementing symlink ID: {:?}", e);
+                return Err(nfsstat3::NFS3ERR_IO);
             }
         };
 
-    if symlink_exists {
-        return Err(nfsstat3::NFS3ERR_EXIST);
-    }
+        // Begin a share store transaction to ensure atomicity
 
-    // Generate a new file ID for the symlink
-    let symlink_id: fileid3 = match self.data_store.incr(
-        &format!("{}/{}_next_fileid", hash_tag, namespace_id)
-    ).await {
-        Ok(id) => id.try_into().unwrap(),
-        Err(e) => {
-            eprintln!("Error incrementing symlink ID: {:?}", e);
-            return Err(nfsstat3::NFS3ERR_IO);
-        }
-    };
+        let score = (symlink_path.matches('/').count() as f64) + 1.0;
+        let _ = self.data_store.zadd(
+            &format!("{}/{}_nodes", hash_tag, namespace_id),
+            &symlink_path,
+            score
+        ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
+        
+        // First calculate the permissions
+        let permissions = if let set_mode3::mode(mode) = attr.mode {
+            Self::mode_unmask_setattr(mode).to_string()
+        } else {
+            "777".to_string() // Default permissions if none specified
+        };
 
-    // Begin a share store transaction to ensure atomicity
-
-    let score = (symlink_path.matches('/').count() as f64) + 1.0;
-    let _ = self.data_store.zadd(
-        &format!("{}/{}_nodes", hash_tag, namespace_id),
-        &symlink_path,
-        score
-    ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-    
+        // Include permissions in the initial hset_multiple
         let _ = self.data_store.hset_multiple(
             &format!("{}{}", hash_tag, &symlink_path),
             &[
                 ("ftype", "2"),
                 ("size", &symlink.len().to_string()),
-                //("permissions", attr.mode as u64),
+                ("permissions", &permissions),
                 ("change_time_secs", &epoch_seconds.to_string()),
                 ("change_time_nsecs", &epoch_nseconds.to_string()),
                 ("modification_time_secs", &epoch_seconds.to_string()),
@@ -1675,19 +1678,6 @@ impl NFSFileSystem for SharesFS {
                 ("fileid", &symlink_id.to_string())
             ]
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-
-            if let set_mode3::mode(mode) = attr.mode {
-                //debug!(" -- set permissions {:?} {:?}", symlink_path, mode);
-                let mode_value = Self::mode_unmask_setattr(mode);
-    
-                // Update the permissions metadata of the file in the share store
-                let _ = self.data_store.hset(
-                    &format!("{}{}", hash_tag, symlink_path),
-                    "permissions",
-                    &mode_value.to_string()
-                ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
-                
-            }
 
         let _ = self.data_store.hset(
             &format!("{}{}", hash_tag, symlink_path),
