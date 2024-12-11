@@ -951,10 +951,11 @@ impl NFSFileSystem for SharesFS {
         channel.write(offset, data).await;
         
         let total_size = channel.total_size();
-        self.data_store.hset(
+        self.data_store.hset_multiple(
             &format!("{}{}", hash_tag, path),
-            "size",
-            &total_size.to_string()
+            &[
+                ("size",&total_size.to_string())
+            ]
         ).await.map_err(|_| nfsstat3::NFS3ERR_IO)?;
 
         if self.is_likely_last_write(id, offset, data.len()).await? {
@@ -1251,10 +1252,11 @@ impl NFSFileSystem for SharesFS {
             let mode_value = Self::mode_unmask_setattr(mode);
 
             // Update the permissions metadata of the file in the share store
-            let _ = self.data_store.hset(
+            let _ = self.data_store.hset_multiple(
                 &format!("{}{}", hash_tag, path),
-                "permissions",
-                &mode_value.to_string()
+                &[
+                ("permissions",&mode_value.to_string())
+                ],
             ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
             
         }
@@ -1263,10 +1265,11 @@ impl NFSFileSystem for SharesFS {
             debug!(" -- set size {:?} {:?}", path, size3);
     
             // Update the size metadata of the file in the share store
-            let _hset_result = self.data_store.hset(
+            let _hset_result = self.data_store.hset_multiple(
                 &format!("{}{}", hash_tag, path),
-                "size",
-                &size3.to_string()
+                &[
+                ("size",&size3.to_string())
+                ],
             ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
         }
         
