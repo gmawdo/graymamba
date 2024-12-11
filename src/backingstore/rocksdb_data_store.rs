@@ -9,6 +9,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing::debug;
 
+use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+
 impl fmt::Display for RocksDBDataStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "RocksDBDataStore")
@@ -17,6 +20,11 @@ impl fmt::Display for RocksDBDataStore {
 
 pub struct RocksDBDataStore{
     db: DB,
+}
+
+#[derive(Serialize, Deserialize)]
+struct AttributeFields {
+    fields: HashMap<String, String>
 }
 
 impl RocksDBDataStore {
@@ -342,26 +350,48 @@ This implementation allows us to remove a member from a sorted set in RocksDB.
         Ok(results)
     }
 
-    async fn hset_multiple(&self, key: &str, fields: &[(&str, &str)]) 
-        -> Result<(), DataStoreError> {
+    async fn hset_multiple(&self, key: &str, fields: &[(&str, &str)]) -> Result<(), DataStoreError> {
+        // Initialize hash_map with existing values if present
+        let mut hash_map = match self.db.get(key.as_bytes()) {
+            Ok(Some(existing_bytes)) => {
+                let existing_str = String::from_utf8(existing_bytes)
+                    .map_err(|_| DataStoreError::OperationFailed)?;
+                let existing_fields: AttributeFields = serde_json::from_str(&existing_str)
+                    .map_err(|_| DataStoreError::OperationFailed)?;
+                existing_fields.fields
+            },
+            Ok(None) => HashMap::new(),
+            Err(_) => return Err(DataStoreError::OperationFailed),
+        };
+
+        // Update with new values
         for (field, value) in fields {
-            self.hset(key, field, value).await?;
+            hash_map.insert(field.to_string(), value.to_string());
         }
-        Ok(())
+        
+        let hash_fields = AttributeFields { fields: hash_map };
+        let serialized = serde_json::to_string(&hash_fields)
+            .map_err(|_| DataStoreError::OperationFailed)?;
+        
+        self.db.put(key.as_bytes(), serialized.as_bytes())
+            .map_err(|_| DataStoreError::OperationFailed)
     }
 
     async fn hgetall(&self, key: &str) -> Result<Vec<(String, String)>, DataStoreError> {
-        let mut results = Vec::new();
-        let iter = self.db.prefix_iterator(key);
-        for item in iter {
-            let (full_key, value) = item.map_err(|_| DataStoreError::OperationFailed)?;
-            let full_key_str = String::from_utf8(full_key.to_vec()).map_err(|_| DataStoreError::OperationFailed)?;
-            let value_str = String::from_utf8(value.to_vec()).map_err(|_| DataStoreError::OperationFailed)?;
-            if let Some(field) = full_key_str.strip_prefix(&format!("{}:", key)) {
-                results.push((field.to_string(), value_str));
+        match self.db.get(key.as_bytes()) {
+            Ok(Some(value)) => {
+                let value_str = String::from_utf8(value)
+                    .map_err(|_| DataStoreError::OperationFailed)?;
+                let hash_fields: AttributeFields = serde_json::from_str(&value_str)
+                    .map_err(|_| DataStoreError::OperationFailed)?;
+                
+                Ok(hash_fields.fields.into_iter()
+                    .map(|(k, v)| (k, v))
+                    .collect())
             }
+            Ok(None) => Ok(vec![]),
+            Err(_) => Err(DataStoreError::OperationFailed),
         }
-        Ok(results)
     }
 
     // This function is intended to scan through a sorted set and return members that match a specific pattern. 
