@@ -162,9 +162,31 @@ impl DataStore for RocksDBDataStore {
             .map_err(|_| DataStoreError::OperationFailed)
     }
 
+    //This is a modified version of the hget function from the RedisDataStore
+    //In redis file attributes are stored in a redis hash holding field/values andis querable by field
+    //in rocksdb we store the fields as a json string in the value of the key
+    //and for single values as a direct k,v store
+    //therefore if we singularly query for a value and don't find it we need to query the entire hash for the key
+    //ftype and size are the two attributes asked for independently
     async fn hget(&self, key: &str, field: &str) -> Result<String, DataStoreError> {
         let full_key = format!("{}:{}", key, field);
-        self.get(&full_key).await
+        match self.get(&full_key).await {
+            Ok(value) => Ok(value),
+            Err(DataStoreError::KeyNotFound) => {
+                // If the direct key lookup failed, try hgetall
+                match self.hgetall(key).await {
+                    Ok(fields) => {
+                        // Look for the field in the hash map
+                        fields.into_iter()
+                            .find(|(k, _)| k == field)
+                            .map(|(_, v)| v)
+                            .ok_or(DataStoreError::KeyNotFound)
+                    },
+                    Err(e) => Err(e),
+                }
+            },
+            Err(e) => Err(e),
+        }
     }
 
     async fn hset(&self, key: &str, field: &str, value: &str) -> Result<(), DataStoreError> {
