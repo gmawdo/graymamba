@@ -5,6 +5,8 @@ use bytes::{BytesMut, Bytes};
 use std::sync::Arc;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+use tracing::debug;
 pub struct ActiveWrite {
     pub channel: Arc<ChannelBuffer>,
     pub last_activity: Instant,
@@ -66,6 +68,7 @@ impl ChannelBuffer {
     }
 
 pub async fn write(&self, offset: u64, data: &[u8]) {
+    debug!("write: {:?}", offset);
     let mut buffer = self.buffer.lock().await;
     
     buffer.insert(offset, Bytes::copy_from_slice(data));
@@ -82,6 +85,7 @@ pub async fn write(&self, offset: u64, data: &[u8]) {
 }
 
     pub async fn read_all(&self) -> Bytes {
+        debug!("read_all");
         let buffer = self.buffer.lock().await;
         let mut result = BytesMut::with_capacity(self.total_size.load(Ordering::SeqCst) as usize);
         
