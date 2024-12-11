@@ -89,7 +89,7 @@ impl DataStore for RocksDBDataStore {
         let epoch_nseconds = system_time.subsec_nanos();
 
         // Add to sorted set (equivalent to Redis ZADD)
-        let nodes_key = format!("zset:{}:/{}_nodes:{}", hash_tag, "graymamba", mount_path);
+        let nodes_key = format!("{}:/{}_nodes:{}", hash_tag, "graymamba", mount_path);
         self.db.put(nodes_key.as_bytes(), score.to_string().as_bytes())
             .map_err(|_| DataStoreError::OperationFailed)?;
 
@@ -239,8 +239,8 @@ impl DataStore for RocksDBDataStore {
         let mut results = Vec::new();
         
         // The key format should match what we use in zadd
-        // In zadd we use: format!("zset:{}:/{}_nodes:{}", hash_tag, "graymamba", mount_path)
-        let prefix = format!("zset:{}", key);
+        // In zadd we use: format!("{}:/{}_nodes:{}", hash_tag, "graymamba", mount_path)
+        let prefix = format!("{}", key);
 
         // Iterate over all entries with this prefix
         let iter = self.db.prefix_iterator(prefix.as_bytes());
@@ -284,8 +284,8 @@ combined with the zrange_withscores function, you can retrieve and sort these me
 by their scores.
 */
     async fn zadd(&self, key: &str, member: &str, score: f64) -> Result<(), DataStoreError> {
-        // Create a key with the format "zset:{key}:{member}"
-        let member_key = format!("zset:{}:{}", key, member);
+        // Create a key with the format "{key}:{member}"
+        let member_key = format!("{}:{}", key, member);
         
         // Convert the score to a string
         let score_str = score.to_string();
@@ -302,8 +302,8 @@ by their scores.
 This implementation allows us to remove a member from a sorted set in RocksDB.
  */
     async fn zrem(&self, key: &str, member: &str) -> Result<(), DataStoreError> {
-        // Create a key with the format "zset:{key}:{member}"
-        let member_key = format!("zset:{}:{}", key, member);
+        // Create a key with the format "{key}:{member}"
+        let member_key = format!("{}:{}", key, member);
         
         // Delete the key from the database
         self.db.delete(member_key.as_bytes())
@@ -322,7 +322,7 @@ This implementation allows us to remove a member from a sorted set in RocksDB.
      */
     async fn zrangebyscore(&self, key: &str, min: f64, max: f64) -> Result<Vec<String>, DataStoreError> {
         let mut results = Vec::new();
-        let prefix = format!("zset:{}:", key);
+        let prefix = format!("{}:", key);
 
         // Collect all members and scores
         let iter = self.db.prefix_iterator(prefix.as_bytes());
@@ -401,7 +401,7 @@ This implementation allows us to remove a member from a sorted set in RocksDB.
     // This implementation allows us to retrieve members of a sorted set that match a specific pattern.
     async fn zscan_match(&self, key: &str, pattern: &str) -> Result<Vec<String>, DataStoreError> {
         let mut results = Vec::new();
-        let prefix = format!("zset:{}:", key);
+        let prefix = format!("{}:", key);
 
         // Iterate over all members of the sorted set
         let iter = self.db.prefix_iterator(prefix.as_bytes());
@@ -426,8 +426,8 @@ This implementation allows us to remove a member from a sorted set in RocksDB.
 
     //not sure this is used
     async fn zscore(&self, key: &str, member: &str) -> Result<Option<f64>, DataStoreError> {
-        // Create a key with the format "zset:{key}:{member}"
-        let member_key = format!("zset:{}:{}", key, member);
+        // Create a key with the format "{key}:{member}"
+        let member_key = format!("{}:{}", key, member);
 
         // Retrieve the score from the database
         match self.db.get(member_key.as_bytes()) {
