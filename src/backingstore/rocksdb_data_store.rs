@@ -107,12 +107,9 @@ impl DataStore for RocksDBDataStore {
             ("fileid", &fileid_str),
         ];
 
-        // Store hash fields (equivalent to Redis HSET)
-        for (field, value) in hash_fields {
-            let hash_key = format!("{}:{}:{}", hash_tag, mount_path, field);
-            self.db.put(hash_key.as_bytes(), value.as_bytes())
-                .map_err(|_| DataStoreError::OperationFailed)?;
-        }
+        // Use hset_multiple instead of individual puts
+        let key = format!("{}:{}", hash_tag, mount_path);
+        self.hset_multiple(&key, &hash_fields).await?;
 
         // Set path to id mapping
         let path_to_id_key = format!("{}:{}_path_to_id", hash_tag, path);
@@ -173,28 +170,33 @@ impl DataStore for RocksDBDataStore {
         self.delete(&full_key).await
     }
 
-    async fn hgetall(&self, key: &str) -> Result<Vec<(String, String)>, DataStoreError> {
-        let mut results = Vec::new();
-        let iter = self.db.prefix_iterator(key);
-        for item in iter {
-            let (full_key, value) = item.map_err(|_| DataStoreError::OperationFailed)?;
-            let full_key_str = String::from_utf8(full_key.to_vec()).map_err(|_| DataStoreError::OperationFailed)?;
-            let value_str = String::from_utf8(value.to_vec()).map_err(|_| DataStoreError::OperationFailed)?;
-            if let Some(field) = full_key_str.strip_prefix(&format!("{}:", key)) {
-                results.push((field.to_string(), value_str));
+    async fn incr(&self, key: &str) -> Result<i64, DataStoreError> {
+        let max_retries = 10; // Maximum number of retry attempts
+        let mut attempts = 0;
+        debug!("rocksdb incr({})", key);
+        loop {
+            // Get the current value
+            let current = self.get(key).await.unwrap_or("0".to_string());
+            let value = current.parse::<i64>().map_err(|_| DataStoreError::OperationFailed)?;
+            let new_value = value + 1;
+
+            // Attempt to update atomically
+            match self.db.put(
+                key.as_bytes(),
+                new_value.to_string().as_bytes()
+            ) {
+                Ok(_) => return Ok(new_value),
+                Err(_) => {
+                    attempts += 1;
+                    if attempts >= max_retries {
+                        return Err(DataStoreError::OperationFailed);
+                    }
+                    // Small backoff to reduce contention
+                    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                    continue;
+                }
             }
         }
-        Ok(results)
-    }
-
-    async fn incr(&self, key: &str) -> Result<i64, DataStoreError> {
-        // For RocksDB, we need to implement atomic increment
-        // This is a basic implementation, not atomic!!!!!
-        let current = self.get(key).await.unwrap_or("0".to_string());
-        let value = current.parse::<i64>().map_err(|_| DataStoreError::OperationFailed)?;
-        let new_value = value + 1;
-        self.set(key, &new_value.to_string()).await?;
-        Ok(new_value)
     }
 
     async fn rename(&self, old_key: &str, new_key: &str) -> Result<(), DataStoreError> {
@@ -346,6 +348,20 @@ This implementation allows us to remove a member from a sorted set in RocksDB.
             self.hset(key, field, value).await?;
         }
         Ok(())
+    }
+
+    async fn hgetall(&self, key: &str) -> Result<Vec<(String, String)>, DataStoreError> {
+        let mut results = Vec::new();
+        let iter = self.db.prefix_iterator(key);
+        for item in iter {
+            let (full_key, value) = item.map_err(|_| DataStoreError::OperationFailed)?;
+            let full_key_str = String::from_utf8(full_key.to_vec()).map_err(|_| DataStoreError::OperationFailed)?;
+            let value_str = String::from_utf8(value.to_vec()).map_err(|_| DataStoreError::OperationFailed)?;
+            if let Some(field) = full_key_str.strip_prefix(&format!("{}:", key)) {
+                results.push((field.to_string(), value_str));
+            }
+        }
+        Ok(results)
     }
 
     // This function is intended to scan through a sorted set and return members that match a specific pattern. 
