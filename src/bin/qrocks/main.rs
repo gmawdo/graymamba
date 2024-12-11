@@ -42,7 +42,7 @@ impl Application for DBExplorer {
         (
             DBExplorer {
                 db_path: String::new(),
-                db_path_input: String::from("../RocksDBs/yellowduck"),
+                db_path_input: String::from("../RocksDBs/graymamba"),
                 current_db: None,
                 keys: Vec::new(),
                 values: Vec::new(),
