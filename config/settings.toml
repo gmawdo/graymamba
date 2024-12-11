@@ -26,4 +26,8 @@ thread_number = 5
 #"trace" => tracing::Level::TRACE,
 [logging]
 level = "warn"
-module_filter = ["graymamba::sharesfs=debug", "graymamba::kernel::handlers::nfs=debug"]
+module_filter = [
+    "graymamba::sharesfs=debug",
+    "graymamba::kernel::handlers::nfs=debug",
+    "graymamba::backingstore::rocksdb_data_store=debug"
+    ]
