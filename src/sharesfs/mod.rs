@@ -1,5 +1,7 @@
 mod metadata;
 
+pub mod channel_buffer;
+
 use std::collections::BTreeSet;
 use std::ops::Bound;
 use tokio::time::Instant;
@@ -9,7 +11,6 @@ use std::os::unix::ffi::OsStrExt;
 use crate::kernel::api::nfs::fileid3;
 use std::collections::HashMap;
 use tokio::sync::{Mutex, Semaphore};
-use graymamba::channel_buffer::ActiveWrite;
 use rayon::prelude::*;
 
 use tokio::time::Duration;
@@ -31,7 +32,8 @@ use std::time::UNIX_EPOCH;
 
 use regex::Regex;
 
-use graymamba::channel_buffer::ChannelBuffer;
+use channel_buffer::ActiveWrite;
+use channel_buffer::ChannelBuffer;
 
 use async_trait::async_trait;
 
@@ -49,7 +51,9 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::secret_sharing::SecretSharingService;
 
+#[cfg(feature = "irrefutable_audit")]
 use crate::audit_adapters::irrefutable_audit::{AuditEvent, IrrefutableAudit};
+#[cfg(feature = "irrefutable_audit")]
 use crate::audit_adapters::irrefutable_audit::event_types::{DISASSEMBLED, REASSEMBLED};
 
 #[derive(Clone)]
