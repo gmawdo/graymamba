@@ -101,27 +101,14 @@ Steps
        `cargo build --bin graymamba --features="traceability" --release`
        `cargo build --bin graymamba --features="traceability,irrefutable_audit" --release`
        `cargo test --features irrefutable_audit -- --nocapture`
+   
        `cargo build --bin audit_reader --features="traceability,irrefutable_audit" --release`
+       `cargo build --bin qrocks --features="traceability,irrefutable_audit" --release`
+   
        `cargo clippy --features="traceability,irrefutable_audit"`
+   
        `cargo run --bin graymamba --features=traceability,irrefutable_audit`
        `cargo run --bin audit_reader --features=traceability,irrefutable_audit`
-
-6. Run the FileSystem:
-      - Create below folder somewhere in System: 
-            $ `mkdir mnt`
-            $ `cd mnt`
-            $ `mkdir nfs`
-      - Now run below comand in terminal at secure-provenance-filesystem folder giving nfs absolute path
-            `./target/release/graymamba`
-
-7. Mount the FileSystem:
-      - Create below folder somewhere in System:
-            $ `mkdir mount_point`
-            $ `sudo mount_nfs -o nolocks,vers=3,tcp,rsize=131072,actimeo=120,port=2049,mountport=2049 localhost:/  ./mount_point`
-
-8. To run File Sytem Commands
-      - $ `cd mount_point`
-      - Follow below Basic Commands
 
 When the blockchain is compiled in and running then you will see the following type of output on the console when a file is created or read:
 ---------------
@@ -187,10 +174,3 @@ Security
    File contents are secured using Shamir Secret Sharing, ensuring that data is split into multiple shares and requires a threshold number of shares to reconstruct.
  - Integrity and Traceability:<br>
    Provenance tracking using blockchain ensures that all file operations are recorded in a tamper-proof manner.
-
-Contact
--------
-
-For any questions or support, please open an issue on GitHub.
-
-Thank you for using Secure Provenance Tracking Filesystem. We are committed to providing a secure and reliable filesystem solution.
