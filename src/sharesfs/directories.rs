@@ -26,12 +26,12 @@ pub async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Res
     let keys_result = self.data_store.keys(&pattern)
         .await
         .map_err(|_| nfsstat3::NFS3ERR_IO);
-
+    debug!("Retrieve all keys matching the pattern {:?}", pattern);
     let keys: Vec<String> = match keys_result {
         Ok(k) => k,
         Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
     };
-
+    debug!("keys matching the pattern {:?}", keys);
     // Compile a regex from the old path to replace only the first occurrence safely
     let re = Regex::new(&regex::escape(from_path)).unwrap();
 

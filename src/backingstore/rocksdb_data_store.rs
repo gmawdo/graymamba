@@ -169,6 +169,7 @@ impl DataStore for RocksDBDataStore {
     //therefore if we singularly query for a value and don't find it we need to query the entire hash for the key
     //ftype and size are the two attributes asked for independently
     async fn hget(&self, key: &str, field: &str) -> Result<String, DataStoreError> {
+        debug!("rocksdb hget({}:{})", key, field);
         let full_key = format!("{}:{}", key, field);
         match self.get(&full_key).await {
             Ok(value) => Ok(value),
@@ -196,6 +197,7 @@ impl DataStore for RocksDBDataStore {
     }
 
     async fn hdel(&self, key: &str, field: &str) -> Result<(), DataStoreError> {
+        debug!("rocksdb hdel({}:{})", key, field);
         let full_key = format!("{}:{}", key, field);
         self.delete(&full_key).await
     }
@@ -230,13 +232,15 @@ impl DataStore for RocksDBDataStore {
     }
 
     async fn rename(&self, old_key: &str, new_key: &str) -> Result<(), DataStoreError> {
+        debug!("rocksdb rename({}) = {}", old_key, new_key);
         let value = self.get(old_key).await?;
         self.set(new_key, &value).await?;
         self.delete(old_key).await
     }
 
     async fn keys(&self, pattern: &str) -> Result<Vec<String>, DataStoreError> {
-        // RocksDB doesn't have direct pattern matching, you'll need to implement scanning
+        debug!("RocksDB doesn't have direct pattern matching, you'll need to implement scanning");
+        debug!("rocksdb keys({})", pattern);
         let mut results = Vec::new();
         let iter = self.db.iterator(rocksdb::IteratorMode::Start);
         for item in iter {
@@ -262,6 +266,7 @@ impl DataStore for RocksDBDataStore {
         
         // The key format should match what we use in zadd
         // In zadd we use: format!("{}:/{}_nodes:{}", hash_tag, "graymamba", mount_path)
+        debug!("rocksdb zrange_withscores({})", key);
         let prefix = format!("{}", key);
 
         // Iterate over all entries with this prefix
@@ -306,6 +311,7 @@ combined with the zrange_withscores function, you can retrieve and sort these me
 by their scores.
 */
     async fn zadd(&self, key: &str, member: &str, score: f64) -> Result<(), DataStoreError> {
+        debug!("rocksdb zadd({}:{}) = {}", key, member, score);
         // Create a key with the format "{key}:{member}"
         let member_key = format!("{}:{}", key, member);
         
@@ -324,6 +330,7 @@ by their scores.
 This implementation allows us to remove a member from a sorted set in RocksDB.
  */
     async fn zrem(&self, key: &str, member: &str) -> Result<(), DataStoreError> {
+        debug!("rocksdb zrem({}:{})", key, member);
         // Create a key with the format "{key}:{member}"
         let member_key = format!("{}:{}", key, member);
         
@@ -343,6 +350,7 @@ This implementation allows us to remove a member from a sorted set in RocksDB.
     all within a specified range.
      */
     async fn zrangebyscore(&self, key: &str, min: f64, max: f64) -> Result<Vec<String>, DataStoreError> {
+        debug!("rocksdb zrangebyscore({},{},{})", key, min, max);
         let mut results = Vec::new();
         let prefix = format!("{}:", key);
 
@@ -373,6 +381,7 @@ This implementation allows us to remove a member from a sorted set in RocksDB.
     }
 
     async fn hset_multiple(&self, key: &str, fields: &[(&str, &str)]) -> Result<(), DataStoreError> {
+        debug!("rocksdb hset_multiple({})", key);
         // Initialize hash_map with existing values if present
         let mut hash_map = match self.db.get(key.as_bytes()) {
             Ok(Some(existing_bytes)) => {
@@ -400,6 +409,7 @@ This implementation allows us to remove a member from a sorted set in RocksDB.
     }
 
     async fn hgetall(&self, key: &str) -> Result<Vec<(String, String)>, DataStoreError> {
+        debug!("rocksdb hgetall({})", key);
         match self.db.get(key.as_bytes()) {
             Ok(Some(value)) => {
                 let value_str = String::from_utf8(value)
@@ -422,6 +432,7 @@ This implementation allows us to remove a member from a sorted set in RocksDB.
     // Any errors during iteration or parsing are mapped to DataStoreError::OperationFailed.
     // This implementation allows us to retrieve members of a sorted set that match a specific pattern.
     async fn zscan_match(&self, key: &str, pattern: &str) -> Result<Vec<String>, DataStoreError> {
+        debug!("rocksdb zscan_match({})", key);
         let mut results = Vec::new();
         let prefix = format!("{}:", key);
 
