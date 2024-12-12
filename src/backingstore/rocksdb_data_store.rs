@@ -239,18 +239,52 @@ impl DataStore for RocksDBDataStore {
     }
 
     async fn keys(&self, pattern: &str) -> Result<Vec<String>, DataStoreError> {
-        debug!("RocksDB doesn't have direct pattern matching, you'll need to implement scanning");
-        debug!("rocksdb keys({})", pattern);
+        debug!("rocksdb keys pattern matching for: {}", pattern);
         let mut results = Vec::new();
+        
+        // Convert pattern to parts for matching, handling both / and : separators
+        let pattern_without_wildcard = if pattern.ends_with('*') {
+            let base = pattern.trim_end_matches('*');
+            base.trim_end_matches('/') // Remove trailing slash if present
+        } else {
+            pattern
+        };
+        
+        debug!("Using pattern prefix: {}", pattern_without_wildcard);
         let iter = self.db.iterator(rocksdb::IteratorMode::Start);
+
         for item in iter {
             let (key, _) = item.map_err(|_| DataStoreError::OperationFailed)?;
             let key_str = String::from_utf8(key.to_vec())
                 .map_err(|_| DataStoreError::OperationFailed)?;
-            if key_str.contains(pattern) {
-                results.push(key_str);
+            
+            debug!("Checking key: {} against pattern prefix: {}", key_str, pattern_without_wildcard);
+            
+            if pattern.ends_with('*') {
+                // For wildcard patterns, match if the key starts with the pattern prefix
+                // and the next character (if any) is either '/' or ':'
+                let matches = key_str.starts_with(pattern_without_wildcard) && 
+                    key_str[pattern_without_wildcard.len()..]
+                        .chars()
+                        .next()
+                        .map(|c| c == '/' || c == ':')
+                        .unwrap_or(true);
+                
+                debug!("Wildcard match result: {} for key: {}", matches, key_str);
+                if matches {
+                    results.push(key_str);
+                }
+            } else {
+                // For exact patterns, match the entire string
+                let matches = key_str == pattern;
+                debug!("Exact match result: {} for key: {}", matches, key_str);
+                if matches {
+                    results.push(key_str);
+                }
             }
         }
+
+        debug!("Found {} matching keys: {:?}", results.len(), results);
         Ok(results)
     }
 
@@ -410,20 +444,36 @@ This implementation allows us to remove a member from a sorted set in RocksDB.
 
     async fn hgetall(&self, key: &str) -> Result<Vec<(String, String)>, DataStoreError> {
         debug!("rocksdb hgetall({})", key);
-        match self.db.get(key.as_bytes()) {
-            Ok(Some(value)) => {
-                let value_str = String::from_utf8(value)
-                    .map_err(|_| DataStoreError::OperationFailed)?;
-                let hash_fields: AttributeFields = serde_json::from_str(&value_str)
-                    .map_err(|_| DataStoreError::OperationFailed)?;
-                
-                Ok(hash_fields.fields.into_iter()
-                    .map(|(k, v)| (k, v))
-                    .collect())
+        let mut results = Vec::new();
+        let prefix = format!("{}:", key);
+
+        // First check for exact key match (for backward compatibility)
+        if let Ok(Some(value)) = self.db.get(key.as_bytes()) {
+            if let Ok(value_str) = String::from_utf8(value) {
+                if let Ok(hash_fields) = serde_json::from_str::<AttributeFields>(&value_str) {
+                    return Ok(hash_fields.fields.into_iter().collect());
+                }
             }
-            Ok(None) => Ok(vec![]),
-            Err(_) => Err(DataStoreError::OperationFailed),
         }
+
+        // Then check for prefix matches
+        let iter = self.db.prefix_iterator(prefix.as_bytes());
+        for item in iter {
+            let (key_bytes, value_bytes) = item.map_err(|_| DataStoreError::OperationFailed)?;
+            
+            // Convert key and value to strings
+            let full_key = String::from_utf8(key_bytes.to_vec())
+                .map_err(|_| DataStoreError::OperationFailed)?;
+            let value = String::from_utf8(value_bytes.to_vec())
+                .map_err(|_| DataStoreError::OperationFailed)?;
+
+            // Extract field name from the key (remove prefix)
+            if let Some(field) = full_key.strip_prefix(&prefix) {
+                results.push((field.to_string(), value));
+            }
+        }
+
+        Ok(results)
     }
 
     // This function is intended to scan through a sorted set and return members that match a specific pattern. 
