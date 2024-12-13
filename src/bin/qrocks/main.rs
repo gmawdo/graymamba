@@ -66,9 +66,9 @@ impl Application for DBExplorer {
                 error_message: None,
                 selected_key: None,
                 filter_text: String::new(),
-                font_size: 16.0,
+                font_size: 12.0,
             },
-            Command::none(),
+            Command::perform(async {}, |_| Message::OpenDB)
         )
     }
 
@@ -100,6 +100,8 @@ impl Application for DBExplorer {
                 }
             }
             Message::Refresh => {
+                self.values.clear();
+                self.selected_key = None;
                 if let Err(e) = self.load_db_data() {
                     self.error_message = Some(e.to_string());
                 }
@@ -211,7 +213,16 @@ impl Application for DBExplorer {
         )
         .width(Length::FillPortion(1));
 
-        let content = Column::new()
+        let side_panel = Container::new(
+            Column::new()
+                .width(Length::Fixed(36.0))
+                .height(Length::Fill)
+        )
+        .style(theme::Container::Custom(Box::new(CustomContainer(Self::hex_to_color("#404040")))))
+        .width(Length::Fixed(36.0))
+        .height(Length::Fill);
+
+        let main_content = Column::new()
             .spacing(20)
             .padding(20)
             .max_width(1200)
@@ -224,6 +235,10 @@ impl Application for DBExplorer {
                     .push(keys_panel)
                     .push(values_panel),
             );
+
+        let content = Row::new()
+            .push(side_panel)
+            .push(main_content);
 
         if let Some(error) = &self.error_message {
             Container::new(
