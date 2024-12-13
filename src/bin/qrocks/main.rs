@@ -1,15 +1,30 @@
 use iced::{
     widget::{Column, Container, Text, Scrollable, Button, Row, TextInput},
     Element, Length, Application, Settings, Color, Alignment,
-    theme::{self, Theme},
+    theme::{self, Theme, Palette},
     Command,
     window,
     Size,
     Subscription,
     keyboard,
+    widget::container,
 };
 use rocksdb::{DB, Options};
 use std::error::Error;
+
+struct CustomContainer(Color);
+
+impl container::StyleSheet for CustomContainer {
+    type Style = Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            background: Some(self.0.into()),
+            text_color: Some(Color::WHITE),
+            ..Default::default()
+        }
+    }
+}
 
 #[derive(Debug)]
 struct DBExplorer {
@@ -19,7 +34,6 @@ struct DBExplorer {
     keys: Vec<String>,
     values: Vec<String>,
     error_message: Option<String>,
-    current_theme: Theme,
     selected_key: Option<String>,
     filter_text: String,
     font_size: f32,
@@ -27,7 +41,6 @@ struct DBExplorer {
 
 #[derive(Debug, Clone)]
 enum Message {
-    ToggleTheme,
     OpenDB,
     SetDBPath(String),
     SelectKey(String),
@@ -51,7 +64,6 @@ impl Application for DBExplorer {
                 keys: Vec::new(),
                 values: Vec::new(),
                 error_message: None,
-                current_theme: Theme::Light,
                 selected_key: None,
                 filter_text: String::new(),
                 font_size: 16.0,
@@ -66,13 +78,6 @@ impl Application for DBExplorer {
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::ToggleTheme => {
-                self.current_theme = match self.current_theme {
-                    Theme::Light => Theme::Dark,
-                    Theme::Dark => Theme::Light,
-                    _ => Theme::Light,
-                };
-            }
             Message::OpenDB => {
                 self.db_path = self.db_path_input.clone();
                 if let Err(e) = self.load_db_data() {
@@ -121,26 +126,16 @@ impl Application for DBExplorer {
                 .on_input(Message::SetDBPath),
             )
             .push(
-                Button::new(Text::new("Open DB"))
+                Button::new(Text::new("Open DB").size(self.font_size))
                     .padding([4, 8])
                     .on_press(Message::OpenDB)
                     .style(theme::Button::Primary),
             )
             .push(
-                Button::new(Text::new("Refresh"))
+                Button::new(Text::new("Refresh").size(self.font_size))
                     .padding([4, 8])
                     .on_press(Message::Refresh)
                     .style(theme::Button::Secondary),
-            )
-            .push(
-                Button::new(Text::new(if matches!(self.current_theme, Theme::Light) {
-                    "Dark"
-                } else {
-                    "Light"
-                }))
-                .padding([4, 8])
-                .on_press(Message::ToggleTheme)
-                .style(theme::Button::Secondary),
             );
 
         let filter = TextInput::new(
@@ -154,7 +149,7 @@ impl Application for DBExplorer {
         let keys_panel = Container::new(
             Column::new()
                 .spacing(10)
-                .push(Text::new("Keys"))
+                .push(Text::new("Keys").size(self.font_size))
                 .push(filter)
                 .push(
                     Container::new(
@@ -165,6 +160,7 @@ impl Application for DBExplorer {
                                     column.push(
                                         Button::new(
                                             Text::new(key)
+                                                .size(self.font_size)
                                                 .font(iced::Font::MONOSPACE),
                                         )
                                         .style(if Some(key.to_string())
@@ -180,7 +176,7 @@ impl Application for DBExplorer {
                         ),
                     )
                     .height(Length::Fill)
-                    .style(theme::Container::Box),
+                    .style(theme::Container::Custom(Box::new(CustomContainer(Self::hex_to_color("#202020")))))
                 ),
         )
         .width(Length::FillPortion(1));
@@ -188,7 +184,7 @@ impl Application for DBExplorer {
         let values_panel = Container::new(
             Column::new()
                 .spacing(10)
-                .push(Text::new("Values"))
+                .push(Text::new("Values").size(self.font_size))
                 .push(
                     Container::new(
                         Scrollable::new(
@@ -198,10 +194,11 @@ impl Application for DBExplorer {
                                     column.push(
                                         Container::new(
                                             Text::new(Self::format_value_with_wrapping(value, 70))
+                                                .size(self.font_size)
                                                 .font(iced::Font::MONOSPACE),
                                         )
                                         .width(Length::Fill)
-                                        .style(theme::Container::Box)
+                                        .style(theme::Container::Custom(Box::new(CustomContainer(Self::hex_to_color("#202020")))))
                                         .padding(10)
                                     )
                                 }),
@@ -209,7 +206,7 @@ impl Application for DBExplorer {
                         .width(Length::Fill),
                     )
                     .height(Length::Fill)
-                    .style(theme::Container::Box),
+                    .style(theme::Container::Custom(Box::new(CustomContainer(Self::hex_to_color("#202020")))))
                 ),
         )
         .width(Length::FillPortion(1));
@@ -251,7 +248,13 @@ impl Application for DBExplorer {
     }
 
     fn theme(&self) -> Theme {
-        self.current_theme.clone()
+        Theme::custom(String::from ("graymamba"), Palette {
+            background: Self::hex_to_color("#010101"),  // Dark gray background
+            text: Color::WHITE,
+            primary: Self::hex_to_color("#202020"),     // Lighter gray for primary elements
+            success: Self::hex_to_color("#00FF00"),
+            danger: Self::hex_to_color("#FF0000"),
+        })
     }
  
     fn subscription(&self) -> Subscription<Message> {
@@ -324,6 +327,15 @@ impl DBExplorer {
         } else {
             None
         }
+    }
+
+    // Helper function to convert hex to RGB Color
+    fn hex_to_color(hex: &str) -> Color {
+        let hex = hex.trim_start_matches('#');
+        let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f32 / 255.0;
+        let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f32 / 255.0;
+        let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f32 / 255.0;
+        Color::from_rgb(r, g, b)
     }
 }
 
