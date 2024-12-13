@@ -121,6 +121,16 @@ path = "src/bin/audit_reader/main.rs"
 name = "qrocks"
 path = "src/bin/qrocks/main.rs"
 
+[package.metadata.bundle.bin.qrocks]  # ties to the binary named "qrocks"
+name = "RocksDB Explorer"
+
+# Or for multiple binaries:
+[package.metadata.bundle.bin.graymamba]
+name = "Gray Mamba"
+
+[package.metadata.bundle.bin.audit_reader]
+name = "Audit Reader"
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["async_tokio"] }
 futures = "0.3"
