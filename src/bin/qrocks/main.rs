@@ -9,6 +9,8 @@ use iced::{
     keyboard,
     widget::container,
 };
+use iced::widget::svg::Svg;
+use iced::advanced::svg;
 use rocksdb::{DB, Options};
 use std::error::Error;
 
@@ -159,20 +161,26 @@ impl Application for DBExplorer {
                             self.keys
                                 .iter()
                                 .fold(Column::new().spacing(5), |column, key| {
+                                    let is_selected = Some(key.to_string()) == self.selected_key;
                                     column.push(
-                                        Button::new(
-                                            Text::new(key)
-                                                .size(self.font_size)
-                                                .font(iced::Font::MONOSPACE),
+                                        Container::new(
+                                            Button::new(
+                                                Text::new(key)
+                                                    .size(self.font_size)
+                                                    .font(iced::Font::MONOSPACE),
+                                            )
+                                            .style(theme::Button::Text)
+                                            .on_press(Message::SelectKey(key.to_string()))
                                         )
-                                        .style(if Some(key.to_string())
-                                            == self.selected_key
-                                        {
-                                            theme::Button::Primary
-                                        } else {
-                                            theme::Button::Text
-                                        })
-                                        .on_press(Message::SelectKey(key.to_string())),
+                                        .width(Length::Fill)
+                                        .style(theme::Container::Custom(Box::new(CustomContainer(
+                                            if is_selected {
+                                                Self::hex_to_color("#303030")  // Soft gray for selected row
+                                            } else {
+                                                Self::hex_to_color("#202020")  // Default background
+                                            }
+                                        ))))
+                                        .padding(5)
                                     )
                                 }),
                         ),
@@ -215,11 +223,20 @@ impl Application for DBExplorer {
 
         let side_panel = Container::new(
             Column::new()
-                .width(Length::Fixed(36.0))
+                .width(Length::Fixed(72.0))
                 .height(Length::Fill)
+                .push(
+                    Container::new(
+                        Svg::new(svg::Handle::from_path("src/bin/qrocks/RocksDB.svg"))
+                            .width(Length::Fixed(60.0))  // Adjust size as needed
+                            .height(Length::Fixed(60.0))
+                    )
+                    .padding(6)
+                    .center_x()
+                )
         )
         .style(theme::Container::Custom(Box::new(CustomContainer(Self::hex_to_color("#404040")))))
-        .width(Length::Fixed(36.0))
+        .width(Length::Fixed(72.0))
         .height(Length::Fill);
 
         let main_content = Column::new()
