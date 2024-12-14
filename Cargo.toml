@@ -51,7 +51,7 @@ rocksdb = "0.22.0"
 rayon = "1.10.0"
 
 # WASM runtime
-wasmtime = "21.0.1"
+wasmtime = "24.0.2"
 
 # Logging and tracing
 tracing = "0.1.31"
