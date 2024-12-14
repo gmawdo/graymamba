@@ -13,7 +13,11 @@ use iced::{
     Shadow,
     window,
     Size,
+    keyboard::{self, Key, Modifiers},
+    Subscription,
 };
+use iced::widget::svg::Svg;
+use iced::advanced::svg;
 use rocksdb::{DB, Options};
 use chrono::{DateTime, Utc, TimeZone};
 use std::error::Error;
@@ -38,18 +42,18 @@ struct AuditViewer {
     window_events: Option<String>,
     verification_status: ProofData,
     selected_event: Option<String>,
+    font_size: f32,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
-    ToggleTheme,
     Refresh,
     SelectWindow(i64),
     VerifyProof(String),
     VerifyConsistency,
-    #[allow(dead_code)]
     VerifyAuditTrail(String),
     SelectEvent(String),
+    FontSizeChanged(f32),
 }
 
 impl Application for AuditViewer {
@@ -63,7 +67,7 @@ impl Application for AuditViewer {
             current_events: String::new(),
             historical_roots: String::new(),
             error_message: None,
-            current_theme: Theme::Light,
+            current_theme: Theme::Dark,
             selected_window: None,
             window_events: None,
             verification_status: ProofData {
@@ -72,6 +76,7 @@ impl Application for AuditViewer {
                 audit_trail_status: None,
             },
             selected_event: None,
+            font_size: 12.0,
         };
         
         if let Err(e) = viewer.load_audit_data() {
@@ -82,18 +87,11 @@ impl Application for AuditViewer {
     }
 
     fn title(&self) -> String {
-        String::from("Audit Log Viewer")
+        String::from("Audit Log Explorer")
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::ToggleTheme => {
-                self.current_theme = match self.current_theme {
-                    Theme::Light => Theme::Dark,
-                    Theme::Dark => Theme::Light,
-                    _ => Theme::Light,
-                };
-            }
             Message::Refresh => {
                 self.current_events.clear();
                 self.historical_roots.clear();
@@ -141,6 +139,9 @@ impl Application for AuditViewer {
             Message::SelectEvent(event_key) => {
                 self.selected_event = Some(event_key);
             }
+            Message::FontSizeChanged(delta) => {
+                self.font_size = (self.font_size + delta).max(8.0);
+            }
         }
         Command::none()
     }
@@ -150,7 +151,26 @@ impl Application for AuditViewer {
     }
 
     fn view(&self) -> Element<Message> {
-        let theme_text = match self.current_theme {
+        // Create the side panel first
+        let side_panel = Container::new(
+            Column::new()
+                .width(Length::Fixed(72.0))
+                .height(Length::Fill)
+                .push(
+                    Container::new(
+                        Svg::new(svg::Handle::from_path("src/bin/audit_reader/trie.svg"))
+                            .width(Length::Fixed(60.0))  // Adjust size as needed
+                            .height(Length::Fixed(60.0))
+                    )
+                    .padding(6)
+                    .center_x()
+                )
+        )
+        .style(theme::Container::Custom(Box::new(CustomContainer(Self::hex_to_color("#404040")))))
+        .width(Length::Fixed(72.0))
+        .height(Length::Fill);
+
+        let _theme_text = match self.current_theme {
             Theme::Light => "Dark",
             Theme::Dark => "Light",
             _ => "Light",
@@ -159,21 +179,15 @@ impl Application for AuditViewer {
         let header = Row::new()
             .width(Length::Fill)
             .align_items(Alignment::Center)
-            .push(Text::new("Audit Log Viewer").size(24))
+            .push(Text::new("Audit Log Explorer").size(self.font_size * 2.0))
             .push(
                 Container::new(
                     Row::new()
                         .spacing(8)
                         .push(
-                            Button::new(Text::new("Refresh").size(13))
+                            Button::new(Text::new("Refresh").size(self.font_size))
                                 .padding([4, 8])
                                 .on_press(Message::Refresh)
-                                .style(theme::Button::Secondary)
-                        )
-                        .push(
-                            Button::new(Text::new(theme_text).size(13))
-                                .padding([4, 8])
-                                .on_press(Message::ToggleTheme)
                                 .style(theme::Button::Secondary)
                         )
                 )
@@ -185,12 +199,12 @@ impl Application for AuditViewer {
         let events_panel = Container::new(
             Column::new()
                 .spacing(10)
-                .push(Text::new("Current Events").size(20))
+                .push(Text::new("Events in currently open audit window").size(self.font_size))
                 .push(
                     Container::new(
                         Scrollable::new(
                             if self.current_events.is_empty() {
-                                Column::new().push(Text::new("No current events available"))
+                                Column::new().push(Text::new("No current events available").size(self.font_size))
                             } else {
                                 self.current_events
                                     .lines()
@@ -198,18 +212,26 @@ impl Application for AuditViewer {
                                     .fold(Column::new().spacing(5), |column, line| {
                                         let parts: Vec<&str> = line.split_whitespace().collect();
                                         if parts.len() >= 4 {
+                                            let is_selected = Some(parts[0].to_string()) == self.selected_event;
                                             column.push(
-                                                Button::new(
-                                                    Text::new(line)
-                                                        .font(iced::Font::MONOSPACE)
-                                                        .size(10)
+                                                Container::new(
+                                                    Button::new(
+                                                        Text::new(line)
+                                                            .font(iced::Font::MONOSPACE)
+                                                            .size(self.font_size)
+                                                    )
+                                                    .style(theme::Button::Text)
+                                                    .on_press(Message::SelectEvent(parts[0].to_string()))
                                                 )
-                                                .style(if Some(parts[0].to_string()) == self.selected_event {
-                                                    theme::Button::Primary
-                                                } else {
-                                                    theme::Button::Text
-                                                })
-                                                .on_press(Message::SelectEvent(parts[0].to_string()))
+                                                .width(Length::Fill)
+                                                .style(theme::Container::Custom(Box::new(CustomContainer(
+                                                    if is_selected {
+                                                        Self::hex_to_color("#303030")  // Light gray for selected
+                                                    } else {
+                                                        Self::hex_to_color("#010101")  // Default dark background
+                                                    }
+                                                ))))
+                                                .padding(5)
                                             )
                                         } else {
                                             column
@@ -229,12 +251,12 @@ impl Application for AuditViewer {
         let roots_panel = Container::new(
             Column::new()
                 .spacing(10)
-                .push(Text::new("Historical Audits").size(20))
+                .push(Text::new("Historical Audits").size(self.font_size))
                 .push(
                     Container::new(
                         Scrollable::new(
                             if self.historical_roots.is_empty() {
-                                Column::new().push(Text::new("No historical audits available"))
+                                Column::new().push(Text::new("No historical audits available").size(self.font_size))
                             } else {
                                 self.historical_roots
                                     .lines()
@@ -242,28 +264,33 @@ impl Application for AuditViewer {
                                     .fold(Column::new().spacing(5), |column, line| {
                                         if let Some((ts_str, content)) = line.split_once('|') {
                                             if let Ok(ts) = ts_str.parse::<i64>() {
-                                                return column.push(
-                                                    Row::new()
-                                                        .spacing(10)
-                                                        .push(
+                                                let is_selected = Some(ts) == self.selected_window;
+                                                column.push(
+                                                    Container::new(
+                                                        Button::new(
                                                             Text::new(content)
                                                                 .font(iced::Font::MONOSPACE)
-                                                                .size(10)
+                                                                .size(self.font_size)
                                                         )
-                                                        .push(
-                                                            Button::new(Text::new("View").size(13))
-                                                                .padding([4, 8])
-                                                                .on_press(Message::SelectWindow(ts))
-                                                                .style(theme::Button::Secondary)
-                                                        )
-                                                );
+                                                        .style(theme::Button::Text)
+                                                        .on_press(Message::SelectWindow(ts))
+                                                    )
+                                                    .width(Length::Fill)
+                                                    .style(theme::Container::Custom(Box::new(CustomContainer(
+                                                        if is_selected {
+                                                            Self::hex_to_color("#303030")
+                                                        } else {
+                                                            Self::hex_to_color("#010101")
+                                                        }
+                                                    ))))
+                                                    .padding(5)
+                                                )
+                                            } else {
+                                                column
                                             }
+                                        } else {
+                                            column
                                         }
-                                        column.push(
-                                            Text::new(line)
-                                                .font(iced::Font::MONOSPACE)
-                                                .size(10)
-                                        )
                                     })
                             }
                         )
@@ -279,18 +306,18 @@ impl Application for AuditViewer {
         let historical_details = Container::new(
             Column::new()
                 .spacing(10)
-                .push(Text::new("Historical Details").size(20))
+                .push(Text::new("Details of selected Historical Audit").size(self.font_size))
                 .push(
                     Container::new(
                         Scrollable::new(
                             if let Some(content) = &self.window_events {
                                 Text::new(content)
                                     .font(iced::Font::MONOSPACE)
-                                    .size(10)  // Smaller font size
+                                    .size(self.font_size)
                             } else {
                                 Text::new("Select a historical audit to view details")
                                     .font(iced::Font::MONOSPACE)
-                                    .size(10)
+                                    .size(self.font_size)
                             }
                         )
                     )
@@ -302,53 +329,43 @@ impl Application for AuditViewer {
         .height(Length::FillPortion(1))
         .width(Length::FillPortion(1));
 
-        // Define verification controls
-        let verification_controls = Column::new()
-            .spacing(10)
-            .push(
-                Button::new(Text::new("Verify Selected Event"))
-                    .on_press(Message::VerifyProof(
-                        self.selected_event.clone().unwrap_or_default()
-                    ))
-                    .style(theme::Button::Secondary)
-            )
-            .push(
-                Button::new(Text::new("Verify Historical Consistency"))
-                    .on_press(Message::VerifyConsistency)
-                    .style(theme::Button::Secondary)
-            );
-
-        // Define status display
-        let status_display = Column::new()
-            .spacing(10)
-            .push(
-                Text::new(format!(
-                    "Proof Status: {}",
-                    self.verification_status.proof_status
-                        .map(|s| if s { "Valid" } else { "Invalid" })
-                        .unwrap_or("Unknown")
-                ))
-            )
-            .push(
-                Text::new(format!(
-                    "Consistency Status: {}",
-                    self.verification_status.consistency_status
-                        .map(|s| if s { "Consistent" } else { "Inconsistent" })
-                        .unwrap_or("Unknown")
-                ))
-            );
-
         // Verification Panel
         let verification_panel = Container::new(
             Column::new()
                 .spacing(10)
-                .push(Text::new("Verification Controls").size(20))
+                .push(Text::new("Verification Controls").size(self.font_size))
                 .push(
                     Container::new(
                         Column::new()
                             .spacing(20)
-                            .push(verification_controls)
-                            .push(status_display)
+                            .push(
+                                Button::new(Text::new("Verify Selected Event").size(self.font_size))
+                                    .on_press(Message::VerifyProof(
+                                        self.selected_event.clone().unwrap_or_default()
+                                    ))
+                                    .style(theme::Button::Secondary)
+                            )
+                            .push(
+                                Button::new(Text::new("Verify Historical Consistency").size(self.font_size))
+                                    .on_press(Message::VerifyConsistency)
+                                    .style(theme::Button::Secondary)
+                            )
+                            .push(
+                                Text::new(format!(
+                                    "Proof Status: {}",
+                                    self.verification_status.proof_status
+                                        .map(|s| if s { "Valid" } else { "Invalid" })
+                                        .unwrap_or("Unknown")
+                                )).size(self.font_size)
+                            )
+                            .push(
+                                Text::new(format!(
+                                    "Consistency Status: {}",
+                                    self.verification_status.consistency_status
+                                        .map(|s| if s { "Consistent" } else { "Inconsistent" })
+                                        .unwrap_or("Unknown")
+                                )).size(self.font_size)
+                            )
                     )
                     .height(Length::Fill)
                     .padding(10)
@@ -360,30 +377,23 @@ impl Application for AuditViewer {
         // Create a row for historical audit, verification panel, and details
         let historical_row = Row::new()
             .spacing(20)
-            .push(roots_panel.width(Length::FillPortion(2)))
-            .push(
-                verification_panel
-                    .width(Length::FillPortion(1))
-                    .height(Length::FillPortion(1))
-            )
-            .push(historical_details.width(Length::FillPortion(2)));
+            .push(roots_panel.width(Length::FillPortion(2)))          // Historical Audits (left)
+            .push(historical_details.width(Length::FillPortion(2)))   // Historical Details (middle)
+            .push(verification_panel.width(Length::FillPortion(1)));  // Verification Controls (right)
 
-        let mut content = Column::new()
+        let main_content = Column::new()
             .spacing(20)
             .padding(20)
             .max_width(2500)
             .height(Length::Fill)
             .push(header)
             .push(events_panel)
-            .push(historical_row);  // verification_panel is now part of historical_row
+            .push(historical_row);
 
-        // Add error message if present
-        if let Some(error) = &self.error_message {
-            content = content.push(
-                Text::new(error)
-                    .style(Color::from_rgb(0.8, 0.0, 0.0))
-            );
-        }
+        // Wrap everything in a row with the side panel
+        let content = Row::new()
+            .push(side_panel)
+            .push(main_content);
 
         Container::new(content)
             .width(Length::Fill)
@@ -391,9 +401,29 @@ impl Application for AuditViewer {
             .center_x()
             .into()
     }
+
+    fn subscription(&self) -> Subscription<Message> {
+        keyboard::on_key_press(Self::handle_key_press)
+    }
 }
 
 impl AuditViewer {
+    fn handle_key_press(key: keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Message> {
+        if modifiers.command() {
+            match key {
+                keyboard::Key::Character(c) if c == "+" || c == "=" => {
+                    Some(Message::FontSizeChanged(2.0))
+                }
+                keyboard::Key::Character(c) if c == "-" => {
+                    Some(Message::FontSizeChanged(-2.0))
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+    
     fn load_audit_data(&mut self) -> Result<(), Box<dyn Error>> {
         let mut opts = Options::default();
         opts.create_if_missing(true);
@@ -614,6 +644,15 @@ impl AuditViewer {
         // For now, return None
         None
     }
+
+    // Helper function to convert hex to RGB Color
+    fn hex_to_color(hex: &str) -> Color {
+        let hex = hex.trim_start_matches('#');
+        let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f32 / 255.0;
+        let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f32 / 255.0;
+        let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f32 / 255.0;
+        Color::from_rgb(r, g, b)
+    }
 }
 
 // Add this custom container style
@@ -625,12 +664,36 @@ impl container::StyleSheet for BorderedContainer {
     fn appearance(&self, _style: &Self::Style) -> container::Appearance {
         container::Appearance {
             text_color: None,
-            background: Some(Color::from_rgb(0.95, 0.95, 0.95).into()),
+            background: Some(Color::from_rgb(
+                0x01 as f32 / 255.0,
+                0x01 as f32 / 255.0,
+                0x01 as f32 / 255.0,
+            ).into()),
             border: Border {
                 radius: 5.0.into(),
                 width: 1.0,
-                color: Color::BLACK,
+                color: Color::from_rgb(
+                    0x30 as f32 / 255.0,
+                    0x30 as f32 / 255.0,
+                    0x30 as f32 / 255.0,
+                ),
             },
+            shadow: Shadow::default(),
+        }
+    }
+}
+
+// Add the CustomContainer struct if not already present:
+struct CustomContainer(Color);
+
+impl container::StyleSheet for CustomContainer {
+    type Style = Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            background: Some(self.0.into()),
+            text_color: None,
+            border: Border::default(),
             shadow: Shadow::default(),
         }
     }
