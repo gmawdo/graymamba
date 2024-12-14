@@ -199,7 +199,7 @@ impl Application for AuditViewer {
         let events_panel = Container::new(
             Column::new()
                 .spacing(10)
-                .push(Text::new("Events in currently open audit window").size(self.font_size))
+                .push(Text::new("Current Events").size(self.font_size))
                 .push(
                     Container::new(
                         Scrollable::new(
@@ -216,9 +216,18 @@ impl Application for AuditViewer {
                                             column.push(
                                                 Container::new(
                                                     Button::new(
-                                                        Text::new(line)
-                                                            .font(iced::Font::MONOSPACE)
-                                                            .size(self.font_size)
+                                                        Row::new()
+                                                            .spacing(10)
+                                                            .push(
+                                                                Text::new(if is_selected { "✓" } else { " " })
+                                                                    .size(self.font_size)
+                                                                    .style(Color::from_rgb(0.0, 0.8, 0.0))
+                                                            )
+                                                            .push(
+                                                                Text::new(line)
+                                                                    .font(iced::Font::MONOSPACE)
+                                                                    .size(self.font_size)
+                                                            )
                                                     )
                                                     .style(theme::Button::Text)
                                                     .on_press(Message::SelectEvent(parts[0].to_string()))
@@ -226,9 +235,9 @@ impl Application for AuditViewer {
                                                 .width(Length::Fill)
                                                 .style(theme::Container::Custom(Box::new(CustomContainer(
                                                     if is_selected {
-                                                        Self::hex_to_color("#303030")  // Light gray for selected
+                                                        Self::hex_to_color("#303030")
                                                     } else {
-                                                        Self::hex_to_color("#010101")  // Default dark background
+                                                        Self::hex_to_color("#010101")
                                                     }
                                                 ))))
                                                 .padding(5)
