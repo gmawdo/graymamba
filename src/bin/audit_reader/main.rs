@@ -382,24 +382,9 @@ impl Application for AuditViewer {
                         Column::new()
                             .spacing(20)
                             .push(
-                                Button::new(Text::new("Verify Selected Event").size(self.font_size))
-                                    .on_press(Message::VerifyProof(
-                                        self.selected_event.clone().unwrap_or_default()
-                                    ))
-                                    .style(theme::Button::Secondary)
-                            )
-                            .push(
                                 Button::new(Text::new("Verify Historical Consistency").size(self.font_size))
                                     .on_press(Message::VerifyConsistency)
                                     .style(theme::Button::Secondary)
-                            )
-                            .push(
-                                Text::new(format!(
-                                    "Proof Status: {}",
-                                    self.verification_status.proof_status
-                                        .map(|s| if s { "Valid" } else { "Invalid" })
-                                        .unwrap_or("Unknown")
-                                )).size(self.font_size)
                             )
                             .push(
                                 Text::new(format!(
