@@ -21,6 +21,7 @@ use iced::advanced::svg;
 use rocksdb::{DB, Options};
 use chrono::{DateTime, Utc, TimeZone};
 use std::error::Error;
+use std::collections::HashMap;
 
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_tree::MerkleNode;
@@ -43,6 +44,7 @@ struct AuditViewer {
     verification_status: ProofData,
     selected_event: Option<String>,
     font_size: f32,
+    verified_events: HashMap<String, bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +56,7 @@ enum Message {
     VerifyAuditTrail(String),
     SelectEvent(String),
     FontSizeChanged(f32),
+    EventVerified(String, bool),
 }
 
 impl Application for AuditViewer {
@@ -77,6 +80,7 @@ impl Application for AuditViewer {
             },
             selected_event: None,
             font_size: 12.0,
+            verified_events: HashMap::new(),
         };
         
         if let Err(e) = viewer.load_audit_data() {
@@ -136,8 +140,15 @@ impl Application for AuditViewer {
                 self.verification_status.audit_trail_status = Some(true);
                 self.error_message = None;
             }
-            Message::SelectEvent(event_key) => {
-                self.selected_event = Some(event_key);
+            Message::SelectEvent(event_id) => {
+                self.selected_event = Some(event_id.clone());
+                let result = self.verify_merkle_proof(&event_id);
+                self.verified_events.insert(event_id.clone(), result.is_ok());
+                //Command::none()
+            }
+            Message::EventVerified(event_id, result) => {
+                self.verified_events.insert(event_id, result);
+                //Command::none()
             }
             Message::FontSizeChanged(delta) => {
                 self.font_size = (self.font_size + delta).max(8.0);
@@ -212,16 +223,39 @@ impl Application for AuditViewer {
                                     .fold(Column::new().spacing(5), |column, line| {
                                         let parts: Vec<&str> = line.split_whitespace().collect();
                                         if parts.len() >= 4 {
-                                            let is_selected = Some(parts[0].to_string()) == self.selected_event;
+                                            let event_id = parts[0].to_string();
+                                            let is_selected = Some(&event_id) == self.selected_event.as_ref();
+                                            let verification_status = self.verified_events.get(&event_id);
+                                            
                                             column.push(
                                                 Container::new(
                                                     Button::new(
                                                         Row::new()
                                                             .spacing(10)
                                                             .push(
-                                                                Text::new(if is_selected { "✓" } else { " " })
-                                                                    .size(self.font_size)
-                                                                    .style(Color::from_rgb(0.0, 0.8, 0.0))
+                                                                Text::new(
+                                                                    if let Some(verified) = verification_status {
+                                                                        if *verified {
+                                                                            "✓"  // Green tick
+                                                                        } else {
+                                                                            "✗"  // Red cross
+                                                                        }
+                                                                    } else {
+                                                                        " "  // Not verified yet
+                                                                    }
+                                                                )
+                                                                .size(self.font_size)
+                                                                .style(
+                                                                    if let Some(verified) = verification_status {
+                                                                        if *verified {
+                                                                            Color::from_rgb(0.0, 0.8, 0.0)  // Green
+                                                                        } else {
+                                                                            Color::from_rgb(0.8, 0.0, 0.0)  // Red
+                                                                        }
+                                                                    } else {
+                                                                        Color::from_rgb(0.5, 0.5, 0.5)  // Gray
+                                                                    }
+                                                                )
                                                             )
                                                             .push(
                                                                 Text::new(line)
@@ -230,7 +264,7 @@ impl Application for AuditViewer {
                                                             )
                                                     )
                                                     .style(theme::Button::Text)
-                                                    .on_press(Message::SelectEvent(parts[0].to_string()))
+                                                    .on_press(Message::SelectEvent(event_id))
                                                 )
                                                 .width(Length::Fill)
                                                 .style(theme::Container::Custom(Box::new(CustomContainer(
