@@ -9,7 +9,7 @@ use std::{io, net::IpAddr};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 /// A NFS Tcp Connection Handler
 pub struct NFSTcpListener<T: NFSFileSystem + Send + Sync + 'static> {
@@ -32,8 +32,11 @@ async fn process_socket(
     mut socket: tokio::net::TcpStream,
     context: RPCContext,
 ) -> Result<(), anyhow::Error> {
+    debug!("=== Processing socket ===");
     let (mut message_handler, mut socksend, mut msgrecvchan) = SocketMessageHandler::new(&context);
     let _ = socket.set_nodelay(true);
+
+    debug!("=== Setting mount listener ===");
 
     tokio::spawn(async move {
         loop {
@@ -184,6 +187,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
     /// Sets a mount listener. A "true" signal will be sent on a mount
     /// and a "false" will be sent on an unmount
     fn set_mount_listener(&mut self, signal: mpsc::Sender<bool>) {
+        debug!("=== Set mount listener ===");
         self.mount_signal = Some(signal);
     }
 

@@ -63,9 +63,9 @@ pub fn mountproc3_null(
 
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug)]
-struct mountres3_ok {
-    fhandle: fhandle3, // really same thing as nfs::nfs_fh3
-    auth_flavors: Vec<u32>,
+pub struct mountres3_ok {
+    pub fhandle: fhandle3,
+    pub auth_flavors: Vec<u32>,
 }
 XDRStruct!(mountres3_ok, fhandle, auth_flavors);
 
@@ -75,12 +75,17 @@ pub async fn mountproc3_mnt(
     output: &mut impl Write,
     context: &RPCContext,
 ) -> Result<(), anyhow::Error> {
+    debug!("=== Handling MOUNTPROC3_MNT request ===");
+    debug!("=== XID: {} ===", xid);
+    
     let mut path = dirpath::new();
     path.deserialize(input)?;
-
-    let path = std::str::from_utf8(&path).unwrap_or_default();
+    
+    let path_str = std::str::from_utf8(&path).unwrap_or_default();
+    debug!("=== Mount path received: {} ===", path_str);
+    
     let mut user_key = None;
-    let options: Vec<&str> = path.split('/').collect();
+    let options: Vec<&str> = path_str.split('/').collect();
 
     for option in options {
         if option.ends_with("'s drive") {
