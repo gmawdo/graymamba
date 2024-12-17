@@ -31,6 +31,10 @@ module_filter = [
     "graymamba::sharesfs::writing=debug",
     "graymamba::sharesfs::directories=debug",
     "graymamba::sharesfs::rename=debug",
-    "graymamba::kernel::handlers::nfs::file_ops=debug",
+    "graymamba::kernel::handlers=debug",
+    "graymamba::kernel::protocol::tcp=debug",
+    "graymamba::kernel::client=debug",
+    "graymamba::kernel::handlers::mount_handlers=debug",
+    "data_room=debug",
     #"graymamba::backingstore::rocksdb_data_store=debug"
     ]
