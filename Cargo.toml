@@ -100,6 +100,8 @@ iced = { version = "0.12.1", features = ["advanced", "system","svg"] }
 
 tempfile = "3.14.0"
 
+url = "2.4"
+
 # Optional dependencies for tracing
 tracing-subscriber = { version = "0.3", features = ["env-filter","std","tracing-log"], optional = true }
 intaglio = { version = "1.6", optional = true }
@@ -120,6 +122,9 @@ path = "src/bin/audit_reader/main.rs"
 [[bin]]
 name = "qrocks"
 path = "src/bin/qrocks/main.rs"
+[[bin]]
+name = "data_room"
+path = "src/bin/data_room/main.rs"
 
 [package.metadata.bundle.bin.qrocks]  # ties to the binary named "qrocks"
 name = "RocksDB Explorer"
