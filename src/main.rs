@@ -4,7 +4,7 @@ use std::error::Error;
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
 use byteorder::{BigEndian, ReadBytesExt};
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use anyhow::Result;
 
 // Define the RPC MOUNT request
@@ -98,94 +98,57 @@ fn encode_last_flag(length: u32, is_last: bool) -> u32 {
     }
 }
 
-pub async fn read_rpc_response<T>(
-    socket: &mut TcpStream,
-    expected_size: Option<usize>,
-) -> Result<T, anyhow::Error>
-where
-    T: for<'de> serde::Deserialize<'de>, // Deserialize the response into any type
-{
-    let mut buf = Vec::new();
-    let mut fragment_count = 0;
+async fn mount_nfs(stream: &mut TcpStream, mount_path: &str) -> Result<MountResponse, Box<dyn Error>> {
+    let req_len = 64;
+    let req_len_with_last_flag = encode_last_flag(req_len, true);
 
-    loop {
-        // Read the fragment header (4 bytes for length and last fragment flag)
-        let mut header_buf = [0_u8; 4];
-        socket.read_exact(&mut header_buf).await?;
-        let fragment_header = u32::from_be_bytes(header_buf);
-        let is_last = (fragment_header & (1 << 31)) > 0;
-        let fragment_size = (fragment_header & ((1 << 31) - 1)) as usize;
-        println!("Fragment header: {:?}", fragment_header);
-        println!("Is last: {:?}", is_last);
-        println!("Fragment size: {:?}", fragment_size);
+    // Create and send MOUNT request
+    let mount_request = MountRequest {
+        size: req_len_with_last_flag,
+        xid: 0x12345678,
+        message_type: 0,   // CALL
+        rpc_version: 2,
+        program: 100005,   // MOUNT program
+        version: 3,        // MOUNT protocol version
+        procedure: 1,      // MNT procedure
+        credentials: (0, 0),
+        verifier: (0, 0),
+        path: mount_path.to_string(),
+    };
 
-        // Read the fragment data
-        let mut fragment = vec![0u8; fragment_size];
-        socket.read_exact(&mut fragment).await?;
+    let request_data = to_bytes(&mount_request)?;
+    println!("Sending MOUNT request...");
+    stream.write_all(&request_data).await?;
+    stream.flush().await?;
 
-        // Append fragment data to the buffer
-        buf.extend_from_slice(&fragment);
+    // Send NULL procedure
+    let null_request = NullRequest {
+        size: req_len_with_last_flag,
+        xid: 0x87654321,
+        message_type: 0,
+        rpc_version: 2,
+        program: 100003,
+        version: 3,
+        procedure: 0,
+        credentials: (0, 0),
+        verifier: (0, 0),
+    };
 
-        // If it's the last fragment, break the loop
-        if is_last {
-            break;
-        }
+    let null_data = to_bytes(&null_request)?;
+    println!("Sending NFS NULL procedure...");
+    stream.write_all(&null_data).await?;
+    stream.flush().await?;
 
-        fragment_count += 1;
-        // If you know the expected size, you can break early if too many fragments are read.
-        if let Some(size) = expected_size {
-            if buf.len() >= size {
-                break;
-            }
-        }
-    }
-    println!("Buffer length: {:?}", buf.len());
-    // Deserialize the combined response data
-    let cursor = Cursor::new(buf);
-    println!("Cursor position: {:?}", cursor.position());
-    let response: T = bincode::deserialize_from(cursor)?;
+    // Receive response
+    let mut size_buffer = [0u8; 4];
+    stream.read_exact(&mut size_buffer).await?;
+    let response_size = u32::from_be_bytes(size_buffer) & 0x7FFFFFFF;
     
-    Ok(response)
-}
+    let mut buffer = vec![0u8; response_size as usize];
+    stream.read_exact(&mut buffer).await?;
+    println!("Received response from NFS server! Size: {}", response_size);
 
-async fn run_nfs_client(mut stream: TcpStream, file_handle: [u8; 16]) -> Result<(), Box<dyn Error>> {
-    println!("NFS client running with file handle: {:?}", file_handle);
-    
-    // Create a channel for handling shutdown signals
-    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
-    
-    // Set up Ctrl-C handler
-    let shutdown_tx_clone = shutdown_tx.clone();
-    tokio::spawn(async move {
-        if let Ok(()) = tokio::signal::ctrl_c().await {
-            println!("\nReceived Ctrl-C, shutting down...");
-            let _ = shutdown_tx_clone.send(()).await;
-        }
-    });
-
-    // Main client loop
-    loop {
-        tokio::select! {
-            // Check for shutdown signal
-            _ = shutdown_rx.recv() => {
-                println!("Shutting down NFS client...");
-                break;
-            }
-            
-            // Handle NFS operations
-            result = handle_nfs_operations(&mut stream, &file_handle) => {
-                match result {
-                    Ok(_) => continue,
-                    Err(e) => {
-                        eprintln!("Error in NFS operation: {}", e);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
+    MountResponse::from_be_bytes(&buffer)
 }
 
 async fn handle_nfs_operations(stream: &mut TcpStream, file_handle: &[u8; 16]) -> Result<(), Box<dyn Error>> {
@@ -211,78 +174,49 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut stream = TcpStream::connect(mount_addr).await?;
     println!("Connected to NFS MOUNT service on {}", mount_addr);
 
-    // Step 1: Send MOUNT Request
-    let req_len = 64;
-    let req_len_with_last_flag = encode_last_flag(req_len, true);
-
-    let mount_request = MountRequest {
-        size: req_len_with_last_flag,
-        xid: 0x12345678,
-        message_type: 0,   // CALL
-        rpc_version: 2,
-        program: 100005,   // MOUNT program
-        version: 3,        // MOUNT protocol version
-        procedure: 1,      // MNT procedure
-        credentials: (0, 0),
-        verifier: (0, 0),
-        path: "/joseph's drive".to_string(), // Directory to mount
-    };
-
-    let request_data = to_bytes(&mount_request)?;
-    println!("First four bytes of serialized request: {:?}", &request_data[0..4]);
-    println!("Size of the serialized request: {}", request_data.len());
-    println!("Sending MOUNT request...");
-    stream.write_all(&request_data).await?;
-    stream.flush().await?;
-
-    // Step 2: Send NFS NULL Procedure
-    let null_request = NullRequest {
-        size: req_len_with_last_flag,
-        xid: 0x87654321,  // A different transaction ID
-        message_type: 0,  // CALL
-        rpc_version: 2,
-        program: 100003,  // NFS program
-        version: 3,       // NFS version 3
-        procedure: 0,     // NULL procedure
-        credentials: (0, 0),
-        verifier: (0, 0),
-    };
-
-    let null_data = to_bytes(&null_request)?;
-    println!("Sending NFS NULL procedure...");
-    stream.write_all(&null_data).await?;
-    stream.flush().await?;
-
-    // Step 3: Receive Response
-    let mut size_buffer = [0u8; 4];
-    stream.read_exact(&mut size_buffer).await?;
-    let response_size = u32::from_be_bytes(size_buffer) & 0x7FFFFFFF; // Remove last fragment bit
+    let mount_reply = mount_nfs(&mut stream, "/joseph's drive").await?;
     
-    let mut buffer = vec![0u8; response_size as usize];
-
-    stream.read_exact(&mut buffer).await?;
-    println!("Received response from NFS server! Size: {}", response_size);
-
-    // Debug: Log raw response
-    println!("Raw response: {:?}", &buffer);
-
-    // Deserialize the response
-    let mount_reply = MountResponse::from_be_bytes(&buffer);
-
     match mount_reply {
-        Ok(reply) => {
-            if reply.reply_state == 0 && reply.accept_state == 0 && reply.status == 0 {
-                println!("Mount successful!");
-                println!("File handle: {:?}", reply.file_handle);
-                
-                // Start the client loop with the obtained file handle
-                run_nfs_client(stream, reply.file_handle).await?;
-            } else {
-                println!("Mount failed with status: {}", reply.status);
+        reply if reply.reply_state == 0 && reply.accept_state == 0 && reply.status == 0 => {
+            println!("Mount successful!");
+            println!("File handle: {:?}", reply.file_handle);
+            
+            // Create a channel for handling shutdown signals
+            let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
+            
+            // Set up Ctrl-C handler
+            let shutdown_tx_clone = shutdown_tx.clone();
+            tokio::spawn(async move {
+                if let Ok(()) = tokio::signal::ctrl_c().await {
+                    println!("\nReceived Ctrl-C, shutting down...");
+                    let _ = shutdown_tx_clone.send(()).await;
+                }
+            });
+
+            // Main client loop
+            loop {
+                tokio::select! {
+                    // Check for shutdown signal
+                    _ = shutdown_rx.recv() => {
+                        println!("Shutting down NFS client...");
+                        break;
+                    }
+                    
+                    // Handle NFS operations
+                    result = handle_nfs_operations(&mut stream, &reply.file_handle) => {
+                        match result {
+                            Ok(_) => continue,
+                            Err(e) => {
+                                eprintln!("Error in NFS operation: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                }
             }
         }
-        Err(e) => {
-            println!("Failed to parse response: {:?}", e);
+        reply => {
+            println!("Mount failed with status: {}", reply.status);
         }
     }
 
