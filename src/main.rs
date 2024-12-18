@@ -148,6 +148,63 @@ where
     Ok(response)
 }
 
+async fn run_nfs_client(mut stream: TcpStream, file_handle: [u8; 16]) -> Result<(), Box<dyn Error>> {
+    println!("NFS client running with file handle: {:?}", file_handle);
+    
+    // Create a channel for handling shutdown signals
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
+    
+    // Set up Ctrl-C handler
+    let shutdown_tx_clone = shutdown_tx.clone();
+    tokio::spawn(async move {
+        if let Ok(()) = tokio::signal::ctrl_c().await {
+            println!("\nReceived Ctrl-C, shutting down...");
+            let _ = shutdown_tx_clone.send(()).await;
+        }
+    });
+
+    // Main client loop
+    loop {
+        tokio::select! {
+            // Check for shutdown signal
+            _ = shutdown_rx.recv() => {
+                println!("Shutting down NFS client...");
+                break;
+            }
+            
+            // Handle NFS operations
+            result = handle_nfs_operations(&mut stream, &file_handle) => {
+                match result {
+                    Ok(_) => continue,
+                    Err(e) => {
+                        eprintln!("Error in NFS operation: {}", e);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_nfs_operations(stream: &mut TcpStream, file_handle: &[u8; 16]) -> Result<(), Box<dyn Error>> {
+    // Here you would implement various NFS operations like:
+    // - GETATTR (get file attributes)
+    // - LOOKUP (look up file names)
+    // - READ (read file contents)
+    // - WRITE (write to files)
+    // - READDIR (read directory contents)
+    // etc.
+    
+    // For example, you might want to periodically check attributes:
+    // send_getattr_request(stream, file_handle).await?;
+    
+    // Sleep to prevent tight loop
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mount_addr = "127.0.0.1:2049";
@@ -214,26 +271,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     match mount_reply {
         Ok(reply) => {
-            println!("Mount FH: {:?}", reply.file_handle);
-            if reply.reply_state == 0 && reply.accept_state == 0 {
-                if reply.status == 0 {
-                    println!("Mount successful!");
-                    println!("File handle: {:?}", reply.file_handle);
-                } else {
-                    println!("Mount failed with status: {}", reply.status);
-                }
+            if reply.reply_state == 0 && reply.accept_state == 0 && reply.status == 0 {
+                println!("Mount successful!");
+                println!("File handle: {:?}", reply.file_handle);
+                
+                // Start the client loop with the obtained file handle
+                run_nfs_client(stream, reply.file_handle).await?;
             } else {
-                println!("RPC call failed: {:?}", reply);
+                println!("Mount failed with status: {}", reply.status);
             }
         }
         Err(e) => {
             println!("Failed to parse response: {:?}", e);
-            println!("Raw buffer: {:?}", &buffer);
         }
     }
-
-    //let mount_reply = read_rpc_response::<MountResponse>(&mut stream, None).await?;
-    //println!("Mount reply: {:?}", mount_reply);
 
     Ok(())
 }
