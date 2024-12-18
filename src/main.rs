@@ -2,21 +2,22 @@ use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use std::error::Error;
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
+use tokio::time::sleep;
+use std::time::Duration;
 
 const NFS_PROGRAM: u32 = 100003;
 const NFS_VERSION: u32 = 3;
 const MOUNT_PROGRAM: u32 = 100005;
 const MOUNT_VERSION: u32 = 3;
 const MOUNT_PROC_MNT: u32 = 1;  // MNT procedure number
+const NFS_PROC_GETATTR: u32 = 1;  // GETATTR procedure number
 
 async fn send_rpc_message(stream: &mut TcpStream, data: &[u8]) -> Result<(), Box<dyn Error>> {
-    // Create record marker: last fragment bit (0x80000000) OR length
     let record_marker = 0x80000000u32 | (data.len() as u32);
     
     // Send record marker
     stream.write_all(&record_marker.to_be_bytes()).await?;
-    
-    // Send RPC message
+    // Send data
     stream.write_all(data).await?;
     stream.flush().await?;
     Ok(())
@@ -106,35 +107,19 @@ impl MountReply {
 }
 
 async fn receive_rpc_reply(stream: &mut TcpStream) -> Result<Vec<u8>, Box<dyn Error>> {
-    // Read record marker
     let mut marker_buf = [0u8; 4];
     stream.read_exact(&mut marker_buf).await?;
     let marker = u32::from_be_bytes(marker_buf);
     
-    // Extract size (lower 31 bits)
     let size = marker & 0x7fffffff;
     let is_last = (marker & 0x80000000) != 0;
     
     println!("Receiving reply: size={}, last={}", size, is_last);
     
-    // Read the actual message
     let mut response = vec![0u8; size as usize];
     stream.read_exact(&mut response).await?;
     
     println!("Received reply data: {:02x?}", response);
-    
-    if response.len() >= 24 {
-        if let Ok(reply) = RpcReply::from_bytes(&response) {
-            println!("Decoded RPC reply: {:?}", reply);
-            
-            // If this is a MOUNT reply (longer than standard RPC reply)
-            if response.len() > 24 {
-                if let Ok(mount_reply) = MountReply::from_bytes(&response) {
-                    println!("Decoded MOUNT reply: {:?}", mount_reply);
-                }
-            }
-        }
-    }
     
     Ok(response)
 }
@@ -207,6 +192,63 @@ fn build_mount_call(xid: u32, name: &str) -> Vec<u8> {
     call
 }
 
+#[derive(Debug)]
+struct NfsSession {
+    file_handle: [u8; 16],
+}
+
+fn build_getattr_call(xid: u32, file_handle: &[u8; 16]) -> Vec<u8> {
+    let mut call = Vec::new();
+    
+    // Standard RPC header
+    call.extend_from_slice(&xid.to_be_bytes());
+    call.extend_from_slice(&0u32.to_be_bytes());  // call type = 0
+    call.extend_from_slice(&2u32.to_be_bytes());  // RPC version = 2
+    call.extend_from_slice(&NFS_PROGRAM.to_be_bytes());
+    call.extend_from_slice(&NFS_VERSION.to_be_bytes());
+    call.extend_from_slice(&NFS_PROC_GETATTR.to_be_bytes());
+    
+    // Auth UNIX (flavor = 1)
+    call.extend_from_slice(&1u32.to_be_bytes());  // AUTH_UNIX
+    call.extend_from_slice(&84u32.to_be_bytes()); // Length of auth data (matches Finder)
+    call.extend_from_slice(&0u32.to_be_bytes());  // Stamp
+    call.extend_from_slice(&0u32.to_be_bytes());  // Machine name length (0)
+    call.extend_from_slice(&501u32.to_be_bytes()); // UID (matching Finder)
+    call.extend_from_slice(&20u32.to_be_bytes());  // GID (matching Finder)
+    call.extend_from_slice(&16u32.to_be_bytes());  // 16 auxiliary GIDs
+    
+    // Auxiliary GIDs from Finder
+    let aux_gids = [12, 20, 61, 79, 80, 81, 98, 102, 701, 33, 100, 204, 250, 395, 398, 101];
+    for gid in aux_gids.iter() {
+        call.extend_from_slice(&(*gid as u32).to_be_bytes());
+    }
+    
+    // Verifier (AUTH_NULL)
+    call.extend_from_slice(&0u32.to_be_bytes());  // AUTH_NULL
+    call.extend_from_slice(&0u32.to_be_bytes());  // Length 0
+    
+    // File handle length
+    call.extend_from_slice(&16u32.to_be_bytes());
+    
+    // File handle
+    call.extend_from_slice(file_handle);
+    
+    println!("GETATTR call components:");
+    println!("  XID: {}", xid);
+    println!("  Program: {}", NFS_PROGRAM);
+    println!("  Version: {}", NFS_VERSION);
+    println!("  Procedure: {}", NFS_PROC_GETATTR);
+    println!("  Auth length: 84");
+    println!("  UID: 501");
+    println!("  GID: 20");
+    println!("  Aux GIDs: {:?}", aux_gids);
+    println!("  File handle: {:02x?}", file_handle);
+    println!("  Total length: {}", call.len());
+    println!("  Raw bytes: {:02x?}", call);
+    
+    call
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let addr: SocketAddr = "127.0.0.1:2049".parse()?;
@@ -234,12 +276,46 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Sending MOUNT call");
     send_rpc_message(&mut stream, &mount_call).await?;
     
-    match receive_rpc_reply(&mut stream).await {
+    let session = match receive_rpc_reply(&mut stream).await {
         Ok(reply) => {
             println!("Received MOUNT reply: {:02x?}", reply);
+            if let Ok(mount_reply) = MountReply::from_bytes(&reply) {
+                if mount_reply.status == 0 {
+                    Some(NfsSession {
+                        file_handle: mount_reply.file_handle,
+                    })
+                } else {
+                    println!("Mount failed with status: {}", mount_reply.status);
+                    None
+                }
+            } else {
+                None
+            }
         },
         Err(e) => {
             println!("Error receiving reply: {}", e);
+            None
+        }
+    };
+
+    // Now do GETATTR call if we have a valid session
+    if let Some(session) = session {
+        println!("Got file handle: {:02x?}", session.file_handle);
+        
+        let getattr_call = build_getattr_call(3, &session.file_handle);
+        println!("Sending GETATTR call");
+        send_rpc_message(&mut stream, &getattr_call).await?;
+        
+        // Add small delay
+        sleep(Duration::from_millis(100)).await;
+        
+        match receive_rpc_reply(&mut stream).await {
+            Ok(reply) => {
+                println!("Received GETATTR reply: {:02x?}", reply);
+            },
+            Err(e) => {
+                println!("Error receiving reply: {}", e);
+            }
         }
     }
     
