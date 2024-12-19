@@ -303,6 +303,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 println!("Error receiving reply: {}", e);
             }
         }
+
+        // Now do LOOKUP call
+        let lookup_call = rpc::lookup::build_lookup_call(4, &session.file_handle, "."); // "." means current directory
+        println!("Sending LOOKUP call");
+        send_rpc_message(&mut stream, &lookup_call).await?;
+        
+        sleep(Duration::from_millis(100)).await;
+        
+        match receive_rpc_reply(&mut stream).await {
+            Ok(reply) => {
+                println!("Received LOOKUP reply: {:02x?}", reply);
+            },
+            Err(e) => {
+                println!("Error receiving reply: {}", e);
+            }
+        }
     }
     
     Ok(())
