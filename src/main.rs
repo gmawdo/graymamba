@@ -290,20 +290,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     Ok(reply) => {
                         match rpc::readdirplus::ReaddirplusReply::from_bytes(&reply) {
                             Ok(readdir_reply) => {
-                                println!("READDIRPLUS Status: {}", readdir_reply.status);
+                                println!("\nREADDIRPLUS Status: {}", readdir_reply.status);
                                 if readdir_reply.status == 0 {
-                                    println!("Directory entries:");
+                                    println!("\nDirectory contents:");
                                     for entry in readdir_reply.entries {
-                                        println!("  {} (fileid: {})", entry.name, entry.fileid);
+                                        print!("  {} (id: {})", entry.name, entry.fileid);
                                         if let Some(attrs) = entry.name_attributes {
-                                            println!("    Type: {}", match attrs.file_type {
-                                                1 => "Regular file",
-                                                2 => "Directory", 
-                                                _ => "Other"
-                                            });
+                                            println!(" - {} ({} bytes)", 
+                                                match attrs.file_type {
+                                                    1 => "Regular file",
+                                                    2 => "Directory",
+                                                    3 => "Block device",
+                                                    4 => "Character device", 
+                                                    5 => "Symbolic link",
+                                                    6 => "Socket",
+                                                    7 => "FIFO",
+                                                    _ => "Unknown"
+                                                },
+                                                attrs.size
+                                            );
+                                        } else {
+                                            println!();
                                         }
                                     }
-                                    println!("EOF: {}", readdir_reply.eof);
+                                    println!("\nEOF: {}", readdir_reply.eof);
                                 }
                             },
                             Err(e) => println!("Error parsing READDIRPLUS reply: {}", e)
