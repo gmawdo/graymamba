@@ -36,6 +36,7 @@ pub fn build_getattr_call(xid: u32, file_handle: &[u8; 16]) -> Vec<u8> {
     call.extend_from_slice(&16u32.to_be_bytes());
     
     // File handle
+    println!("File handle used by getattr: {:02x?}", file_handle);
     call.extend_from_slice(file_handle);
     
     println!("GETATTR call components:");

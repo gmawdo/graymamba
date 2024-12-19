@@ -5,6 +5,7 @@ use tokio::io::{AsyncWriteExt, AsyncReadExt};
 use tokio::time::sleep;
 use std::time::Duration;
 use crate::rpc::Fattr3;
+use crate::rpc::access::ACCESS_READ;
 
 mod rpc;
 
@@ -105,22 +106,31 @@ impl MountReply {
 }
 
 async fn receive_rpc_reply(stream: &mut TcpStream) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut marker_buf = [0u8; 4];
-    stream.read_exact(&mut marker_buf).await?;
-    let marker = u32::from_be_bytes(marker_buf);
+    let mut complete_response = Vec::new();
     
-    let size = marker & 0x7fffffff;
-    let is_last = (marker & 0x80000000) != 0;
-    
-    println!("Receiving reply: size={}, last={}", size, is_last);
-    
-    let mut response = vec![0u8; size as usize];
-    stream.read_exact(&mut response).await?;
-    
-    println!("Received reply data: {:02x?}", response);
-    
-    if response.len() >= 32 {  // RPC header + status
-        match Fattr3::from_bytes(&response) {
+    loop {
+        let mut marker_buf = [0u8; 4];
+        stream.read_exact(&mut marker_buf).await?;
+        let marker = u32::from_be_bytes(marker_buf);
+        
+        let size = marker & 0x7fffffff;
+        let is_last = (marker & 0x80000000) != 0;
+        
+        println!("Receiving fragment: size={}, last={}", size, is_last);
+        
+        let mut fragment = vec![0u8; size as usize];
+        stream.read_exact(&mut fragment).await?;
+        
+        println!("Received fragment data: {:02x?}", fragment);
+        complete_response.extend_from_slice(&fragment);
+        
+        if is_last {
+            break;
+        }
+    }
+
+    if complete_response.len() >= 32 {  // RPC header + status
+        match Fattr3::from_bytes(&complete_response) {
             Ok(attrs) => {
                 println!("File attributes:");
                 println!("  Type: {}", match attrs.file_type {
@@ -144,12 +154,13 @@ async fn receive_rpc_reply(stream: &mut TcpStream) -> Result<Vec<u8>, Box<dyn Er
         }
     }
     
-    Ok(response)
+    Ok(complete_response)
 }
 
 #[derive(Debug)]
 struct NfsSession {
     file_handle: [u8; 16],
+    dir_file_handles: Vec<([u8; 16], String, u64)>, // (handle, name, size)
 }
 
 #[tokio::main]
@@ -186,6 +197,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 if mount_reply.status == 0 {
                     Some(NfsSession {
                         file_handle: mount_reply.file_handle,
+                        dir_file_handles: Vec::new(),
                     })
                 } else {
                     println!("Mount failed with status: {}", mount_reply.status);
@@ -202,7 +214,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     // Now do GETATTR call if we have a valid session
-    if let Some(session) = session {
+    if let Some(mut session) = session {
         println!("Got file handle: {:02x?}", session.file_handle);
         
         let getattr_call = rpc::getattr::build_getattr_call(3, &session.file_handle);
@@ -295,25 +307,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                     println!("\nDirectory contents:");
                                     for entry in readdir_reply.entries {
                                         print!("  {} (id: {})", entry.name, entry.fileid);
-                                        if let Some(attrs) = entry.name_attributes {
+                                        if let (Some(attrs), Some(handle)) = (&entry.name_attributes, &entry.name_handle) {
                                             println!(" - {} ({} bytes)", 
                                                 match attrs.file_type {
-                                                    1 => "Regular file",
+                                                    1 => {
+                                                        session.dir_file_handles.push((*handle, entry.name.clone(), attrs.size));
+                                                        "Regular file"
+                                                    },
                                                     2 => "Directory",
-                                                    3 => "Block device",
-                                                    4 => "Character device", 
-                                                    5 => "Symbolic link",
-                                                    6 => "Socket",
-                                                    7 => "FIFO",
-                                                    _ => "Unknown"
+                                                    _ => { 
+                                                        session.dir_file_handles.push((*handle, entry.name.clone(), attrs.size));
+                                                        "Unknown"
+                                                    },
                                                 },
                                                 attrs.size
                                             );
-                                        } else {
-                                            println!();
                                         }
                                     }
-                                    println!("\nEOF: {}", readdir_reply.eof);
+                                    println!("\nFound {} files to process", session.dir_file_handles.len());
                                 }
                             },
                             Err(e) => println!("Error parsing READDIRPLUS reply: {}", e)
@@ -326,7 +337,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 println!("Error receiving reply: {}", e);
             }
         }
-    }
     
+        // Now do an ACCESS call for just the first file handle
+        for (handle, name, size) in session.dir_file_handles.into_iter().take(1) {
+            println!("\nDEBUG: File handle for '{}' is: {:02x?}", name, handle);
+            println!("DEBUG: Handle length: {}", handle.len());
+            
+            let access_call = rpc::access::build_access_call(
+                6, 
+                &handle,
+                ACCESS_READ  // Use the constant from access.rs
+            );
+            println!("Sending ACCESS call for file: {}", name);
+            send_rpc_message(&mut stream, &access_call).await?;
+            
+            // Add small delay
+            sleep(Duration::from_millis(100)).await;
+            
+            match receive_rpc_reply(&mut stream).await {
+                Ok(reply) => {
+                    match rpc::access::AccessReply::from_bytes(&reply) {
+                        Ok(access_reply) => {
+                            println!("Access reply status: {}", access_reply.status);
+                            println!("Access rights granted: {:08x}", access_reply.access);
+                        },
+                        Err(e) => println!("Error parsing ACCESS reply: {}", e)
+                    }
+                },
+                Err(e) => println!("Error receiving ACCESS reply: {}", e)
+            }
+        }
+    }
+
     Ok(())
 }
