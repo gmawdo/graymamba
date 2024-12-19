@@ -4,6 +4,7 @@ use std::error::Error;
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
 use tokio::time::sleep;
 use std::time::Duration;
+use crate::rpc::Fattr3;
 
 mod rpc;
 
@@ -151,90 +152,6 @@ struct NfsSession {
     file_handle: [u8; 16],
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
-struct Fattr3 {
-    file_type: u32,    // type (directory, file, etc)
-    mode: u32,         // protection mode bits
-    nlink: u32,        // number of hard links
-    uid: u32,          // user ID of owner
-    gid: u32,          // group ID of owner
-    size: u64,         // file size in bytes
-    used: u64,         // bytes actually used
-    rdev: Rdev3,       // device info
-    fsid: u64,         // filesystem id
-    fileid: u64,       // file id
-    atime: Nfstime3,   // last access time
-    mtime: Nfstime3,   // last modified time
-    ctime: Nfstime3,   // last status change time
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-struct Rdev3 {
-    specdata1: u32,
-    specdata2: u32,
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-struct Nfstime3 {
-    seconds: u32,
-    nseconds: u32,
-}
-
-impl Fattr3 {
-    fn from_bytes(data: &[u8]) -> Result<Self, Box<dyn Error>> {
-        // First 32 bytes are RPC header + status
-        let pos = 32;  // Starting position of fattr3 data
-        
-        // We need at least 32 + 52 = 84 bytes for the basic attributes
-        if data.len() < pos + 52 {  // Reduced from 84 to 52
-            return Err(format!("Reply too short for fattr3: {} bytes", data.len()).into());
-        }
-
-        let attrs = Fattr3 {
-            file_type: u32::from_be_bytes(data[pos..pos+4].try_into()?),
-            mode: u32::from_be_bytes(data[pos+4..pos+8].try_into()?),
-            nlink: u32::from_be_bytes(data[pos+8..pos+12].try_into()?),
-            uid: u32::from_be_bytes(data[pos+12..pos+16].try_into()?),
-            gid: u32::from_be_bytes(data[pos+16..pos+20].try_into()?),
-            size: u64::from_be_bytes(data[pos+20..pos+28].try_into()?),
-            used: u64::from_be_bytes(data[pos+28..pos+36].try_into()?),
-            rdev: Rdev3 {
-                specdata1: u32::from_be_bytes(data[pos+36..pos+40].try_into()?),
-                specdata2: u32::from_be_bytes(data[pos+40..pos+44].try_into()?),
-            },
-            fsid: u64::from_be_bytes(data[pos+44..pos+52].try_into()?),
-            // Use default values for the rest since they might not be present
-            fileid: 0,
-            atime: Nfstime3 { seconds: 0, nseconds: 0 },
-            mtime: Nfstime3 { seconds: 0, nseconds: 0 },
-            ctime: Nfstime3 { seconds: 0, nseconds: 0 },
-        };
-
-        println!("File attributes:");
-        println!("  Type: {}", match attrs.file_type {
-            1 => "Regular File",
-            2 => "Directory",
-            3 => "Block Device",
-            4 => "Character Device",
-            5 => "Symbolic Link",
-            6 => "Socket",
-            7 => "FIFO",
-            _ => "Unknown",
-        });
-        println!("  Mode: {:o}", attrs.mode);
-        println!("  Links: {}", attrs.nlink);
-        println!("  UID: {}", attrs.uid);
-        println!("  GID: {}", attrs.gid);
-        println!("  Size: {} bytes", attrs.size);
-        println!("  Used: {} bytes", attrs.used);
-
-        Ok(attrs)
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let addr: SocketAddr = "127.0.0.1:2049".parse()?;
@@ -314,6 +231,46 @@ async fn main() -> Result<(), Box<dyn Error>> {
         match receive_rpc_reply(&mut stream).await {
             Ok(reply) => {
                 println!("Received LOOKUP reply: {:02x?}", reply);
+                match rpc::lookup::LookupReply::from_bytes(&reply) {
+                    Ok(lookup_reply) => {
+                        println!("LOOKUP Status: {}", lookup_reply.status);
+                        if let Some(fh) = lookup_reply.file_handle {
+                            println!("New file handle: {:02x?}", fh);
+                        }
+                        if let Some(attrs) = lookup_reply.attributes {
+                            println!("File attributes:");
+                            println!("  Type: {}", match attrs.file_type {
+                                2 => "Directory",
+                                1 => "Regular file",
+                                3 => "Block device",
+                                4 => "Character device",
+                                5 => "Symbolic link",
+                                6 => "Socket",
+                                7 => "FIFO",
+                                _ => "Unknown",
+                            });
+                            println!("  Mode: {:o}", attrs.mode);
+                            println!("  Links: {}", attrs.nlink);
+                            println!("  UID: {}", attrs.uid);
+                            println!("  GID: {}", attrs.gid);
+                            println!("  Size: {} bytes", attrs.size);
+                            println!("  Used: {} bytes", attrs.used);
+                        }
+                        if let Some(dir_attrs) = lookup_reply.dir_attributes {
+                            println!("Directory attributes:");
+                            println!("  Type: {}", match dir_attrs.file_type {
+                                2 => "Directory",
+                                1 => "Regular file",
+                                _ => "Unknown",
+                            });
+                            println!("  Mode: {:o}", dir_attrs.mode);
+                            println!("  Size: {} bytes", dir_attrs.size);
+                        }
+                    },
+                    Err(e) => {
+                        println!("Error parsing LOOKUP reply: {}", e);
+                    }
+                }
             },
             Err(e) => {
                 println!("Error receiving reply: {}", e);
