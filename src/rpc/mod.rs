@@ -2,6 +2,7 @@ pub mod getattr;
 pub mod null;
 pub mod mount;
 pub mod lookup;
+pub mod readdirplus;
 
 use std::error::Error;
 

@@ -271,6 +271,46 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         println!("Error parsing LOOKUP reply: {}", e);
                     }
                 }
+
+                // Now do READDIRPLUS call using the mount file handle
+                println!("\nSending READDIRPLUS call");
+                let readdirplus_call = rpc::readdirplus::build_readdirplus_call(
+                    5,              // xid
+                    &session.file_handle,
+                    0,              // cookie
+                    0,              // cookieverf
+                    8192,          // dircount (from Wireshark)
+                    32768          // maxcount (from Wireshark)
+                );
+                send_rpc_message(&mut stream, &readdirplus_call).await?;
+                
+                sleep(Duration::from_millis(100)).await;
+                
+                match receive_rpc_reply(&mut stream).await {
+                    Ok(reply) => {
+                        match rpc::readdirplus::ReaddirplusReply::from_bytes(&reply) {
+                            Ok(readdir_reply) => {
+                                println!("READDIRPLUS Status: {}", readdir_reply.status);
+                                if readdir_reply.status == 0 {
+                                    println!("Directory entries:");
+                                    for entry in readdir_reply.entries {
+                                        println!("  {} (fileid: {})", entry.name, entry.fileid);
+                                        if let Some(attrs) = entry.name_attributes {
+                                            println!("    Type: {}", match attrs.file_type {
+                                                1 => "Regular file",
+                                                2 => "Directory", 
+                                                _ => "Other"
+                                            });
+                                        }
+                                    }
+                                    println!("EOF: {}", readdir_reply.eof);
+                                }
+                            },
+                            Err(e) => println!("Error parsing READDIRPLUS reply: {}", e)
+                        }
+                    },
+                    Err(e) => println!("Error receiving READDIRPLUS reply: {}", e)
+                }
             },
             Err(e) => {
                 println!("Error receiving reply: {}", e);
