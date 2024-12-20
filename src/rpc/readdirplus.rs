@@ -34,38 +34,19 @@ pub fn build_readdirplus_call(xid: u32, file_handle: &[u8; 16], cookie: u64, coo
     call.extend_from_slice(&NFS_VERSION.to_be_bytes());
     call.extend_from_slice(&NFS_PROC_READDIRPLUS.to_be_bytes());
     
-    // Auth UNIX (same as other calls)
-    call.extend_from_slice(&1u32.to_be_bytes());
-    call.extend_from_slice(&84u32.to_be_bytes());
-    call.extend_from_slice(&0u32.to_be_bytes());
-    call.extend_from_slice(&0u32.to_be_bytes());
-    call.extend_from_slice(&501u32.to_be_bytes());
-    call.extend_from_slice(&20u32.to_be_bytes());
-    call.extend_from_slice(&16u32.to_be_bytes());
-    
-    let aux_gids = [12, 20, 61, 79, 80, 81, 98, 102, 701, 33, 100, 204, 250, 395, 398, 101];
-    for gid in aux_gids.iter() {
-        call.extend_from_slice(&(*gid as u32).to_be_bytes());
-    }
-    
-    // Verifier
-    call.extend_from_slice(&0u32.to_be_bytes());
-    call.extend_from_slice(&0u32.to_be_bytes());
+    // Add authentication
+    super::auth::AuthUnix::default().write_to_vec(&mut call);
     
     // File handle
     call.extend_from_slice(&16u32.to_be_bytes());
     call.extend_from_slice(file_handle);
     
-    // Cookie
+    // Cookie and cookieverf
     call.extend_from_slice(&cookie.to_be_bytes());
-    
-    // Cookieverf
     call.extend_from_slice(&cookieverf.to_be_bytes());
     
-    // Dircount (max bytes for names)
+    // Dircount and maxcount
     call.extend_from_slice(&dircount.to_be_bytes());
-    
-    // Maxcount (max bytes total)
     call.extend_from_slice(&maxcount.to_be_bytes());
     
     call

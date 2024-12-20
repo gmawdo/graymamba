@@ -5,6 +5,7 @@ pub mod lookup;
 pub mod readdirplus;
 pub mod read;
 pub mod access;
+pub mod auth;
 use std::error::Error;
 
 #[derive(Debug)]
