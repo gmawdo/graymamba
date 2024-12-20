@@ -10,23 +10,43 @@ use crate::rpc::{send_rpc_message, receive_rpc_reply};
 mod rpc;
 
 #[derive(Debug)]
-struct NfsSession {
+struct NfsSession { //when we establish a mount we get THE handle, we preserve it here - misnomer file_handle may be better called fs_handle
     file_handle: [u8; 16],
-    dir_file_handles: Vec<([u8; 16], String, u64)>, // (handle, name, size)
+    dir_file_handles: Vec<([u8; 16], String, u64)>, // (handle, name, size) - we need to keep track of the handles for the files in the main directory at the moment
+}
+
+fn print_file_attributes(attrs: &rpc::Fattr3, prefix: &str) {
+    println!("{}:", prefix);
+    println!("  Type: {}", match attrs.file_type {
+        1 => "Regular File",
+        2 => "Directory",
+        3 => "Block Device",
+        4 => "Character Device",
+        5 => "Symbolic Link",
+        6 => "Socket",
+        7 => "FIFO",
+        _ => "Unknown",
+    });
+    println!("  Mode: {:o}", attrs.mode);
+    println!("  Links: {}", attrs.nlink);
+    println!("  UID: {}", attrs.uid);
+    println!("  GID: {}", attrs.gid);
+    println!("  Size: {} bytes", attrs.size);
+    println!("  Used: {} bytes", attrs.used);
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+
+    // Coonect to Nfs server
     let addr: SocketAddr = "127.0.0.1:2049".parse()?;
     let mut stream = TcpStream::connect(addr).await?;
-    
     println!("Connected to NFS server");
     
-    // First do NULL call
+    // First do NULL call to check comms
     let null_call = rpc::null::build_null_call(1);
     println!("Sending NULL call");
     send_rpc_message(&mut stream, &null_call).await?;
-    
     match receive_rpc_reply(&mut stream).await {
         Ok(reply) => {
             println!("Received NULL reply: {:02x?}", reply);
@@ -38,10 +58,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     
     // Then do MOUNT call
-    let mount_call = rpc::mount::build_mount_call(2, "joseph");
+    let mount_call = rpc::mount::build_mount_call(2, "joseph"); // mary, jesus, joseph are the test drives
     println!("Sending MOUNT call");
-    send_rpc_message(&mut stream, &mount_call).await?;
-    
+    send_rpc_message(&mut stream, &mount_call).await?;  
     let session = match receive_rpc_reply(&mut stream).await {
         Ok(reply) => {
             println!("Received MOUNT reply: {:02x?}", reply);
@@ -89,7 +108,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let lookup_call = rpc::lookup::build_lookup_call(4, &session.file_handle, "."); // "." means current directory
         println!("Sending LOOKUP call");
         send_rpc_message(&mut stream, &lookup_call).await?;
-        
         sleep(Duration::from_millis(100)).await;
         
         match receive_rpc_reply(&mut stream).await {
@@ -102,33 +120,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             println!("New file handle: {:02x?}", fh);
                         }
                         if let Some(attrs) = lookup_reply.attributes {
-                            println!("File attributes:");
-                            println!("  Type: {}", match attrs.file_type {
-                                2 => "Directory",
-                                1 => "Regular file",
-                                3 => "Block device",
-                                4 => "Character device",
-                                5 => "Symbolic link",
-                                6 => "Socket",
-                                7 => "FIFO",
-                                _ => "Unknown",
-                            });
-                            println!("  Mode: {:o}", attrs.mode);
-                            println!("  Links: {}", attrs.nlink);
-                            println!("  UID: {}", attrs.uid);
-                            println!("  GID: {}", attrs.gid);
-                            println!("  Size: {} bytes", attrs.size);
-                            println!("  Used: {} bytes", attrs.used);
+                            print_file_attributes(&attrs, "File attributes");
                         }
                         if let Some(dir_attrs) = lookup_reply.dir_attributes {
-                            println!("Directory attributes:");
-                            println!("  Type: {}", match dir_attrs.file_type {
-                                2 => "Directory",
-                                1 => "Regular file",
-                                _ => "Unknown",
-                            });
-                            println!("  Mode: {:o}", dir_attrs.mode);
-                            println!("  Size: {} bytes", dir_attrs.size);
+                            print_file_attributes(&dir_attrs, "Directory attributes");
                         }
                     },
                     Err(e) => {
@@ -151,8 +146,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             8192,          // dircount (from Wireshark)
             32768          // maxcount (from Wireshark)
         );
-        send_rpc_message(&mut stream, &readdirplus_call).await?;
-        
+        send_rpc_message(&mut stream, &readdirplus_call).await?;    
         sleep(Duration::from_millis(100)).await;
         
         match receive_rpc_reply(&mut stream).await {
