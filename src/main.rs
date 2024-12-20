@@ -212,6 +212,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 },
                 Err(e) => println!("Error receiving ACCESS reply: {}", e)
             }
+
+            // Now do a READ call for the same file
+            println!("\nSending READ call for file: {}", name);
+            let read_call = rpc::read::build_read_call(
+                7,          // xid
+                &handle,    // file handle
+                0,          // offset (start of file)
+                1024       // count (read up to 1024 bytes)
+            );
+            send_rpc_message(&mut stream, &read_call).await?;
+            
+            sleep(Duration::from_millis(100)).await;
+            
+            match receive_rpc_reply(&mut stream).await {
+                Ok(reply) => {
+                    match rpc::read::ReadReply::from_bytes(&reply) {
+                        Ok(read_data) => {
+                            println!("Read reply status: {}", read_data.status);
+                            if read_data.status == 0 {
+                                println!("Read {} bytes", read_data.count);
+                                println!("EOF: {}", read_data.eof);
+                                println!("Content: {}", String::from_utf8_lossy(&read_data.data));
+                            }
+                        },
+                        Err(e) => println!("Error parsing READ reply: {}", e)
+                    }
+                },
+                Err(e) => println!("Error receiving READ reply: {}", e)
+            }
         }
     }
 
