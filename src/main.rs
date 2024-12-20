@@ -84,14 +84,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    // Now do GETATTR call if we have a valid session
+    // if we have a valid filesystem handle then we can test basic operations
     if let Some(mut session) = session {
-        println!("Got file handle: {:02x?}", session.file_handle);
+        println!("Got a filesystem handle: {:02x?}", session.file_handle);
         
+        // Now do GETATTR call
         let getattr_call = rpc::getattr::build_getattr_call(3, &session.file_handle);
         println!("Sending GETATTR call");
-        send_rpc_message(&mut stream, &getattr_call).await?;
-        
+        send_rpc_message(&mut stream, &getattr_call).await?;   
         // Add small delay
         sleep(Duration::from_millis(100)).await;
         
@@ -184,7 +184,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Err(e) => println!("Error receiving READDIRPLUS reply: {}", e)
         }
     
-        // Now do an ACCESS call for just the first file handle
+        // Now do an ACCESS call for just the first file handle from the directory listing
         for (handle, name, _size) in session.dir_file_handles.into_iter().take(1) {
             println!("\nDEBUG: File handle for '{}' is: {:02x?}", name, handle);
             println!("DEBUG: Handle length: {}", handle.len());
