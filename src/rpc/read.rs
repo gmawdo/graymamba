@@ -84,15 +84,19 @@ impl ReadReply {
         let eof = u32::from_be_bytes(data[offset..offset+4].try_into()?) == 1;
         offset += 4;
 
-        // Read actual data (using count from above)
-        let data_bytes = &data[offset..offset + count as usize];
+        // Read data length and actual data
+        let data_length = u32::from_be_bytes(data[offset..offset+4].try_into()?);
+        offset += 4;
         
+        // Extract just the actual data bytes, skipping the length prefix
+        let data = data[offset..offset+data_length as usize].to_vec();
+
         Ok(ReadReply {
             status,
             attributes,
             count,
             eof,
-            data: data_bytes.to_vec(),
+            data,
         })
     }
 }

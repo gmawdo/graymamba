@@ -233,7 +233,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             if read_data.status == 0 {
                                 println!("Read {} bytes", read_data.count);
                                 println!("EOF: {}", read_data.eof);
-                                println!("Content: {}", String::from_utf8_lossy(&read_data.data));
+                                println!("Content ({}): {:?}", read_data.data.len(), String::from_utf8_lossy(&read_data.data));
                             }
                         },
                         Err(e) => println!("Error parsing READ reply: {}", e)
