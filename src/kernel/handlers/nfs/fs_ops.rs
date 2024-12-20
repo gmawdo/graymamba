@@ -106,10 +106,26 @@ pub async fn nfsproc3_access(
     context: &RPCContext,
 ) -> Result<(), anyhow::Error> {
     let mut handle = nfs::nfs_fh3::default();
-    handle.deserialize(input)?;
+    debug!("ACCESS: Starting to deserialize file handle");
+    match handle.deserialize(input) {
+        Ok(_) => debug!("ACCESS: Successfully deserialized file handle: {:?}", handle),
+        Err(e) => {
+            debug!("ACCESS: Failed to deserialize file handle: {:?}", e);
+            return Err(e.into());
+        }
+    }
+
     let mut access: u32 = 0;
-    access.deserialize(input)?;
-    debug!("nfsproc3_access({:?},{:?},{:?})", xid, handle, access);
+    debug!("ACCESS: Starting to deserialize access mask");
+    match access.deserialize(input) {
+        Ok(_) => debug!("ACCESS: Successfully deserialized access mask: {:#x}", access),
+        Err(e) => {
+            debug!("ACCESS: Failed to deserialize access mask: {:?}", e);
+            return Err(e.into());
+        }
+    }
+
+    debug!("ACCESS: Processing request with handle:{:?}, access:{:#x}", handle, access);
 
     let id = context.vfs.fh_to_id(&handle);
     // fail if unable to convert file handle
