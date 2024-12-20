@@ -2,6 +2,7 @@ use std::error::Error;
 use super::Fattr3;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct EntryPlus3 {
     pub fileid: u64,
     pub name: String,
@@ -11,6 +12,7 @@ pub struct EntryPlus3 {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ReaddirplusReply {
     pub status: u32,
     pub dir_attributes: Option<Fattr3>,

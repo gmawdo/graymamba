@@ -1,6 +1,7 @@
 use std::error::Error;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ReadReply {
     pub status: u32,
     pub attributes: Option<super::Fattr3>,
@@ -9,10 +10,14 @@ pub struct ReadReply {
     pub data: Vec<u8>,
 }
 
+#[allow(dead_code)]
 const NFS_PROC_READ: u32 = 6;
+#[allow(dead_code)]
 const NFS_PROGRAM: u32 = 100003;
+#[allow(dead_code)]
 const NFS_VERSION: u32 = 3;
 
+#[allow(dead_code)]
 pub fn build_read_call(xid: u32, file_handle: &[u8; 16], offset: u64, count: u32) -> Vec<u8> {
     let mut call = Vec::new();
     
@@ -38,6 +43,7 @@ pub fn build_read_call(xid: u32, file_handle: &[u8; 16], offset: u64, count: u32
     call
 }
 
+#[allow(dead_code)]
 impl ReadReply {
     pub fn from_bytes(data: &[u8]) -> Result<Self, Box<dyn Error>> {
         if data.len() < 28 {

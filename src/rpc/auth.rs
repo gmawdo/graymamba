@@ -10,6 +10,8 @@ pub const DEFAULT_AUX_GIDS: [u32; 16] = [
     100, 204, 250, 395, 398, 101
 ];
 
+#[derive(Debug)]
+#[allow(dead_code)]
 pub struct AuthUnix {
     pub stamp: u32,
     pub machine_name: String,

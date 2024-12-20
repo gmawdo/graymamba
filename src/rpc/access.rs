@@ -1,6 +1,7 @@
 use std::error::Error;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct AccessReply {
     pub status: u32,
     pub attributes: Option<super::Fattr3>,
@@ -12,11 +13,17 @@ const NFS_PROGRAM: u32 = 100003;
 const NFS_VERSION: u32 = 3;
 
 // Access rights bits
+#[allow(dead_code)]
 pub const ACCESS_READ: u32    = 0x0001;
+#[allow(dead_code)]
 pub const ACCESS_LOOKUP: u32  = 0x0002;
+#[allow(dead_code)]
 pub const ACCESS_MODIFY: u32  = 0x0004;
+#[allow(dead_code)]
 pub const ACCESS_EXTEND: u32  = 0x0008;
+#[allow(dead_code)]
 pub const ACCESS_DELETE: u32  = 0x0010;
+#[allow(dead_code)]
 pub const ACCESS_EXECUTE: u32 = 0x0020;
 
 pub fn build_access_call(xid: u32, file_handle: &[u8; 16], check_access: u32) -> Vec<u8> {

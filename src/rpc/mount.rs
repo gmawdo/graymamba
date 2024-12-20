@@ -1,9 +1,13 @@
-use super::auth::{AuthUnix, AUTH_NULL};
+use super::auth::AUTH_NULL;
+use super::RpcReply;
+use std::error::Error;
 
 const MOUNT_PROGRAM: u32 = 100005;
 const MOUNT_VERSION: u32 = 3;
 const MOUNT_PROC_MNT: u32 = 1;
 
+#[derive(Debug)]
+#[allow(dead_code)]
 pub struct MountAuth {
     stamp: u32,
     machine_name: String,
@@ -68,4 +72,61 @@ pub fn build_mount_call(xid: u32, name: &str) -> Vec<u8> {
     println!("Mount call buffer ({} bytes): {:02x?}", call.len(), call);
     
     call
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct MountReply {
+    pub rpc: RpcReply,
+    pub status: u32,          // Mount status (0 = success)
+    pub file_handle_len: u32, // Should be 16 bytes for NFSv3
+    pub file_handle: [u8; 16],
+    pub auth_flavors: Vec<u32>, // List of supported auth flavors
+}
+
+impl MountReply {
+    pub fn from_bytes(data: &[u8]) -> Result<Self, Box<dyn Error>> {
+        if data.len() < 28 {  // 24 (RPC header) + 4 (status)
+            return Err("Reply too short".into());
+        }
+
+        let rpc = RpcReply::from_bytes(&data[0..24])?;
+        let status = u32::from_be_bytes(data[24..28].try_into()?);
+        
+        if status == 0 {  // Success
+            let file_handle_len = u32::from_be_bytes(data[28..32].try_into()?);
+            if file_handle_len != 16 {
+                return Err(format!("Unexpected file handle length: {}", file_handle_len).into());
+            }
+            
+            let mut file_handle = [0u8; 16];
+            file_handle.copy_from_slice(&data[32..48]);
+            
+            // Read auth flavors count
+            let auth_count = u32::from_be_bytes(data[48..52].try_into()?);
+            let mut auth_flavors = Vec::new();
+            
+            // Read auth flavors
+            for i in 0..auth_count as usize {
+                let offset = 52 + (i * 4);
+                auth_flavors.push(u32::from_be_bytes(data[offset..offset+4].try_into()?));
+            }
+
+            Ok(MountReply {
+                rpc,
+                status,
+                file_handle_len,
+                file_handle,
+                auth_flavors,
+            })
+        } else {
+            Ok(MountReply {
+                rpc,
+                status,
+                file_handle_len: 0,
+                file_handle: [0; 16],
+                auth_flavors: vec![],
+            })
+        }
+    }
 }

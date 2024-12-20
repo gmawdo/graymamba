@@ -1,161 +1,13 @@
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use std::error::Error;
-use tokio::io::{AsyncWriteExt, AsyncReadExt};
 use tokio::time::sleep;
 use std::time::Duration;
-use crate::rpc::Fattr3;
 use crate::rpc::access::ACCESS_READ;
+use crate::rpc::mount::MountReply;
+use crate::rpc::{send_rpc_message, receive_rpc_reply};
 
 mod rpc;
-
-async fn send_rpc_message(stream: &mut TcpStream, data: &[u8]) -> Result<(), Box<dyn Error>> {
-    let record_marker = 0x80000000u32 | (data.len() as u32);
-    
-    // Send record marker
-    stream.write_all(&record_marker.to_be_bytes()).await?;
-    // Send data
-    stream.write_all(data).await?;
-    stream.flush().await?;
-    Ok(())
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-struct RpcReply {
-    xid: u32,
-    message_type: u32,
-    reply_state: u32,
-    verifier_flavor: u32,
-    verifier_length: u32,
-    accept_state: u32,
-}
-
-impl RpcReply {
-    fn from_bytes(data: &[u8]) -> Result<Self, Box<dyn Error>> {
-        if data.len() < 24 {
-            return Err("Reply too short".into());
-        }
-
-        Ok(RpcReply {
-            xid: u32::from_be_bytes(data[0..4].try_into()?),
-            message_type: u32::from_be_bytes(data[4..8].try_into()?),
-            reply_state: u32::from_be_bytes(data[8..12].try_into()?),
-            verifier_flavor: u32::from_be_bytes(data[12..16].try_into()?),
-            verifier_length: u32::from_be_bytes(data[16..20].try_into()?),
-            accept_state: u32::from_be_bytes(data[20..24].try_into()?),
-        })
-    }
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-struct MountReply {
-    rpc: RpcReply,
-    status: u32,          // Mount status (0 = success)
-    file_handle_len: u32, // Should be 16 bytes for NFSv3
-    file_handle: [u8; 16],
-    auth_flavors: Vec<u32>, // List of supported auth flavors
-}
-
-impl MountReply {
-    fn from_bytes(data: &[u8]) -> Result<Self, Box<dyn Error>> {
-        if data.len() < 28 {  // 24 (RPC header) + 4 (status)
-            return Err("Reply too short".into());
-        }
-
-        let rpc = RpcReply::from_bytes(&data[0..24])?;
-        let status = u32::from_be_bytes(data[24..28].try_into()?);
-        
-        if status == 0 {  // Success
-            let file_handle_len = u32::from_be_bytes(data[28..32].try_into()?);
-            if file_handle_len != 16 {
-                return Err(format!("Unexpected file handle length: {}", file_handle_len).into());
-            }
-            
-            let mut file_handle = [0u8; 16];
-            file_handle.copy_from_slice(&data[32..48]);
-            
-            // Read auth flavors count
-            let auth_count = u32::from_be_bytes(data[48..52].try_into()?);
-            let mut auth_flavors = Vec::new();
-            
-            // Read auth flavors
-            for i in 0..auth_count as usize {
-                let offset = 52 + (i * 4);
-                auth_flavors.push(u32::from_be_bytes(data[offset..offset+4].try_into()?));
-            }
-
-            Ok(MountReply {
-                rpc,
-                status,
-                file_handle_len,
-                file_handle,
-                auth_flavors,
-            })
-        } else {
-            Ok(MountReply {
-                rpc,
-                status,
-                file_handle_len: 0,
-                file_handle: [0; 16],
-                auth_flavors: vec![],
-            })
-        }
-    }
-}
-
-async fn receive_rpc_reply(stream: &mut TcpStream) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut complete_response = Vec::new();
-    
-    loop {
-        let mut marker_buf = [0u8; 4];
-        stream.read_exact(&mut marker_buf).await?;
-        let marker = u32::from_be_bytes(marker_buf);
-        
-        let size = marker & 0x7fffffff;
-        let is_last = (marker & 0x80000000) != 0;
-        
-        println!("Receiving fragment: size={}, last={}", size, is_last);
-        
-        let mut fragment = vec![0u8; size as usize];
-        stream.read_exact(&mut fragment).await?;
-        
-        println!("Received fragment data: {:02x?}", fragment);
-        complete_response.extend_from_slice(&fragment);
-        
-        if is_last {
-            break;
-        }
-    }
-
-    if complete_response.len() >= 32 {  // RPC header + status
-        match Fattr3::from_bytes(&complete_response) {
-            Ok(attrs) => {
-                println!("File attributes:");
-                println!("  Type: {}", match attrs.file_type {
-                    1 => "Regular File",
-                    2 => "Directory",
-                    3 => "Block Device",
-                    4 => "Character Device",
-                    5 => "Symbolic Link",
-                    6 => "Socket",
-                    7 => "FIFO",
-                    _ => "Unknown",
-                });
-                println!("  Mode: {:o}", attrs.mode);
-                println!("  Links: {}", attrs.nlink);
-                println!("  UID: {}", attrs.uid);
-                println!("  GID: {}", attrs.gid);
-                println!("  Size: {} bytes", attrs.size);
-                println!("  Used: {} bytes", attrs.used);
-            },
-            Err(e) => println!("Error parsing attributes: {}", e),
-        }
-    }
-    
-    Ok(complete_response)
-}
 
 #[derive(Debug)]
 struct NfsSession {
@@ -339,7 +191,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     
         // Now do an ACCESS call for just the first file handle
-        for (handle, name, size) in session.dir_file_handles.into_iter().take(1) {
+        for (handle, name, _size) in session.dir_file_handles.into_iter().take(1) {
             println!("\nDEBUG: File handle for '{}' is: {:02x?}", name, handle);
             println!("DEBUG: Handle length: {}", handle.len());
             
