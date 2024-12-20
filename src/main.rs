@@ -135,59 +135,59 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         println!("Error parsing LOOKUP reply: {}", e);
                     }
                 }
-
-                // Now do READDIRPLUS call using the mount file handle
-                println!("\nSending READDIRPLUS call");
-                let readdirplus_call = rpc::readdirplus::build_readdirplus_call(
-                    5,              // xid
-                    &session.file_handle,
-                    0,              // cookie
-                    0,              // cookieverf
-                    8192,          // dircount (from Wireshark)
-                    32768          // maxcount (from Wireshark)
-                );
-                send_rpc_message(&mut stream, &readdirplus_call).await?;
-                
-                sleep(Duration::from_millis(100)).await;
-                
-                match receive_rpc_reply(&mut stream).await {
-                    Ok(reply) => {
-                        match rpc::readdirplus::ReaddirplusReply::from_bytes(&reply) {
-                            Ok(readdir_reply) => {
-                                println!("\nREADDIRPLUS Status: {}", readdir_reply.status);
-                                if readdir_reply.status == 0 {
-                                    println!("\nDirectory contents:");
-                                    for entry in readdir_reply.entries {
-                                        print!("  {} (id: {})", entry.name, entry.fileid);
-                                        if let (Some(attrs), Some(handle)) = (&entry.name_attributes, &entry.name_handle) {
-                                            println!(" - {} ({} bytes)", 
-                                                match attrs.file_type {
-                                                    1 => {
-                                                        session.dir_file_handles.push((*handle, entry.name.clone(), attrs.size));
-                                                        "Regular file"
-                                                    },
-                                                    2 => "Directory",
-                                                    _ => { 
-                                                        session.dir_file_handles.push((*handle, entry.name.clone(), attrs.size));
-                                                        "Unknown"
-                                                    },
-                                                },
-                                                attrs.size
-                                            );
-                                        }
-                                    }
-                                    println!("\nFound {} files to process", session.dir_file_handles.len());
-                                }
-                            },
-                            Err(e) => println!("Error parsing READDIRPLUS reply: {}", e)
-                        }
-                    },
-                    Err(e) => println!("Error receiving READDIRPLUS reply: {}", e)
-                }
             },
             Err(e) => {
                 println!("Error receiving reply: {}", e);
             }
+        }
+
+        // Now do READDIRPLUS call using the mount file handle
+        println!("\nSending READDIRPLUS call");
+        let readdirplus_call = rpc::readdirplus::build_readdirplus_call(
+            5,              // xid
+            &session.file_handle,
+            0,              // cookie
+            0,              // cookieverf
+            8192,          // dircount (from Wireshark)
+            32768          // maxcount (from Wireshark)
+        );
+        send_rpc_message(&mut stream, &readdirplus_call).await?;
+        
+        sleep(Duration::from_millis(100)).await;
+        
+        match receive_rpc_reply(&mut stream).await {
+            Ok(reply) => {
+                match rpc::readdirplus::ReaddirplusReply::from_bytes(&reply) {
+                    Ok(readdir_reply) => {
+                        println!("\nREADDIRPLUS Status: {}", readdir_reply.status);
+                        if readdir_reply.status == 0 {
+                            println!("\nDirectory contents:");
+                            for entry in readdir_reply.entries {
+                                print!("  {} (id: {})", entry.name, entry.fileid);
+                                if let (Some(attrs), Some(handle)) = (&entry.name_attributes, &entry.name_handle) {
+                                    println!(" - {} ({} bytes)", 
+                                        match attrs.file_type {
+                                            1 => {
+                                                session.dir_file_handles.push((*handle, entry.name.clone(), attrs.size));
+                                                "Regular file"
+                                            },
+                                            2 => "Directory",
+                                            _ => { 
+                                                session.dir_file_handles.push((*handle, entry.name.clone(), attrs.size));
+                                                "Unknown"
+                                            },
+                                        },
+                                        attrs.size
+                                    );
+                                }
+                            }
+                            println!("\nFound {} files to process", session.dir_file_handles.len());
+                        }
+                    },
+                    Err(e) => println!("Error parsing READDIRPLUS reply: {}", e)
+                }
+            },
+            Err(e) => println!("Error receiving READDIRPLUS reply: {}", e)
         }
     
         // Now do an ACCESS call for just the first file handle
