@@ -3,11 +3,11 @@ use tokio::net::TcpStream;
 use std::error::Error;
 use tokio::time::sleep;
 use std::time::Duration;
-use crate::rpc::access::ACCESS_READ;
-use crate::rpc::mount::MountReply;
-use crate::rpc::{send_rpc_message, receive_rpc_reply};
+use crate::nfsclient::access::ACCESS_READ;
+use crate::nfsclient::mount::MountReply;
+use crate::nfsclient::{send_rpc_message, receive_rpc_reply};
 
-mod rpc;
+mod nfsclient;
 
 #[derive(Debug)]
 struct NfsSession { //when we establish a mount we get THE handle, we preserve it here - misnomer file_handle may be better called fs_handle
@@ -15,7 +15,7 @@ struct NfsSession { //when we establish a mount we get THE handle, we preserve i
     dir_file_handles: Vec<([u8; 16], String, u64)>, // (handle, name, size) - we need to keep track of the handles for the files in the main directory at the moment
 }
 
-fn print_file_attributes(attrs: &rpc::Fattr3, prefix: &str) {
+fn print_file_attributes(attrs: &nfsclient::Fattr3, prefix: &str) {
     println!("{}:", prefix);
     println!("  Type: {}", match attrs.file_type {
         1 => "Regular File",
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Connected to NFS server");
     
     // First do NULL call to check comms
-    let null_call = rpc::null::build_null_call(1);
+    let null_call = nfsclient::null::build_null_call(1);
     println!("Sending NULL call");
     send_rpc_message(&mut stream, &null_call).await?;
     match receive_rpc_reply(&mut stream).await {
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     
     // Then do MOUNT call
-    let mount_call = rpc::mount::build_mount_call(2, "joseph"); // mary, jesus, joseph are the test drives
+    let mount_call = nfsclient::mount::build_mount_call(2, "joseph"); // mary, jesus, joseph are the test drives
     println!("Sending MOUNT call");
     send_rpc_message(&mut stream, &mount_call).await?;  
     let session = match receive_rpc_reply(&mut stream).await {
@@ -89,7 +89,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("Got a filesystem handle: {:02x?}", session.file_handle);
         
         // Now do GETATTR call
-        let getattr_call = rpc::getattr::build_getattr_call(3, &session.file_handle);
+        let getattr_call = nfsclient::getattr::build_getattr_call(3, &session.file_handle);
         println!("Sending GETATTR call");
         send_rpc_message(&mut stream, &getattr_call).await?;   
         // Add small delay
@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
 
         // Now do LOOKUP call
-        let lookup_call = rpc::lookup::build_lookup_call(4, &session.file_handle, "."); // "." means current directory
+        let lookup_call = nfsclient::lookup::build_lookup_call(4, &session.file_handle, "."); // "." means current directory
         println!("Sending LOOKUP call");
         send_rpc_message(&mut stream, &lookup_call).await?;
         sleep(Duration::from_millis(100)).await;
@@ -113,7 +113,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         match receive_rpc_reply(&mut stream).await {
             Ok(reply) => {
                 println!("Received LOOKUP reply: {:02x?}", reply);
-                match rpc::lookup::LookupReply::from_bytes(&reply) {
+                match nfsclient::lookup::LookupReply::from_bytes(&reply) {
                     Ok(lookup_reply) => {
                         println!("LOOKUP Status: {}", lookup_reply.status);
                         if let Some(fh) = lookup_reply.file_handle {
@@ -138,7 +138,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         // Now do READDIRPLUS call using the mount file handle
         println!("\nSending READDIRPLUS call");
-        let readdirplus_call = rpc::readdirplus::build_readdirplus_call(
+        let readdirplus_call = nfsclient::readdirplus::build_readdirplus_call(
             5,              // xid
             &session.file_handle,
             0,              // cookie
@@ -151,7 +151,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         
         match receive_rpc_reply(&mut stream).await {
             Ok(reply) => {
-                match rpc::readdirplus::ReaddirplusReply::from_bytes(&reply) {
+                match nfsclient::readdirplus::ReaddirplusReply::from_bytes(&reply) {
                     Ok(readdir_reply) => {
                         println!("\nREADDIRPLUS Status: {}", readdir_reply.status);
                         if readdir_reply.status == 0 {
@@ -189,7 +189,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!("\nDEBUG: File handle for '{}' is: {:02x?}", name, handle);
             println!("DEBUG: Handle length: {}", handle.len());
             
-            let access_call = rpc::access::build_access_call(
+            let access_call = nfsclient::access::build_access_call(
                 6, 
                 &handle,
                 ACCESS_READ  // Use the constant from access.rs
@@ -202,7 +202,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             
             match receive_rpc_reply(&mut stream).await {
                 Ok(reply) => {
-                    match rpc::access::AccessReply::from_bytes(&reply) {
+                    match nfsclient::access::AccessReply::from_bytes(&reply) {
                         Ok(access_reply) => {
                             println!("Access reply status: {}", access_reply.status);
                             println!("Access rights granted: {:08x}", access_reply.access);
@@ -215,7 +215,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             // Now do a READ call for the same file
             println!("\nSending READ call for file: {}", name);
-            let read_call = rpc::read::build_read_call(
+            let read_call = nfsclient::read::build_read_call(
                 7,          // xid
                 &handle,    // file handle
                 0,          // offset (start of file)
@@ -227,7 +227,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             
             match receive_rpc_reply(&mut stream).await {
                 Ok(reply) => {
-                    match rpc::read::ReadReply::from_bytes(&reply) {
+                    match nfsclient::read::ReadReply::from_bytes(&reply) {
                         Ok(read_data) => {
                             println!("Read reply status: {}", read_data.status);
                             if read_data.status == 0 {
