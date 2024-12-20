@@ -1,13 +1,26 @@
+/*
+Note this is a terminal based TEST app.
+It is used to help perfect the raw NFS protocol messages for use in apps like data_room.
+*/
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use std::error::Error;
 use tokio::time::sleep;
 use std::time::Duration;
-use crate::nfsclient::access::ACCESS_READ;
-use crate::nfsclient::mount::MountReply;
-use crate::nfsclient::{send_rpc_message, receive_rpc_reply};
 
-mod nfsclient;
+use graymamba::nfsclient::{
+    self,
+    access::{self, ACCESS_READ, AccessReply},
+    mount::{self, MountReply},
+    null,
+    getattr,
+    lookup::{self, LookupReply},
+    read::{self, ReadReply},
+    readdirplus::{self, ReaddirplusReply},
+    Fattr3,
+    send_rpc_message,
+    receive_rpc_reply,
+};
 
 #[derive(Debug)]
 struct NfsSession { //when we establish a mount we get THE handle, we preserve it here - misnomer file_handle may be better called fs_handle

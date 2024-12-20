@@ -125,6 +125,9 @@ path = "src/bin/qrocks/main.rs"
 [[bin]]
 name = "data_room"
 path = "src/bin/data_room/main.rs"
+[[bin]]
+name = "nfsclient"
+path = "src/bin/nfsclient/main.rs"
 
 [package.metadata.bundle.bin.qrocks]  # ties to the binary named "qrocks"
 name = "RocksDB Explorer"
