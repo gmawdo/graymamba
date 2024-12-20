@@ -19,7 +19,7 @@ use rocksdb::{DB, Options};
 use std::sync::Arc;
 use graymamba::sharesfs::SharesFS;
 use graymamba::kernel::protocol::tcp::NFSTcpListener;
-use graymamba::kernel::client::NFSClient;
+//use graymamba::kernel::client::NFSClient;
 
 use tracing::debug;
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
@@ -43,7 +43,7 @@ struct DataRoom {
     files: Vec<FileEntry>,
     error_message: Option<String>,
     font_size: f32,
-    nfs_client: Option<NFSClient>,
+    //nfs_client: Option<NFSClient>,
 }
 
 #[derive(Debug, Clone)]
@@ -122,7 +122,7 @@ impl Application for DataRoom {
                 files: Vec::new(),
                 error_message: None,
                 font_size: 12.0,
-                nfs_client: None,
+                //nfs_client: None,
             },
             Command::none()
         )
@@ -162,7 +162,7 @@ impl Application for DataRoom {
             }
             Message::Logout => {
                 self.authenticated_user = None;
-                self.nfs_client = None;
+                //self.nfs_client = None;
                 self.files.clear();
             }
             Message::RefreshFiles => {
@@ -440,12 +440,12 @@ impl DataRoom {
         Color::from_rgb(r, g, b)
     }
 
-    async fn cleanup(&mut self) {
+    /*async fn cleanup(&mut self) {
         if self.nfs_client.is_some() {
             self.nfs_client = None;
             // Any additional cleanup needed
         }
-    }
+    }*/
 }
 
 #[tokio::main]
@@ -493,7 +493,7 @@ async fn main() -> iced::Result {
     // Set up cleanup on ctrl+c
     tokio::spawn(async move {
         if let Ok(()) = tokio::signal::ctrl_c().await {
-            data_room.cleanup().await;
+            //data_room.cleanup().await;
         }
     });
 
