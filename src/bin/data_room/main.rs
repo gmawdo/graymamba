@@ -1,32 +1,36 @@
 use iced::{
     widget::{Column, Container, Text, Scrollable, Button, Row, TextInput},
     Element, Length, Application, Settings, Color, Alignment,
-    theme::{self, Theme, Palette},
+    theme::{self, Theme},
     Command,
     Border,
     Shadow,
     window,
     Size,
-    keyboard::{self, Key, Modifiers},
+    keyboard::{self, Key},
     Subscription,
     widget::container,
 };
 use iced::widget::svg::Svg;
 use iced::advanced::svg;
 use std::error::Error;
-use url::Url;
-use rocksdb::{DB, Options};
-use std::sync::Arc;
-use graymamba::sharesfs::SharesFS;
-use graymamba::kernel::protocol::tcp::NFSTcpListener;
-//use graymamba::kernel::client::NFSClient;
-
 use tracing::debug;
-use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
+use tracing_subscriber::EnvFilter;
 use config::{Config, File as ConfigFile};
+use std::sync::Arc;
+
+use graymamba::nfsclient::{
+    mount::{self, MountReply},
+    null,
+    readdirplus::{self, ReaddirplusReply},
+    send_rpc_message,
+    receive_rpc_reply,
+};
 
 use tokio::net::TcpStream;
 use std::net::SocketAddr;
+use std::os::unix::io::{AsRawFd, FromRawFd};
+use tokio::io::Interest;
 // State for login modal
 #[derive(Debug, Default)]
 struct LoginState {
@@ -43,7 +47,9 @@ struct DataRoom {
     files: Vec<FileEntry>,
     error_message: Option<String>,
     font_size: f32,
-    //nfs_client: Option<NFSClient>,
+    nfs_client: Option<Arc<TcpStream>>,
+    nfs_handle: Option<[u8; 16]>,
+    runtime: tokio::runtime::Runtime,
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +70,8 @@ enum Message {
     RefreshFiles,
     FontSizeChanged(f32),
     Login,
+    NfsConnected(Result<Arc<(TcpStream, [u8; 16])>, String>),
+    NfsFilesLoaded(Result<Vec<FileEntry>, String>),
 }
 
 struct CustomContainer(Color);
@@ -122,7 +130,9 @@ impl Application for DataRoom {
                 files: Vec::new(),
                 error_message: None,
                 font_size: 12.0,
-                //nfs_client: None,
+                nfs_client: None,
+                nfs_handle: None,
+                runtime: tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"),
             },
             Command::none()
         )
@@ -136,52 +146,133 @@ impl Application for DataRoom {
         match message {
             Message::ShowLogin => {
                 self.login_state.is_visible = true;
+                Command::none()
             }
             Message::CloseLogin => {
                 self.login_state.is_visible = false;
                 self.login_state.error = None;
+                Command::none()
             }
             Message::UpdateUsername(username) => {
                 self.login_state.username = username;
+                Command::none()
             }
             Message::UpdatePassword(password) => {
                 self.login_state.password = password;
+                Command::none()
             }
             Message::AttemptLogin => {
-                if self.login_state.username.is_empty() || self.login_state.password.is_empty() {
+                /*if self.login_state.username.is_empty() || self.login_state.password.is_empty() {
                     self.login_state.error = Some("Username and password are required".to_string());
                     return Command::none();
-                }
+                }*/
 
-                // Here we would normally validate credentials against a backend
-                // For now, we'll just accept any non-empty credentials
                 let username = self.login_state.username.clone();
-                self.authenticated_user = Some(username.clone());
-                
-                // TODO: Connect to NFS
+                let runtime_handle = self.runtime.handle().clone();
+                Command::perform(
+                    async move {
+                        runtime_handle.block_on(async {
+                            debug!("Attempting test sequence");
+                            let addr: SocketAddr = "127.0.0.1:2049".parse()?;
+                            let mut stream = TcpStream::connect(addr).await?;
+                            debug!("Connected to NFS server");
+                            
+                            // Perform NULL call
+                            let null_call = null::build_null_call(1);
+                            send_rpc_message(&mut stream, &null_call).await?;
+                            receive_rpc_reply(&mut stream).await?;
+                            debug!("Performed NULL call");
+                            
+                            // Perform MOUNT call
+                            let mount_call = mount::build_mount_call(2, &username);
+                            send_rpc_message(&mut stream, &mount_call).await?;
+                            debug!("Performed MOUNT call");
+                            
+                            let reply = receive_rpc_reply(&mut stream).await?;
+                            let mount_reply = MountReply::from_bytes(&reply)?;
+                            
+                            if mount_reply.status != 0 {
+                                return Err("Mount failed".into());
+                            }
+
+                            debug!("Mount successful");
+                            Ok((stream, mount_reply.file_handle))
+                        })
+                    },
+                    |result: Result<(TcpStream, [u8; 16]), Box<dyn Error>>| match result {
+                        Ok((stream, handle)) => Message::NfsConnected(Ok(Arc::new((stream, handle)))),
+                        Err(e) => Message::NfsConnected(Err(e.to_string()))
+                    }
+                )
             }
             Message::Logout => {
                 self.authenticated_user = None;
-                //self.nfs_client = None;
+                self.nfs_client = None;
+                self.nfs_handle = None;
                 self.files.clear();
+                Command::none()
             }
             Message::RefreshFiles => {
-                debug!("=== Refreshing files ===");
-
+                if let (Some(stream), Some(handle)) = (&mut self.nfs_client, &self.nfs_handle) {
+                    let handle = *handle;
+                    let mut stream_clone = unsafe {
+                        let raw_fd = stream.as_raw_fd();
+                        let std_stream = std::net::TcpStream::from_raw_fd(raw_fd);
+                        TcpStream::from_std(std_stream).unwrap()
+                    };
+                    Command::perform(
+                        async move {
+                            DataRoom::load_files(&mut stream_clone, &handle).await
+                        },
+                        |result| match result {
+                            Ok(files) => Message::NfsFilesLoaded(Ok(files)),
+                            Err(e) => Message::NfsFilesLoaded(Err(e.to_string()))
+                        }
+                    )
+                } else {
+                    Command::none()
+                }
             }
             Message::FontSizeChanged(delta) => {
                 self.font_size = (self.font_size + delta).max(8.0);
+                Command::none()
             }
             Message::Login => {
-                // Here we would normally validate credentials against a backend
-                // For now, we'll just accept any non-empty credentials
                 let username = self.login_state.username.clone();
-                self.authenticated_user = Some(username.clone());
-                
-                // TODO Connect to NFS
+                self.authenticated_user = Some(username);
+                Command::none()
+            }
+            Message::NfsConnected(result) => {
+                match result {
+                    Ok(arc_data) => {
+                        let (stream, handle) = &*arc_data;
+                        debug!("NFS connected: {:?}", stream);
+                        //self.nfs_client = Some(Arc::new(stream.clone()));
+                        self.nfs_handle = Some(*handle);
+                        Command::perform(
+                            async { Ok::<(), Box<dyn Error>>(()) },
+                            |_result: Result<(), Box<dyn Error>>| Message::RefreshFiles
+                        )
+                    }
+                    Err(e) => {
+                        self.error_message = Some(e);
+                        Command::none()
+                    }
+                }
+            }
+            Message::NfsFilesLoaded(result) => {
+                match result {
+                    Ok(files) => {
+                        self.files = files;
+                        Command::none()
+                    }
+                    Err(e) => {
+                        self.error_message = Some(e);
+                        Command::none()
+                    }
+                }
             }
         }
-        Command::none()
     }
 
     fn view(&self) -> Element<Message> {
@@ -446,6 +537,38 @@ impl DataRoom {
             // Any additional cleanup needed
         }
     }*/
+
+    async fn load_files(mut stream: &mut TcpStream, handle: &[u8; 16]) -> Result<Vec<FileEntry>, Box<dyn Error>> {
+        let readdirplus_call = readdirplus::build_readdirplus_call(
+            5,
+            handle,
+            0,
+            0,
+            8192,
+            32768
+        );
+        
+        send_rpc_message(&mut stream, &readdirplus_call).await?;
+        let reply = receive_rpc_reply(&mut stream).await?;
+        let readdir_reply = ReaddirplusReply::from_bytes(&reply)?;
+        
+        if readdir_reply.status != 0 {
+            return Err("Failed to read directory".into());
+        }
+        
+        let mut files = Vec::new();
+        for entry in readdir_reply.entries {
+            if let (Some(attrs), Some(_)) = (&entry.name_attributes, &entry.name_handle) {
+                files.push(FileEntry {
+                    name: entry.name,
+                    size: attrs.size,
+                    modified: "".to_string(), // You can add timestamp conversion here
+                });
+            }
+        }
+        
+        Ok(files)
+    }
 }
 
 #[tokio::main]
@@ -473,8 +596,6 @@ async fn main() -> iced::Result {
             filter
         });
 
-    debug!("filter: {:?}", filter);
-
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -488,7 +609,9 @@ async fn main() -> iced::Result {
         .compact()
         .init();
 
-    let (mut data_room, _command) = DataRoom::new(());
+    let (_data_room, _command) = DataRoom::new(());
+
+    debug!("Data Room initialized");
     
     // Set up cleanup on ctrl+c
     tokio::spawn(async move {
