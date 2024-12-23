@@ -20,8 +20,10 @@ use config::{Config, File as ConfigFile};
 use std::sync::Arc;
 
 use graymamba::nfsclient::{
+    self,
     mount::{self, MountReply},
     null,
+    getattr,
     readdirplus::{self, ReaddirplusReply},
     send_rpc_message,
     receive_rpc_reply,
@@ -40,6 +42,13 @@ struct LoginState {
     is_visible: bool,
 }
 
+#[derive(Debug, Clone)]
+struct NfsSession {
+    stream: Arc<TcpStream>,
+    fs_handle: [u8; 16],
+    dir_file_handles: Vec<([u8; 16], String, u64)>, // (handle, name, size)
+}
+
 #[derive(Debug)]
 struct DataRoom {
     login_state: LoginState,
@@ -47,9 +56,7 @@ struct DataRoom {
     files: Vec<FileEntry>,
     error_message: Option<String>,
     font_size: f32,
-    nfs_client: Option<Arc<TcpStream>>,
-    nfs_handle: Option<[u8; 16]>,
-    runtime: tokio::runtime::Runtime,
+    nfs_session: Option<NfsSession>,
 }
 
 #[derive(Debug, Clone)]
@@ -70,8 +77,8 @@ enum Message {
     RefreshFiles,
     FontSizeChanged(f32),
     Login,
-    NfsConnected(Result<Arc<(TcpStream, [u8; 16])>, String>),
-    NfsFilesLoaded(Result<Vec<FileEntry>, String>),
+    NfsConnected(Result<NfsSession, String>),
+    NfsFilesLoaded(Result<(Vec<FileEntry>, Vec<([u8; 16], String, u64)>), String>),
 }
 
 struct CustomContainer(Color);
@@ -130,9 +137,7 @@ impl Application for DataRoom {
                 files: Vec::new(),
                 error_message: None,
                 font_size: 12.0,
-                nfs_client: None,
-                nfs_handle: None,
-                runtime: tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"),
+                nfs_session: None,
             },
             Command::none()
         )
@@ -162,71 +167,75 @@ impl Application for DataRoom {
                 Command::none()
             }
             Message::AttemptLogin => {
-                /*if self.login_state.username.is_empty() || self.login_state.password.is_empty() {
-                    self.login_state.error = Some("Username and password are required".to_string());
-                    return Command::none();
-                }*/
-
                 let username = self.login_state.username.clone();
-                let runtime_handle = self.runtime.handle().clone();
                 Command::perform(
                     async move {
-                        runtime_handle.block_on(async {
-                            debug!("Attempting test sequence");
-                            let addr: SocketAddr = "127.0.0.1:2049".parse()?;
-                            let mut stream = TcpStream::connect(addr).await?;
-                            debug!("Connected to NFS server");
-                            
-                            // Perform NULL call
-                            let null_call = null::build_null_call(1);
-                            send_rpc_message(&mut stream, &null_call).await?;
-                            receive_rpc_reply(&mut stream).await?;
-                            debug!("Performed NULL call");
-                            
-                            // Perform MOUNT call
-                            let mount_call = mount::build_mount_call(2, &username);
-                            send_rpc_message(&mut stream, &mount_call).await?;
-                            debug!("Performed MOUNT call");
-                            
-                            let reply = receive_rpc_reply(&mut stream).await?;
-                            let mount_reply = MountReply::from_bytes(&reply)?;
-                            
-                            if mount_reply.status != 0 {
-                                return Err("Mount failed".into());
-                            }
-
-                            debug!("Mount successful");
-                            Ok((stream, mount_reply.file_handle))
-                        })
+                        DataRoom::connect_nfs(&username).await
                     },
-                    |result: Result<(TcpStream, [u8; 16]), Box<dyn Error>>| match result {
-                        Ok((stream, handle)) => Message::NfsConnected(Ok(Arc::new((stream, handle)))),
+                    |result| match result {
+                        Ok(session) => Message::NfsConnected(Ok(session)),
                         Err(e) => Message::NfsConnected(Err(e.to_string()))
                     }
                 )
             }
             Message::Logout => {
                 self.authenticated_user = None;
-                self.nfs_client = None;
-                self.nfs_handle = None;
+                self.nfs_session = None;
                 self.files.clear();
                 Command::none()
             }
             Message::RefreshFiles => {
-                if let (Some(stream), Some(handle)) = (&mut self.nfs_client, &self.nfs_handle) {
-                    let handle = *handle;
-                    let mut stream_clone = unsafe {
-                        let raw_fd = stream.as_raw_fd();
-                        let std_stream = std::net::TcpStream::from_raw_fd(raw_fd);
-                        TcpStream::from_std(std_stream).unwrap()
-                    };
+                if let Some(session) = &self.nfs_session {
+                    let fs_handle = session.fs_handle;
+                    let stream = session.stream.clone();
                     Command::perform(
                         async move {
-                            DataRoom::load_files(&mut stream_clone, &handle).await
+                            let mut stream = unsafe {
+                                let raw_fd = Arc::get_mut(&mut stream.clone())
+                                    .unwrap()
+                                    .as_raw_fd();
+                                let std_stream = std::net::TcpStream::from_raw_fd(raw_fd);
+                                TcpStream::from_std(std_stream).unwrap()
+                            };
+
+                            let readdirplus_call = readdirplus::build_readdirplus_call(
+                                4,
+                                &fs_handle,
+                                0,
+                                0,
+                                8192,
+                                32768
+                            );
+
+                            send_rpc_message(&mut stream, &readdirplus_call).await?;
+                            let reply = receive_rpc_reply(&mut stream).await?;
+                            let readdir_reply = ReaddirplusReply::from_bytes(&reply)?;
+
+                            if readdir_reply.status != 0 {
+                                return Err("Failed to read directory".into());
+                            }
+
+                            let mut files = Vec::new();
+                            let mut handles = Vec::new();
+
+                            for entry in readdir_reply.entries {
+                                if let (Some(attrs), Some(handle)) = (&entry.name_attributes, &entry.name_handle) {
+                                    handles.push((*handle, entry.name.clone(), attrs.size));
+                                    files.push(FileEntry {
+                                        name: entry.name,
+                                        size: attrs.size,
+                                        modified: "".to_string(),
+                                    });
+                                }
+                            }
+
+                            Ok((files, handles))
                         },
-                        |result| match result {
-                            Ok(files) => Message::NfsFilesLoaded(Ok(files)),
-                            Err(e) => Message::NfsFilesLoaded(Err(e.to_string()))
+                        |result: Result<(Vec<FileEntry>, Vec<([u8; 16], String, u64)>), Box<dyn Error>>| {
+                            match result {
+                                Ok((files, handles)) => Message::NfsFilesLoaded(Ok((files, handles))),
+                                Err(e) => Message::NfsFilesLoaded(Err(e.to_string()))
+                            }
                         }
                     )
                 } else {
@@ -244,14 +253,11 @@ impl Application for DataRoom {
             }
             Message::NfsConnected(result) => {
                 match result {
-                    Ok(arc_data) => {
-                        let (stream, handle) = &*arc_data;
-                        debug!("NFS connected: {:?}", stream);
-                        //self.nfs_client = Some(Arc::new(stream.clone()));
-                        self.nfs_handle = Some(*handle);
+                    Ok(session) => {
+                        self.nfs_session = Some(session);
                         Command::perform(
                             async { Ok::<(), Box<dyn Error>>(()) },
-                            |_result: Result<(), Box<dyn Error>>| Message::RefreshFiles
+                            |_: Result<(), Box<dyn Error>>| Message::RefreshFiles
                         )
                     }
                     Err(e) => {
@@ -262,7 +268,10 @@ impl Application for DataRoom {
             }
             Message::NfsFilesLoaded(result) => {
                 match result {
-                    Ok(files) => {
+                    Ok((files, handles)) => {
+                        if let Some(session) = &mut self.nfs_session {
+                            session.dir_file_handles = handles;
+                        }
                         self.files = files;
                         Command::none()
                     }
@@ -531,43 +540,86 @@ impl DataRoom {
         Color::from_rgb(r, g, b)
     }
 
-    /*async fn cleanup(&mut self) {
-        if self.nfs_client.is_some() {
-            self.nfs_client = None;
-            // Any additional cleanup needed
-        }
-    }*/
-
-    async fn load_files(mut stream: &mut TcpStream, handle: &[u8; 16]) -> Result<Vec<FileEntry>, Box<dyn Error>> {
-        let readdirplus_call = readdirplus::build_readdirplus_call(
-            5,
-            handle,
-            0,
-            0,
-            8192,
-            32768
-        );
+    async fn connect_nfs(username: &str) -> Result<NfsSession, Box<dyn Error>> {
+        debug!("Starting NFS connection sequence");
+        let addr: SocketAddr = "127.0.0.1:2049".parse()?;
+        let mut stream = TcpStream::connect(addr).await?;
         
-        send_rpc_message(&mut stream, &readdirplus_call).await?;
+        // NULL call
+        let null_call = null::build_null_call(1);
+        send_rpc_message(&mut stream, &null_call).await?;
+        receive_rpc_reply(&mut stream).await?;
+        debug!("NULL call successful");
+        
+        // MOUNT call
+        let mount_call = mount::build_mount_call(2, username);
+        send_rpc_message(&mut stream, &mount_call).await?;
         let reply = receive_rpc_reply(&mut stream).await?;
-        let readdir_reply = ReaddirplusReply::from_bytes(&reply)?;
+        let mount_reply = MountReply::from_bytes(&reply)?;
         
-        if readdir_reply.status != 0 {
-            return Err("Failed to read directory".into());
+        if mount_reply.status != 0 {
+            return Err("Mount failed".into());
         }
-        
-        let mut files = Vec::new();
-        for entry in readdir_reply.entries {
-            if let (Some(attrs), Some(_)) = (&entry.name_attributes, &entry.name_handle) {
-                files.push(FileEntry {
-                    name: entry.name,
-                    size: attrs.size,
-                    modified: "".to_string(), // You can add timestamp conversion here
-                });
+        debug!("MOUNT call successful");
+
+        // GETATTR call
+        let getattr_call = getattr::build_getattr_call(3, &mount_reply.file_handle);
+        send_rpc_message(&mut stream, &getattr_call).await?;
+        receive_rpc_reply(&mut stream).await?;
+        debug!("GETATTR call successful");
+
+        // Create NfsSession
+        let session = NfsSession {
+            stream: Arc::new(stream),
+            fs_handle: mount_reply.file_handle,
+            dir_file_handles: Vec::new(),
+        };
+
+        Ok(session)
+    }
+
+    async fn load_directory(&mut self) -> Result<(), Box<dyn Error>> {
+        if let Some(session) = &mut self.nfs_session {
+            let mut stream = unsafe {
+                let raw_fd = Arc::get_mut(&mut session.stream)
+                    .unwrap()
+                    .as_raw_fd();
+                let std_stream = std::net::TcpStream::from_raw_fd(raw_fd);
+                TcpStream::from_std(std_stream).unwrap()
+            };
+
+            let readdirplus_call = readdirplus::build_readdirplus_call(
+                4,
+                &session.fs_handle,
+                0,
+                0,
+                8192,
+                32768
+            );
+
+            send_rpc_message(&mut stream, &readdirplus_call).await?;
+            let reply = receive_rpc_reply(&mut stream).await?;
+            let readdir_reply = ReaddirplusReply::from_bytes(&reply)?;
+
+            if readdir_reply.status != 0 {
+                return Err("Failed to read directory".into());
+            }
+
+            session.dir_file_handles.clear();
+            self.files.clear();
+
+            for entry in readdir_reply.entries {
+                if let (Some(attrs), Some(handle)) = (&entry.name_attributes, &entry.name_handle) {
+                    session.dir_file_handles.push((*handle, entry.name.clone(), attrs.size));
+                    self.files.push(FileEntry {
+                        name: entry.name,
+                        size: attrs.size,
+                        modified: "".to_string(), // TODO: Add timestamp conversion
+                    });
+                }
             }
         }
-        
-        Ok(files)
+        Ok(())
     }
 }
 
