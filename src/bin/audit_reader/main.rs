@@ -23,6 +23,8 @@ use chrono::{DateTime, Utc, TimeZone};
 use std::error::Error;
 use std::collections::HashMap;
 
+use config::{Config, File as ConfigFile};
+
 #[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_tree::MerkleNode;
 use graymamba::audit_adapters::irrefutable_audit::AuditEvent;
@@ -453,12 +455,22 @@ impl AuditViewer {
     }
     
     fn load_audit_data(&mut self) -> Result<(), Box<dyn Error>> {
+        // Load settings but skip logging config since we've already set it up
+        let mut settings = Config::default();
+        settings
+            .merge(ConfigFile::with_name("config/settings.toml"))
+            .expect("Failed to load configuration");
+
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         
         let cfs = vec!["current_tree", "historical_roots", "event_data", "time_indices"];
-        let db = DB::open_cf_for_read_only(&opts, "../RocksDBs/audit_merkle_db", &cfs, false)?;
+        let db = DB::open_cf_for_read_only(
+            &opts,
+            settings.get_str("storage.auditdb_path").expect("Failed to get auditdb_path from settings").as_str() ,
+            &cfs,
+            false)?;
 
         // Load current events into a vector first for sorting
         let mut current_events = Vec::new();
@@ -542,12 +554,21 @@ impl AuditViewer {
     }
 
     fn load_window_events(&mut self, timestamp: i64) -> Result<(), Box<dyn Error>> {
+        // Load settings but skip logging config since we've already set it up
+        let mut settings = Config::default();
+        settings
+            .merge(ConfigFile::with_name("config/settings.toml"))
+            .expect("Failed to load configuration");
+
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         
         let cfs = vec!["current_tree", "historical_roots", "event_data", "time_indices"];
-        let db = DB::open_cf_for_read_only(&opts, "../RocksDBs/audit_merkle_db", &cfs, false)?;
+        let db = DB::open_cf_for_read_only(
+            &opts,
+            settings.get_str("storage.auditdb_path").expect("Failed to get auditdb_path from settings").as_str() ,
+             &cfs, false)?;
 
         let cf_historical = db.cf_handle("historical_roots")
             .ok_or("Failed to get historical_roots column family")?;
@@ -659,12 +680,20 @@ impl AuditViewer {
     }
 
     fn open_db(&self) -> Result<DB, Box<dyn Error>> {
+        // Load settings but skip logging config since we've already set it up
+        let mut settings = Config::default();
+        settings
+            .merge(ConfigFile::with_name("config/settings.toml"))
+            .expect("Failed to load configuration");
+        
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         
         let cfs = vec!["current_tree", "historical_roots", "event_data", "time_indices"];
-        Ok(DB::open_cf_for_read_only(&opts, "../RocksDBs/audit_merkle_db", &cfs, false)?)
+        Ok(DB::open_cf_for_read_only(&opts,
+            settings.get_str("storage.auditdb_path").expect("Failed to get auditdb_path from settings").as_str() ,
+         &cfs, false)?)
     }
     #[allow(dead_code)]
     fn get_selected_event_key(&self) -> Option<String> {

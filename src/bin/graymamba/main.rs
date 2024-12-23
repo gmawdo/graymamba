@@ -81,7 +81,12 @@ async fn main() {
     //let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
     use graymamba::backingstore::rocksdb_data_store::RocksDBDataStore;
-    let data_store = Arc::new(RocksDBDataStore::new("../RocksDBs/graymamba").expect("Failed to create a data store"));
+    //let data_store = Arc::new(RocksDBDataStore::new("../RocksDBs/graymamba").expect("Failed to create a data store"));
+    let data_store = Arc::new(RocksDBDataStore::new(
+        settings.get_str("storage.rocksdb_path")
+            .expect("Failed to get rocksdb_path from settings")
+            .as_str()
+    ).expect("Failed to create a data store"));
     
 
     #[cfg(feature = "irrefutable_audit")]

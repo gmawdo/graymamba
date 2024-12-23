@@ -13,6 +13,7 @@ use iced::widget::svg::Svg;
 use iced::advanced::svg;
 use rocksdb::{DB, Options};
 use std::error::Error;
+use config::{Config, File as ConfigFile};
 
 struct CustomContainer(Color);
 
@@ -58,10 +59,19 @@ impl Application for DBExplorer {
     type Flags = ();
 
     fn new(_flags: ()) -> (Self, Command<Message>) {
+        // Load settings but skip logging config since we've already set it up
+        let mut settings = Config::default();
+        settings
+            .merge(ConfigFile::with_name("config/settings.toml"))
+            .expect("Failed to load configuration");
+
+        let default_db_path = settings.get_str("storage.rocksdb_path")
+            .expect("Failed to get rocksdb_path from settings");
+
         (
             DBExplorer {
                 db_path: String::new(),
-                db_path_input: String::from("../RocksDBs/graymamba"),
+                db_path_input: default_db_path,
                 current_db: None,
                 keys: Vec::new(),
                 values: Vec::new(),

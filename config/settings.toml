@@ -35,3 +35,7 @@ module_filter = [
     "data_room=debug",
     #"graymamba::backingstore::rocksdb_data_store=debug"
     ]
+
+[storage]
+rocksdb_path = "../RocksDBs/graymamba"
+auditdb_path = "../RocksDBs/audit_merkle_db"
