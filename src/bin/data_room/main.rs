@@ -25,7 +25,6 @@ use graymamba::nfsclient::{
     self,
     mount::{self, MountReply},
     null,
-    getattr,
     readdirplus::{self, ReaddirplusReply},
     send_rpc_message,
     receive_rpc_reply,
@@ -33,8 +32,7 @@ use graymamba::nfsclient::{
 
 use tokio::net::TcpStream;
 use std::net::SocketAddr;
-use std::os::unix::io::{AsRawFd, FromRawFd};
-use tokio::io::Interest;
+
 // State for login modal
 #[derive(Debug, Default)]
 struct LoginState {
@@ -67,6 +65,7 @@ struct FileEntry {
     name: String,
     size: u64,
     modified: String,
+    file_id: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +76,7 @@ enum Message {
     UpdatePassword(String),
     AttemptLogin,
     Logout,
+    LogoutComplete,
     RefreshFiles,
     FontSizeChanged(f32),
     Login,
@@ -214,20 +214,40 @@ impl Application for DataRoom {
                 )
             }
             Message::Logout => {
+                if let Some(session) = &self.nfs_session {
+                    let session = session.clone();
+                    Command::perform(
+                        async move {
+                            if let Err(e) = session.disconnect().await {
+                                debug!("Error during NFS disconnect: {}", e);
+                            }
+                            Ok::<(), Box<dyn Error>>(())
+                        },
+                        |_result: Result<(), Box<dyn Error>>| Message::LogoutComplete
+                    )
+                } else {
+                    Command::perform(
+                        async { Ok::<(), Box<dyn Error>>(()) },
+                        |_: Result<(), Box<dyn Error>>| Message::LogoutComplete
+                    )
+                }
+            }
+            Message::LogoutComplete => {
                 self.authenticated_user = None;
                 self.nfs_session = None;
                 self.files.clear();
+                self.error_message = None;
                 Command::none()
             }
             Message::RefreshFiles => {
                 if let Some(session) = &self.nfs_session {
                     let fs_handle = session.fs_handle;
-                    debug!("fs_handle: {:02x?}", fs_handle);
+                    debug!("Starting refresh, fs_handle: {:02x?}", fs_handle);
                     let stream = session.stream.clone();
 
                     Command::perform(
                         async move {
-
+                            debug!("Building readdirplus call");
                             let readdirplus_call = readdirplus::build_readdirplus_call(
                                 4,
                                 &fs_handle,
@@ -238,40 +258,51 @@ impl Application for DataRoom {
                             );
 
                             let mut stream_guard = stream.lock().await;
+                            debug!("Sending RPC message");
                             send_rpc_message(&mut *stream_guard, &readdirplus_call).await?;
 
+                            debug!("Receiving RPC reply");
                             let reply = receive_rpc_reply(&mut *stream_guard).await?;
                             let readdir_reply = ReaddirplusReply::from_bytes(&reply)?;
                             if readdir_reply.status != 0 {
                                 return Err("Failed to read directory".into());
                             }
-                            debug!("readdir_reply: {:02x?}", readdir_reply);
+                            debug!("Got readdir_reply with {} entries", readdir_reply.entries.len());
 
                             let mut files = Vec::new();
                             let mut handles = Vec::new();
 
                             for entry in readdir_reply.entries {
-                                debug!("  {} (id: {})", entry.name, entry.fileid);
+                                debug!("Processing entry: {} (id: {})", entry.name, entry.fileid);
                                 if let (Some(attrs), Some(handle)) = (&entry.name_attributes, &entry.name_handle) {
                                     handles.push((*handle, entry.name.clone(), attrs.size));
                                     files.push(FileEntry {
                                         name: entry.name,
                                         size: attrs.size,
                                         modified: "".to_string(),
+                                        file_id: entry.fileid,
                                     });
                                 }
                             }
+                            debug!("Processed {} files", files.len());
 
                             Ok((files, handles))
                         },
                         |result: Result<(Vec<FileEntry>, Vec<([u8; 16], String, u64)>), Box<dyn Error>>| {
                             match result {
-                                Ok((files, handles)) => Message::NfsFilesLoaded(Ok((files, handles))),
-                                Err(e) => Message::NfsFilesLoaded(Err(e.to_string()))
+                                Ok((files, handles)) => {
+                                    debug!("NfsFilesLoaded: {} files", files.len());
+                                    Message::NfsFilesLoaded(Ok((files, handles)))
+                                }
+                                Err(e) => {
+                                    debug!("NfsFilesLoaded error: {}", e);
+                                    Message::NfsFilesLoaded(Err(e.to_string()))
+                                }
                             }
                         }
                     )
                 } else {
+                    debug!("RefreshFiles called with no active session");
                     Command::none()
                 }
             }
@@ -288,6 +319,8 @@ impl Application for DataRoom {
                 match result {
                     Ok(session) => {
                         self.nfs_session = Some(session);
+                        self.authenticated_user = Some(self.login_state.username.clone());
+                        self.login_state.is_visible = false;
                         Command::perform(
                             async { Ok::<(), Box<dyn Error>>(()) },
                             |_: Result<(), Box<dyn Error>>| Message::RefreshFiles
@@ -302,6 +335,7 @@ impl Application for DataRoom {
             Message::NfsFilesLoaded(result) => {
                 match result {
                     Ok((files, handles)) => {
+                        debug!("Updating UI with {} files", files.len());
                         if let Some(session) = &mut self.nfs_session {
                             session.dir_file_handles = handles;
                         }
@@ -309,6 +343,7 @@ impl Application for DataRoom {
                         Command::none()
                     }
                     Err(e) => {
+                        debug!("Error loading files: {}", e);
                         self.error_message = Some(e);
                         Command::none()
                     }
@@ -375,6 +410,32 @@ impl Application for DataRoom {
                                     .spacing(5)
                                     .push(Text::new(format!("Connected as: {}", 
                                         self.authenticated_user.as_ref().unwrap_or(&"Guest".to_string()))))
+                                    .push(
+                                        Column::new()
+                                            .spacing(5)
+                                            .push(
+                                                Row::new()
+                                                    .spacing(20)
+                                                    .push(Text::new("Name").size(self.font_size).style(Color::WHITE))
+                                                    .push(Text::new("Size").size(self.font_size).style(Color::WHITE))
+                                                    .push(Text::new("ID").size(self.font_size).style(Color::WHITE))
+                                            )
+                                            .push(
+                                                {
+                                                    let mut column = Column::new().spacing(5);
+                                                    for file in &self.files {
+                                                        column = column.push(
+                                                            Row::new()
+                                                                .spacing(20)
+                                                                .push(Text::new(&file.name).size(self.font_size).style(Color::WHITE))
+                                                                .push(Text::new(format!("{} bytes", file.size)).size(self.font_size).style(Color::WHITE))
+                                                                .push(Text::new(format!("{}", file.file_id)).size(self.font_size).style(Color::WHITE))
+                                                        );
+                                                    }
+                                                    column
+                                                }
+                                            )
+                                    )
                             )
                         )
                         .width(Length::Fixed(700.0))
@@ -478,8 +539,8 @@ impl DataRoom {
                                             Row::new()
                                                 .spacing(10)
                                                 .push(Text::new(&file.name).size(self.font_size))
-                                                .push(Text::new(&file.modified).size(self.font_size))
-                                                .push(Text::new(format!("{}B", file.size)).size(self.font_size))
+                                                    .push(Text::new(&file.modified).size(self.font_size))
+                                                    .push(Text::new(format!("{}B", file.size)).size(self.font_size))
                                         )
                                         .width(Length::Fill)
                                         .style(theme::Container::Custom(Box::new(CustomContainer(
@@ -641,10 +702,25 @@ impl DataRoom {
                         name: entry.name,
                         size: attrs.size,
                         modified: "".to_string(), // TODO: Add timestamp conversion
+                        file_id: entry.fileid,
                     });
                 }
             }
         }
+        Ok(())
+    }
+}
+
+impl NfsSession {
+    async fn disconnect(&self) -> Result<(), Box<dyn Error>> {
+        let mut stream = self.stream.lock().await;
+        
+        // Send NULL procedure call to gracefully end the session
+        let null_call = null::build_null_call(1);
+        send_rpc_message(&mut *stream, &null_call).await?;
+        receive_rpc_reply(&mut *stream).await?;
+        
+        // Let the stream close naturally when dropped
         Ok(())
     }
 }
