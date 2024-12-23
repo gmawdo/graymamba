@@ -8,6 +8,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::FromPrimitive;
 use std::io::{Read, Write};
+pub use crate::kernel::handlers::mount_handlers::mountres3_ok;
 // Transcribed from RFC 1057 Appendix A
 
 pub const PROGRAM: u32 = 100005;

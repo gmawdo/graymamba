@@ -20,7 +20,7 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;
 use tokio::sync::mpsc;
-
+use tracing::debug;
 // Information from RFC 5531
 // https://datatracker.ietf.org/doc/html/rfc5531
 
@@ -29,8 +29,15 @@ async fn handle_rpc(
     output: &mut impl Write,
     mut context: RPCContext,
 ) -> Result<(), anyhow::Error> {
+    debug!("Starting RPC message deserialization");
     let mut recv = rpc_msg::default();
-    recv.deserialize(input)?;
+    match recv.deserialize(input) {
+        Ok(_) => debug!("Successfully deserialized RPC message"),
+        Err(e) => {
+            debug!("Failed to deserialize RPC message: {:?}", e);
+            return Err(anyhow!("Failed to deserialize RPC message: {}", e));
+        }
+    }
     let xid = recv.xid;
     if let rpc_body::CALL(call) = recv.body {
         if let auth_flavor::AUTH_UNIX = call.cred.flavor {
@@ -87,19 +94,44 @@ async fn read_fragment(
     append_to: &mut Vec<u8>,
 ) -> Result<bool, anyhow::Error> {
     let mut header_buf = [0_u8; 4];
+    debug!("Attempting to read fragment header...");
     socket.read_exact(&mut header_buf).await?;
+    debug!("Fragment header raw: {:?}", header_buf);
     let fragment_header = u32::from_be_bytes(header_buf);
     let is_last = (fragment_header & (1 << 31)) > 0;
     let length = (fragment_header & ((1 << 31) - 1)) as usize;
-    trace!("Reading fragment length:{}, last:{}", length, is_last);
+    debug!("Reading fragment length:{}, last:{}", length, is_last);
+    
     let start_offset = append_to.len();
+    debug!("Current buffer size: {}, extending to: {}", start_offset, start_offset + length);
     append_to.resize(append_to.len() + length, 0);
-    socket.read_exact(&mut append_to[start_offset..]).await?;
-    trace!(
-        "Finishing Reading fragment length:{}, last:{}",
+    
+    // Read in chunks to handle partial reads
+    let mut bytes_read = 0;
+    while bytes_read < length {
+        let remaining = length - bytes_read;
+        debug!("Reading chunk: {} bytes read of {}, remaining: {}", bytes_read, length, remaining);
+        
+        let read_result = socket
+            .read(&mut append_to[start_offset + bytes_read..start_offset + length])
+            .await?;
+        
+        if read_result == 0 {
+            debug!("Connection closed after reading {} of {} bytes", bytes_read, length);
+            return Err(anyhow!("Connection closed before complete fragment was read"));
+        }
+        
+        bytes_read += read_result;
+        debug!("Chunk read complete: {} bytes in this chunk", read_result);
+    }
+
+    debug!(
+        "Fragment read complete - length:{}, last:{}, total_bytes_read:{}",
         length,
-        is_last
+        is_last,
+        bytes_read
     );
+    
     Ok(is_last)
 }
 
@@ -156,15 +188,28 @@ impl SocketMessageHandler {
 
     /// Reads a fragment from the socket. This should be looped.
     pub async fn read(&mut self) -> Result<(), anyhow::Error> {
-        let is_last =
-            read_fragment(&mut self.socket_receive_channel, &mut self.cur_fragment).await?;
+        debug!("Starting to read new fragment");
+        let is_last = match read_fragment(&mut self.socket_receive_channel, &mut self.cur_fragment).await {
+            Ok(last) => {
+                debug!("Successfully read fragment, is_last: {}", last);
+                last
+            },
+            Err(e) => {
+                debug!("Error reading fragment: {:?}", e);
+                return Err(e);
+            }
+        };
+
         if is_last {
+            debug!("Processing last fragment, current buffer size: {}", self.cur_fragment.len());
             let fragment = std::mem::take(&mut self.cur_fragment);
             let context = self.context.clone();
             let send = self.reply_send_channel.clone();
+            
             tokio::spawn(async move {
                 let mut write_buf: Vec<u8> = Vec::new();
                 let mut write_cursor = Cursor::new(&mut write_buf);
+                debug!("Starting RPC handler with fragment size: {}", fragment.len());
                 let maybe_reply =
                     handle_rpc(&mut Cursor::new(fragment), &mut write_cursor, context).await;
                 match maybe_reply {
@@ -174,6 +219,8 @@ impl SocketMessageHandler {
                     }
                     Ok(_) => {
                         let _ = std::io::Write::flush(&mut write_cursor);
+                        drop(write_cursor);
+                        debug!("RPC handler completed successfully, response size: {}", write_buf.len());
                         let _ = send.send(Ok(write_buf));
                     }
                 }
