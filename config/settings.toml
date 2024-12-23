@@ -39,3 +39,6 @@ module_filter = [
 [storage]
 rocksdb_path = "../RocksDBs/graymamba"
 auditdb_path = "../RocksDBs/audit_merkle_db"
+
+[nfs]
+data_room_address = "127.0.0.1:2049"

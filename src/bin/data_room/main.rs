@@ -636,7 +636,19 @@ impl DataRoom {
 
     async fn connect_nfs(username: &str) -> Result<NfsSession, NfsError> {
         debug!("Starting NFS connection sequence");
-        let addr: SocketAddr = "127.0.0.1:2049".parse()
+        
+        let mut settings = Config::default();
+        settings
+            .merge(ConfigFile::with_name("config/settings.toml"))
+            .expect("Failed to load configuration");
+
+        // Get NFS server address from config, with fallback
+        let nfs_addr = settings
+            .get_str("nfs.data_room_address")
+            .unwrap_or_else(|_| "127.0.0.1:2049".to_string());
+        debug!("===============nfs_addr({})", nfs_addr);
+
+        let addr: SocketAddr = nfs_addr.parse()
             .map_err(|e: std::net::AddrParseError| NfsError::NetworkError(e.to_string()))?;
         
         let mut stream = TcpStream::connect(addr).await?;
