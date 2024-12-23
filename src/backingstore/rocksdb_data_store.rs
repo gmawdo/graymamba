@@ -54,9 +54,11 @@ impl DataStore for RocksDBDataStore {
         let hash_tag = "{graymamba}";
         let path = format!("/{}", "graymamba");
         let key = format!("{}:{}", hash_tag, mount_path);
+        debug!("===============rocksdb init_user_directory({})", key);       
 
         // Check if the directory already exists
         if let Ok(Some(_)) = self.db.get(key.as_bytes()) {
+            debug!("rocksdb init_user_directory({}) already exists", key);
             return Ok(());
         }
         let node_type = "0";
@@ -65,24 +67,12 @@ impl DataStore for RocksDBDataStore {
         let score = if mount_path == "/" { 1.0 } else { 2.0 };
 
         let nodes = format!("{}:/{}_nodes", hash_tag, "graymamba");
+        debug!("===============rocksdb init_user_directory({}) nodes", nodes);
         let key_exists: bool = self.db.get(&nodes).map_err(|_| DataStoreError::OperationFailed)?.is_some();
+        debug!("===============rocksdb init_user_directory({}) key_exists?", key_exists);
 
-        let fileid: u64 = if key_exists {
-            // Get and increment the next file ID atomically
-            let next_fileid_key = format!("{}:/{}^_next_fileid", hash_tag, "graymamba");
-            let current_id = self.db.get(next_fileid_key.as_bytes())
-                .map_err(|_| DataStoreError::OperationFailed)?
-                .and_then(|v| String::from_utf8(v).ok())
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(0);
-            let new_id = current_id + 1;
-            // Save the incremented value
-            self.db.put(next_fileid_key.as_bytes(), new_id.to_string().as_bytes())
-                .map_err(|_| DataStoreError::OperationFailed)?;
-            new_id
-        } else {
-            1
-        };
+        let next_fileid_key = format!("{}:/{}_next_fileid", hash_tag, "graymamba");
+        let fileid = self.incr(&next_fileid_key).await?;
 
         let system_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let epoch_seconds = system_time.as_secs();
@@ -210,12 +200,16 @@ impl DataStore for RocksDBDataStore {
     async fn incr(&self, key: &str) -> Result<i64, DataStoreError> {
         let max_retries = 10; // Maximum number of retry attempts
         let mut attempts = 0;
+        debug!("===============rocksdb0 incr({})", key);
         loop {
             // Get the current value
             let current = self.get(key).await.unwrap_or("0".to_string());
             let value = current.parse::<i64>().map_err(|_| DataStoreError::OperationFailed)?;
             let new_value = value + 1;
 
+            debug!("===============rocksdb1 incr({}) current", current);
+            debug!("===============rocksdb2 incr({}) Ok(_)", key);
+            debug!("===============rocksdb3 incr({}) new_value", new_value);
             // Attempt to update atomically
             match self.db.put(
                 key.as_bytes(),
