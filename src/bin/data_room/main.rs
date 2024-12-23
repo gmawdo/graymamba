@@ -19,6 +19,7 @@ use tracing::debug;
 use tracing_subscriber::EnvFilter;
 use config::{Config, File as ConfigFile};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use graymamba::nfsclient::{
     self,
@@ -45,7 +46,7 @@ struct LoginState {
 
 #[derive(Debug, Clone)]
 struct NfsSession {
-    stream: Arc<TcpStream>,
+    stream: Arc<Mutex<TcpStream>>,
     fs_handle: [u8; 16],
     dir_file_handles: Vec<([u8; 16], String, u64)>, // (handle, name, size)
 }
@@ -221,16 +222,11 @@ impl Application for DataRoom {
             Message::RefreshFiles => {
                 if let Some(session) = &self.nfs_session {
                     let fs_handle = session.fs_handle;
+                    debug!("fs_handle: {:02x?}", fs_handle);
                     let stream = session.stream.clone();
+
                     Command::perform(
                         async move {
-                            let mut stream = unsafe {
-                                let raw_fd = Arc::get_mut(&mut stream.clone())
-                                    .unwrap()
-                                    .as_raw_fd();
-                                let std_stream = std::net::TcpStream::from_raw_fd(raw_fd);
-                                TcpStream::from_std(std_stream).unwrap()
-                            };
 
                             let readdirplus_call = readdirplus::build_readdirplus_call(
                                 4,
@@ -241,18 +237,21 @@ impl Application for DataRoom {
                                 32768
                             );
 
-                            send_rpc_message(&mut stream, &readdirplus_call).await?;
-                            let reply = receive_rpc_reply(&mut stream).await?;
-                            let readdir_reply = ReaddirplusReply::from_bytes(&reply)?;
+                            let mut stream_guard = stream.lock().await;
+                            send_rpc_message(&mut *stream_guard, &readdirplus_call).await?;
 
+                            let reply = receive_rpc_reply(&mut *stream_guard).await?;
+                            let readdir_reply = ReaddirplusReply::from_bytes(&reply)?;
                             if readdir_reply.status != 0 {
                                 return Err("Failed to read directory".into());
                             }
+                            debug!("readdir_reply: {:02x?}", readdir_reply);
 
                             let mut files = Vec::new();
                             let mut handles = Vec::new();
 
                             for entry in readdir_reply.entries {
+                                debug!("  {} (id: {})", entry.name, entry.fileid);
                                 if let (Some(attrs), Some(handle)) = (&entry.name_attributes, &entry.name_handle) {
                                     handles.push((*handle, entry.name.clone(), attrs.size));
                                     files.push(FileEntry {
@@ -606,7 +605,7 @@ impl DataRoom {
         }
 
         Ok(NfsSession {
-            stream: Arc::new(stream),
+            stream: Arc::new(Mutex::new(stream)),
             fs_handle: mount_reply.file_handle,
             dir_file_handles: Vec::new(),
         })
@@ -614,14 +613,6 @@ impl DataRoom {
 
     async fn load_directory(&mut self) -> Result<(), Box<dyn Error>> {
         if let Some(session) = &mut self.nfs_session {
-            let mut stream = unsafe {
-                let raw_fd = Arc::get_mut(&mut session.stream)
-                    .unwrap()
-                    .as_raw_fd();
-                let std_stream = std::net::TcpStream::from_raw_fd(raw_fd);
-                TcpStream::from_std(std_stream).unwrap()
-            };
-
             let readdirplus_call = readdirplus::build_readdirplus_call(
                 4,
                 &session.fs_handle,
@@ -631,8 +622,9 @@ impl DataRoom {
                 32768
             );
 
-            send_rpc_message(&mut stream, &readdirplus_call).await?;
-            let reply = receive_rpc_reply(&mut stream).await?;
+            let mut stream_guard = session.stream.lock().await;
+            send_rpc_message(&mut *stream_guard, &readdirplus_call).await?;
+            let reply = receive_rpc_reply(&mut *stream_guard).await?;
             let readdir_reply = ReaddirplusReply::from_bytes(&reply)?;
 
             if readdir_reply.status != 0 {
