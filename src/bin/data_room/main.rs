@@ -10,6 +10,7 @@ use iced::{
     keyboard::{self, Key},
     Subscription,
     widget::container,
+    Font, Pixels,
 };
 use iced::widget::svg::Svg;
 use iced::advanced::svg;
@@ -57,6 +58,7 @@ struct DataRoom {
     error_message: Option<String>,
     font_size: f32,
     nfs_session: Option<NfsSession>,
+    runtime_handle: tokio::runtime::Handle,
 }
 
 #[derive(Debug, Clone)]
@@ -123,13 +125,40 @@ impl container::StyleSheet for BorderedContainer {
     }
 }
 
+#[derive(Debug)]
+pub enum NfsError {
+    NetworkError(String),
+    ProtocolError(String),
+    MountError(String),
+    IoError(std::io::Error),
+}
+
+impl std::error::Error for NfsError {}
+
+impl std::fmt::Display for NfsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NfsError::NetworkError(msg) => write!(f, "Network error: {}", msg),
+            NfsError::ProtocolError(msg) => write!(f, "Protocol error: {}", msg),
+            NfsError::MountError(msg) => write!(f, "Mount error: {}", msg),
+            NfsError::IoError(e) => write!(f, "IO error: {}", e),
+        }
+    }
+}
+
+impl From<std::io::Error> for NfsError {
+    fn from(err: std::io::Error) -> Self {
+        NfsError::IoError(err)
+    }
+}
+
 impl Application for DataRoom {
     type Message = Message;
     type Theme = Theme;
     type Executor = iced::executor::Default;
-    type Flags = ();
+    type Flags = tokio::runtime::Handle;
 
-    fn new(_flags: ()) -> (Self, Command<Message>) {
+    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
         (
             DataRoom {
                 login_state: LoginState::default(),
@@ -138,6 +167,7 @@ impl Application for DataRoom {
                 error_message: None,
                 font_size: 12.0,
                 nfs_session: None,
+                runtime_handle: flags,
             },
             Command::none()
         )
@@ -168,9 +198,13 @@ impl Application for DataRoom {
             }
             Message::AttemptLogin => {
                 let username = self.login_state.username.clone();
+                let handle = self.runtime_handle.clone();
+                
                 Command::perform(
                     async move {
-                        DataRoom::connect_nfs(&username).await
+                        handle.spawn(async move {
+                            DataRoom::connect_nfs(&username).await
+                        }).await.unwrap()
                     },
                     |result| match result {
                         Ok(session) => Message::NfsConnected(Ok(session)),
@@ -540,42 +574,42 @@ impl DataRoom {
         Color::from_rgb(r, g, b)
     }
 
-    async fn connect_nfs(username: &str) -> Result<NfsSession, Box<dyn Error>> {
+    async fn connect_nfs(username: &str) -> Result<NfsSession, NfsError> {
         debug!("Starting NFS connection sequence");
-        let addr: SocketAddr = "127.0.0.1:2049".parse()?;
-        let mut stream = TcpStream::connect(addr).await?;
+        let addr: SocketAddr = "127.0.0.1:2049".parse()
+            .map_err(|e: std::net::AddrParseError| NfsError::NetworkError(e.to_string()))?;
         
+        let mut stream = TcpStream::connect(addr).await?;
+
         // NULL call
         let null_call = null::build_null_call(1);
-        send_rpc_message(&mut stream, &null_call).await?;
-        receive_rpc_reply(&mut stream).await?;
-        debug!("NULL call successful");
-        
+        send_rpc_message(&mut stream, &null_call).await
+            .map_err(|e| NfsError::ProtocolError(e.to_string()))?;
+        receive_rpc_reply(&mut stream).await
+            .map_err(|e| NfsError::ProtocolError(e.to_string()))?;
+
         // MOUNT call
         let mount_call = mount::build_mount_call(2, username);
-        send_rpc_message(&mut stream, &mount_call).await?;
-        let reply = receive_rpc_reply(&mut stream).await?;
-        let mount_reply = MountReply::from_bytes(&reply)?;
+        send_rpc_message(&mut stream, &mount_call).await
+            .map_err(|e| NfsError::ProtocolError(e.to_string()))?;
         
+        let reply = receive_rpc_reply(&mut stream).await
+            .map_err(|e| NfsError::ProtocolError(e.to_string()))?;
+        
+        let mount_reply = MountReply::from_bytes(&reply)
+            .map_err(|e| NfsError::ProtocolError(e.to_string()))?;
+
         if mount_reply.status != 0 {
-            return Err("Mount failed".into());
+            return Err(NfsError::MountError(
+                format!("Mount failed with status: {}", mount_reply.status)
+            ));
         }
-        debug!("MOUNT call successful");
 
-        // GETATTR call
-        let getattr_call = getattr::build_getattr_call(3, &mount_reply.file_handle);
-        send_rpc_message(&mut stream, &getattr_call).await?;
-        receive_rpc_reply(&mut stream).await?;
-        debug!("GETATTR call successful");
-
-        // Create NfsSession
-        let session = NfsSession {
+        Ok(NfsSession {
             stream: Arc::new(stream),
             fs_handle: mount_reply.file_handle,
             dir_file_handles: Vec::new(),
-        };
-
-        Ok(session)
+        })
     }
 
     async fn load_directory(&mut self) -> Result<(), Box<dyn Error>> {
@@ -625,6 +659,8 @@ impl DataRoom {
 
 #[tokio::main]
 async fn main() -> iced::Result {
+    let runtime_handle = tokio::runtime::Handle::current();
+    
     // Load settings from config file
     let mut settings = Config::default();
     settings
@@ -661,18 +697,7 @@ async fn main() -> iced::Result {
         .compact()
         .init();
 
-    let (_data_room, _command) = DataRoom::new(());
-
-    debug!("Data Room initialized");
-    
-    // Set up cleanup on ctrl+c
-    tokio::spawn(async move {
-        if let Ok(()) = tokio::signal::ctrl_c().await {
-            //data_room.cleanup().await;
-        }
-    });
-
-    DataRoom::run(Settings {
+    let settings = Settings {
         window: window::Settings {
             size: Size {
                 width: 1200.0,
@@ -681,6 +706,13 @@ async fn main() -> iced::Result {
             position: window::Position::Centered,
             ..window::Settings::default()
         },
-        ..Settings::default()
-    })
+        flags: runtime_handle,
+        antialiasing: true,
+        fonts: Default::default(),
+        default_font: Font::default(),
+        default_text_size: Pixels(16.0),
+        id: None,
+    };
+
+    DataRoom::run(settings)
 }
