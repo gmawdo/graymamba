@@ -96,7 +96,7 @@ ark-groth16 = "0.4.0"
 ark-std = { version = "0.4.0", features = ["std"] }
 ark-snark = "0.4.0"
 
-iced = { version = "0.12.1", features = ["advanced", "system","svg"] }
+iced = { version = "0.12.1", features = ["advanced", "system", "svg", "canvas"] }
 
 tempfile = "3.14.0"
 
