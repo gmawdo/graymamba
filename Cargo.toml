@@ -96,26 +96,24 @@ ark-groth16 = "0.4.0"
 ark-std = { version = "0.4.0", features = ["std"] }
 ark-snark = "0.4.0"
 
-iced = { version = "0.12.1", features = ["advanced", "system","svg"] }
+iced = { version = "0.12.1", features = ["advanced", "system", "svg", "canvas"] }
 
 tempfile = "3.14.0"
 
 url = "2.4"
 
-# Optional dependencies for tracing
-tracing-subscriber = { version = "0.3", features = ["env-filter","std","tracing-log"], optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter","std","tracing-log"] }
 intaglio = { version = "1.6", optional = true }
 
 [features]
 strict = []
-traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
+#traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
 irrefutable_audit = []
 compressed_store = []
 
 [[bin]]
 name = "graymamba"
 path = "src/bin/graymamba/main.rs"
-required-features = ["traceability"]
 [[bin]]
 name = "audit_reader"
 path = "src/bin/audit_reader/main.rs"
