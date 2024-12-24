@@ -1,7 +1,9 @@
-# Secure Provenance Tracking Filesystem
+# A Highly Secure Provenance Tracking Filesystem
 
 A secure filesystem that tracks the provenance of files and directories. Entirely written in Rust for memory safety and performance.
-An NFS server is built on top of the filesystem to allow for remote access and ease of integration into existing systems and workflows.
+Built with an NFS protocol layer loosely based on NFSServe, promoting ease of integration into existing systems and workflows.
+
+Can be utilised in both local and distributed environments, with the ability to scale out to multiple nodes. Also deployable to small Linux based IoT devices for secure capture and data transmission.
 
 ## Overview
 
@@ -9,11 +11,11 @@ An NFS server is built on top of the filesystem to allow for remote access and e
 
 ### Features (determines what is built into the binary)
 
+- Mandatory Backing Store, choose one of [ `rocksdb` | `redis` ]: Enables RocksDB or Redis as backing store for data shares (one of the two options must be chosen)
 - Optional `irrefutable_audit`: Enables irrefutable audit logs for files and directories. (if not specified then no audit logs are created)
 - Optional `compressed_store`: Enables compressed shares (if not specified then works uncompresed with reduced performance but greater traceability
-- Mandatory Backing Store, choose one of [ `redis` | `rocksdb` ]: Enables redis or rocksdb backed shares (one of the two options must be chosen)
 
-Redis will need to be installed and running on the machine. RocksDB is built-in to the filesystem if chosen.
+RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice, then it will need to be installed and running on the machine.
 
 ### Build and Run Commands
 
@@ -23,7 +25,7 @@ Redis will need to be installed and running on the machine. RocksDB is built-in 
        cargo run --bin graymamba --features="irrefutable_audit,compressed_store,rocksdb" --release
        cargo test --features irrefutable_audit -- --nocapture
    
- - `To build and run the audit_reader, qrocks, and data-room`: 🚀
+ - `To build and run the audit_reader, qrocks, and data-room` (see below for more details on these binaries): 🚀
 
        cargo run --bin audit_reader --features="irrefutable_audit" --release
        cargo run --bin qrocks --features="irrefutable_audit" --release
@@ -36,7 +38,13 @@ Redis will need to be installed and running on the machine. RocksDB is built-in 
 - `To run bench marking` : 🚀
    
        cargo bench --features="irrefutable_audit,compressed_store"
-   
+
+
+## Explanation of the project's binaries and their purpose
+- `graymamba`: The filesystem itself, which can be mounted as an NFS server. The `main man`.
+- `audit_reader`: Reads the audit logs and allows exploration, verification and proof generation.
+- `qrocks`: A tool for querying the RocksDB database as there seems not to be one in wide circulation
+- `data-room`: An experimental tool for providing a data sandbox for file sharing and collaboration in sensitive environments.
 
 ## Useful references
 
