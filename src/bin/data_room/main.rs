@@ -11,6 +11,7 @@ use iced::{
     Subscription,
     widget::container,
     Font, Pixels,
+    alignment::Horizontal,
 };
 use iced::widget::svg::Svg;
 use iced::advanced::svg;
@@ -37,7 +38,6 @@ use std::net::SocketAddr;
 #[derive(Debug, Default)]
 struct LoginState {
     username: String,
-    password: String,
     error: Option<String>,
     is_visible: bool,
 }
@@ -73,7 +73,6 @@ enum Message {
     ShowLogin,
     CloseLogin,
     UpdateUsername(String),
-    UpdatePassword(String),
     AttemptLogin,
     Logout,
     LogoutComplete,
@@ -191,10 +190,6 @@ impl Application for DataRoom {
             }
             Message::UpdateUsername(username) => {
                 self.login_state.username = username;
-                Command::none()
-            }
-            Message::UpdatePassword(password) => {
-                self.login_state.password = password;
                 Command::none()
             }
             Message::AttemptLogin => {
@@ -583,7 +578,21 @@ impl DataRoom {
         let content = Column::new()
             .spacing(20)
             .padding(20)
-            .push(Text::new("Login").size(self.font_size * 1.5))
+            .push(
+                Row::new()
+                    .align_items(Alignment::Center)
+                    .spacing(10)
+                    .push(Text::new("Login").size(self.font_size * 1.5))
+                    .push(
+                        Container::new(
+                            Button::new(Text::new("✕").size(self.font_size))
+                                .on_press(Message::CloseLogin)
+                                .style(theme::Button::Secondary)
+                        )
+                        .width(Length::Fill)
+                        .align_x(Horizontal::Right)
+                    )
+            )
             .push(
                 TextInput::new(
                     "Username",
@@ -592,15 +601,6 @@ impl DataRoom {
                 .size(self.font_size)
                 .padding(8)
                 .on_input(Message::UpdateUsername),
-            )
-            .push(
-                TextInput::new(
-                    "Password",
-                    &self.login_state.password,
-                )
-                .size(self.font_size)
-                .padding(8)
-                .on_input(Message::UpdatePassword),
             )
             .push(
                 Button::new(Text::new("Login").size(self.font_size))
@@ -619,11 +619,23 @@ impl DataRoom {
             content
         };
 
-        Container::new(modal_content)
-            .width(Length::Fixed(300.0))
-            .padding(20)
-            .style(theme::Container::Custom(Box::new(BorderedContainer)))
-            .into()
+        Container::new(
+            Container::new(modal_content)
+                .width(Length::Fixed(300.0))
+                .padding(20)
+                .style(theme::Container::Custom(Box::new(BorderedContainer)))
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x()
+        .center_y()
+        .style(theme::Container::Custom(Box::new(CustomContainer(Color::from_rgba(
+            0.0,
+            0.0,
+            0.0,
+            0.7, // Semi-transparent background
+        )))))
+        .into()
     }
 
     fn hex_to_color(hex: &str) -> Color {
