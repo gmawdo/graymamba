@@ -107,9 +107,9 @@ impl container::StyleSheet for BorderedContainer {
         container::Appearance {
             text_color: None,
             background: Some(Color::from_rgb(
-                0x01 as f32 / 255.0,
-                0x01 as f32 / 255.0,
-                0x01 as f32 / 255.0,
+                0.75,
+                0.75,
+                0.75,
             ).into()),
             border: Border {
                 radius: 5.0.into(),
@@ -401,31 +401,32 @@ impl Application for DataRoom {
                             Scrollable::new(
                                 Column::new()
                                     .spacing(5)
-                                    .push(Text::new(format!("Connected as: {}", 
-                                        self.authenticated_user.as_ref().unwrap_or(&"Guest".to_string()))))
+                                    //.push(Text::new(format!("Connected as: {}", 
+                                    //    self.authenticated_user.as_ref().unwrap_or(&"Guest".to_string()))))
                                     .push(
-                                        Column::new()
-                                            .spacing(5)
-                                            .push(
-                                                Row::new()
-                                                    .spacing(20)
-                                                    .push(Text::new("Name").size(self.font_size).style(Color::WHITE))
-                                                    .push(Text::new("Size").size(self.font_size).style(Color::WHITE))
-                                                    .push(Text::new("ID").size(self.font_size).style(Color::WHITE))
-                                            )
+                                        Row::new()
+                                            .spacing(20)
                                             .push(
                                                 {
-                                                    let mut column = Column::new().spacing(5);
+                                                    let mut row = Row::new().spacing(20).padding(10);
                                                     for file in &self.files {
-                                                        column = column.push(
-                                                            Row::new()
-                                                                .spacing(20)
-                                                                .push(Text::new(&file.name).size(self.font_size).style(Color::WHITE))
-                                                                .push(Text::new(format!("{} bytes", file.size)).size(self.font_size).style(Color::WHITE))
-                                                                .push(Text::new(format!("{}", file.file_id)).size(self.font_size).style(Color::WHITE))
+                                                        row = row.push(
+                                                            Column::new()
+                                                                .spacing(5)
+                                                                .align_items(Alignment::Center)
+                                                                .push(
+                                                                    Text::new(Self::get_file_emoji(&file.name))
+                                                                        .size(32.0)
+                                                                )
+                                                                .push(
+                                                                    Text::new(&file.name)
+                                                                        .size(self.font_size)
+                                                                        .width(Length::Fixed(100.0))
+                                                                        .horizontal_alignment(Horizontal::Center)
+                                                                )
                                                         );
                                                     }
-                                                    column
+                                                    row
                                                 }
                                             )
                                     )
@@ -704,6 +705,25 @@ impl DataRoom {
             }
         }
         Ok(())
+    }
+
+    fn get_file_emoji(filename: &str) -> &'static str {
+        debug!("Getting file emoji for: {}", filename);
+        if let Some(extension) = filename.split('.').last() {
+            debug!("Extension: {}", extension);
+            match extension.to_lowercase().as_str() {
+                "txt" | "md" | "doc" | "docx" => "📝",
+                "pdf" => "📕",
+                "jpg" | "jpeg" | "png" | "gif" | "svg" => "🖼️",
+                "mp3" | "wav" | "ogg" => "🎵",
+                "mp4" | "mov" | "avi" => "🎬",
+                "zip" | "rar" | "7z" => "🗜️",
+                "exe" | "app" => "⚙️",
+                _ => "📄",
+            }
+        } else {
+            "📁" // For files without extensions or directories
+        }
     }
 }
 
