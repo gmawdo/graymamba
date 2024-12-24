@@ -348,38 +348,12 @@ impl Application for DataRoom {
     }
 
     fn view(&self) -> Element<Message> {
-        if self.login_state.is_visible {
-            self.view_login_modal()
-        } else {
-            let refresh_button = Button::new(
-                Text::new("🔄 Refresh")
-                    .size(self.font_size)
-            )
-            .on_press(Message::RefreshFiles)
-            .padding(10);
-
-            let header = Row::new()
-                .align_items(Alignment::Center)
-                .spacing(10)
-                .push(refresh_button)
-                .push(
-                    if self.authenticated_user.is_none() {
-                        Button::new(Text::new("Login").size(self.font_size))
-                            .padding([4, 8])
-                            .on_press(Message::ShowLogin)
-                            .style(theme::Button::Primary)
-                    } else {
-                        Button::new(Text::new("Logout").size(self.font_size))
-                            .padding([4, 8])
-                            .on_press(Message::Logout)
-                            .style(theme::Button::Secondary)
-                    }
-                );
-
+        let main_content = {
             let side_panel = Container::new(
                 Column::new()
                     .width(Length::Fixed(72.0))
                     .height(Length::Fill)
+                    .spacing(10)
                     .push(
                         Container::new(
                             Svg::new(svg::Handle::from_path("src/bin/qrocks/RocksDB.svg"))
@@ -387,6 +361,30 @@ impl Application for DataRoom {
                                 .height(Length::Fixed(60.0))
                         )
                         .padding(6)
+                        .center_x()
+                    )
+                    .push(
+                        Container::new(
+                            Button::new(Text::new("🔄 Refresh").size(self.font_size))
+                                .padding([4, 8])
+                                .on_press(Message::RefreshFiles)
+                        )
+                        .center_x()
+                    )
+                    .push(
+                        Container::new(
+                            if self.authenticated_user.is_none() {
+                                Button::new(Text::new("🚀 Login").size(self.font_size))
+                                    .padding([4, 8])
+                                    .on_press(Message::ShowLogin)
+                                    .style(theme::Button::Primary)
+                            } else {
+                                Button::new(Text::new("🚀 Logout").size(self.font_size))
+                                    .padding([4, 8])
+                                    .on_press(Message::Logout)
+                                    .style(theme::Button::Secondary)
+                            }
+                        )
                         .center_x()
                     )
             )
@@ -447,14 +445,45 @@ impl Application for DataRoom {
                 .padding(20)
                 .max_width(1200)
                 .height(Length::Fill)
-                .push(header)
                 .push(files_panel);
 
-            let content = Row::new()
+            Row::new()
                 .push(side_panel)
-                .push(main_content);
+                .push(main_content)
+        };
 
-            Container::new(content)
+        if self.login_state.is_visible {
+            // Stack the login modal on top of the main content
+            Container::new(
+                Column::new()
+                    .push(
+                        // Main content with blur effect
+                        Container::new(main_content)
+                            .style(theme::Container::Custom(Box::new(CustomContainer(Color::from_rgba(
+                                0.0,
+                                0.0,
+                                0.0,
+                                0.3, // More transparent to simulate blur
+                            )))))
+                    )
+                    .push(
+                        // Login modal
+                        Container::new(self.view_login_modal())
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                            .style(theme::Container::Custom(Box::new(CustomContainer(Color::from_rgba(
+                                0.0,
+                                0.0,
+                                0.0,
+                                0.5,
+                            )))))
+                    )
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+        } else {
+            Container::new(main_content)
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .center_x()
@@ -483,42 +512,6 @@ impl Application for DataRoom {
 
 impl DataRoom {
     fn view_main_content(&self) -> Element<Message> {
-        let header = Row::new()
-            .spacing(10)
-            .align_items(Alignment::Center)
-            .push(Text::new("Data Room").size(self.font_size * 2.0))
-            .push(
-                if self.authenticated_user.is_none() {
-                    Button::new(Text::new("Login").size(self.font_size))
-                        .padding([4, 8])
-                        .on_press(Message::ShowLogin)
-                        .style(theme::Button::Primary)
-                } else {
-                    Button::new(Text::new("Logout").size(self.font_size))
-                        .padding([4, 8])
-                        .on_press(Message::Logout)
-                        .style(theme::Button::Secondary)
-                }
-            );
-
-        let side_panel = Container::new(
-            Column::new()
-                .width(Length::Fixed(72.0))
-                .height(Length::Fill)
-                .push(
-                    Container::new(
-                        Svg::new(svg::Handle::from_path("src/bin/qrocks/RocksDB.svg"))
-                            .width(Length::Fixed(60.0))
-                            .height(Length::Fixed(60.0))
-                    )
-                    .padding(6)
-                    .center_x()
-                )
-        )
-        .style(theme::Container::Custom(Box::new(CustomContainer(Self::hex_to_color("#404040")))))
-        .width(Length::Fixed(72.0))
-        .height(Length::Fill);
-
         let files_panel = Container::new(
             Column::new()
                 .spacing(10)
@@ -560,14 +553,9 @@ impl DataRoom {
             .padding(20)
             .max_width(1200)
             .height(Length::Fill)
-            .push(header)
             .push(files_panel);
 
-        let content = Row::new()
-            .push(side_panel)
-            .push(main_content);
-
-        Container::new(content)
+        Container::new(main_content)
             .width(Length::Fill)
             .height(Length::Fill)
             .center_x()
@@ -609,18 +597,8 @@ impl DataRoom {
                     .style(theme::Button::Primary),
             );
 
-        let modal_content = if let Some(error) = &self.login_state.error {
-            content.push(
-                Text::new(error)
-                    .size(self.font_size)
-                    .style(Color::from_rgb(0.8, 0.0, 0.0))
-            )
-        } else {
-            content
-        };
-
         Container::new(
-            Container::new(modal_content)
+            Container::new(content)
                 .width(Length::Fixed(300.0))
                 .padding(20)
                 .style(theme::Container::Custom(Box::new(BorderedContainer)))
@@ -629,12 +607,6 @@ impl DataRoom {
         .height(Length::Fill)
         .center_x()
         .center_y()
-        .style(theme::Container::Custom(Box::new(CustomContainer(Color::from_rgba(
-            0.0,
-            0.0,
-            0.0,
-            0.7, // Semi-transparent background
-        )))))
         .into()
     }
 
