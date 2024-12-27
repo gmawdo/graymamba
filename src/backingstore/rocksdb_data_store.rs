@@ -66,12 +66,12 @@ impl DataStore for RocksDBDataStore {
         let permissions = 777;
         let score = if mount_path == "/" { 1.0 } else { 2.0 };
 
-        let nodes = format!("{}:/{}_nodes", hash_tag, "graymamba");
+        let nodes = format!("{}/{}_nodes", hash_tag, "graymamba");
         debug!("===============rocksdb init_user_directory({}) nodes", nodes);
         let key_exists: bool = self.db.get(&nodes).map_err(|_| DataStoreError::OperationFailed)?.is_some();
         debug!("===============rocksdb init_user_directory({}) key_exists?", key_exists);
 
-        let next_fileid_key = format!("{}:/{}_next_fileid", hash_tag, "graymamba");
+        let next_fileid_key = format!("{}/{}_next_fileid", hash_tag, "graymamba");
         let fileid = self.incr(&next_fileid_key).await?;
 
         let system_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
@@ -79,7 +79,7 @@ impl DataStore for RocksDBDataStore {
         let epoch_nseconds = system_time.subsec_nanos();
 
         // Add to sorted set (equivalent to Redis ZADD)
-        let nodes_key = format!("{}:/{}_nodes:{}", hash_tag, "graymamba", mount_path);
+        let nodes_key = format!("{}/{}_nodes:{}", hash_tag, "graymamba", mount_path);
         self.db.put(nodes_key.as_bytes(), score.to_string().as_bytes())
             .map_err(|_| DataStoreError::OperationFailed)?;
 
@@ -313,7 +313,7 @@ impl DataStore for RocksDBDataStore {
         let mut results = Vec::new();
         
         // The key format should match what we use in zadd
-        // In zadd we use: format!("{}:/{}_nodes:{}", hash_tag, "graymamba", mount_path)
+        // In zadd we use: format!("{}/{}_nodes:{}", hash_tag, "graymamba", mount_path)
         let prefix = format!("{}", key);
 
         // Iterate over all entries with this prefix

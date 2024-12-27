@@ -65,6 +65,21 @@ pub struct SharesFS {
 }
 
 impl SharesFS {
+    pub async fn set_namespace_id_and_hashtag(namespace: &str) {
+        let mut namespace_id = NAMESPACE_ID.write().unwrap();
+        *namespace_id = namespace.to_string();
+
+        let mut hash_tag = HASH_TAG.write().unwrap();
+        hash_tag.clear(); // Clear the previous content
+        hash_tag.push_str(&format!("{{{}}}:", namespace_id));
+    }
+    
+    pub async fn get_namespace_id_and_hash_tag() -> (String, String) {
+        let namespace_id = NAMESPACE_ID.read().unwrap().clone();
+        let hash_tag = HASH_TAG.read().unwrap().clone();
+        (namespace_id, hash_tag)
+    }
+    
     pub async fn create_test_entry(&self, _parent_id: u64, path: &str, id: u64) -> Result<(), nfsstat3> {
         let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
         
@@ -385,12 +400,6 @@ impl SharesFS {
         }
     
         Ok(false)
-    }
-
-    pub async fn get_namespace_id_and_hash_tag() -> (String, String) {
-        let namespace_id = NAMESPACE_ID.read().unwrap().clone();
-        let hash_tag = HASH_TAG.read().unwrap().clone();
-        (namespace_id, hash_tag)
     }
 
     pub async fn get_data(&self, path: &str) -> Vec<u8> {

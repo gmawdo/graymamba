@@ -204,11 +204,11 @@ impl DataStore for RedisDataStore {
         let permissions = 777;
         let score = if mount_path == "/" { 1.0 } else { 2.0 };
     
-        let nodes = format!("{}:/{}_nodes", hash_tag, "graymamba");
+        let nodes = format!("{}/{}_nodes", hash_tag, "graymamba");
         let key_exists: bool = conn.exists(&nodes).map_err(|_| DataStoreError::OperationFailed)?;
     
         let fileid: u64 = if key_exists {
-            conn.incr(format!("{}:/{}_next_fileid", hash_tag, "graymamba"), 1)
+            conn.incr(format!("{}/{}_next_fileid", hash_tag, "graymamba"), 1)
                 .map_err(|_| DataStoreError::OperationFailed)?
         } else {
             1
@@ -220,7 +220,7 @@ impl DataStore for RedisDataStore {
     
         // Instead of using pipeline, execute commands individually
         let _: () = conn.zadd(
-            format!("{}:/{}_nodes", hash_tag, "graymamba"),
+            format!("{}/{}_nodes", hash_tag, "graymamba"),
             mount_path,
             score
         ).map_err(|_| DataStoreError::OperationFailed)?;
