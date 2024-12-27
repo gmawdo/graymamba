@@ -27,19 +27,20 @@ thread_number = 5
 [logging]
 level = "warn"
 module_filter = [
-    #"graymamba::sharesfs::channel_buffer=debug",
-    #"graymamba::sharesfs::writing=debug",
-    #"graymamba::sharesfs::directories=debug",
-    #"graymamba::sharesfs::rename=debug",
+    "graymamba::sharesfs::channel_buffer=debug",
+    "graymamba::sharesfs::writing=debug",
+    "graymamba::sharesfs::directories=debug",
+    "graymamba::sharesfs::rename=debug",
     #"graymamba::kernel=debug",
     "graymamba::kernel::vfs::api=debug",
     #"data_room=debug",
-    #"graymamba::backingstore::rocksdb_data_store=debug"
+    "graymamba::backingstore::rocksdb_data_store=debug"
     ]
 
 [storage]
 rocksdb_path = "../RocksDBs/graymamba"
 auditdb_path = "../RocksDBs/audit_merkle_db"
+namespace_id = "graymamba"
 
 [nfs]
 data_room_address = "127.0.0.1:2049"

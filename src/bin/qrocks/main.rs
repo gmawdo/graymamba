@@ -290,7 +290,7 @@ impl Application for DBExplorer {
     }
 
     fn theme(&self) -> Theme {
-        Theme::custom(String::from ("graymamba"), Palette {
+        Theme::custom(String::from ("yellowcat"), Palette {
             background: Self::hex_to_color("#010101"),  // Dark gray background
             text: Color::WHITE,
             primary: Self::hex_to_color("#202020"),     // Lighter gray for primary elements
