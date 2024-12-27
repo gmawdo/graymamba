@@ -110,18 +110,18 @@ impl DataStore for RocksDBDataStore {
         ];
 
         // Use hset_multiple instead of individual puts
-        let key = format!("{}:{}", hash_tag, mount_path);
+        let key = format!("{}{}", hash_tag, mount_path);
         self.hset_multiple(&key, &hash_fields).await?;
 
         // Set path to id mapping
-        let path_to_id_key = format!("{}:{}_path_to_id", hash_tag, path);
+        let path_to_id_key = format!("{}{}_path_to_id", hash_tag, path);
         self.db.put(
             format!("{}:{}", path_to_id_key, mount_path).as_bytes(),
             fileid_str.as_bytes()
         ).map_err(|_| DataStoreError::OperationFailed)?;
 
         // Set id to path mapping
-        let id_to_path_key = format!("{}:{}_id_to_path", hash_tag, path);
+        let id_to_path_key = format!("{}{}_id_to_path", hash_tag, path);
         self.db.put(
             format!("{}:{}", id_to_path_key, fileid_str).as_bytes(),
             mount_path.as_bytes()
@@ -129,7 +129,7 @@ impl DataStore for RocksDBDataStore {
 
         if fileid == 1 {
             self.db.put(
-                format!("{}:{}_next_fileid", hash_tag, path).as_bytes(),
+                format!("{}{}_next_fileid", hash_tag, path).as_bytes(),
                 b"1"
             ).map_err(|_| DataStoreError::OperationFailed)?;
         }
