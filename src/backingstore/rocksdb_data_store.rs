@@ -53,11 +53,11 @@ impl DataStore for RocksDBDataStore {
     }
 
     async fn init_user_directory(&self, mount_path: &str) -> Result<(), DataStoreError> {
-        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+        let (namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
         debug!("namespace_id: {:?}", namespace_id);
-        debug!("hash_tag: {:?}", hash_tag);
+        debug!("community: {:?}", community);
         let path = format!("/{}", namespace_id);
-        let key = format!("{}{}", hash_tag, mount_path);
+        let key = format!("{}{}", community, mount_path);
         debug!("===============rocksdb init_user_directory({})", key);       
 
         // Check if the directory already exists
@@ -70,12 +70,12 @@ impl DataStore for RocksDBDataStore {
         let permissions = 777;
         let score = if mount_path == "/" { 1.0 } else { 2.0 };
 
-        let nodes = format!("{}/{}_nodes", hash_tag, namespace_id);
+        let nodes = format!("{}/{}_nodes", community, namespace_id);
         debug!("===============rocksdb init_user_directory({}) nodes", nodes);
         let key_exists: bool = self.db.get(&nodes).map_err(|_| DataStoreError::OperationFailed)?.is_some();
         debug!("===============rocksdb init_user_directory({}) key_exists?", key_exists);
 
-        let next_fileid_key = format!("{}/{}_next_fileid", hash_tag, namespace_id);
+        let next_fileid_key = format!("{}/{}_next_fileid", community, namespace_id);
         let fileid = self.incr(&next_fileid_key).await?;
 
         let system_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
@@ -83,7 +83,7 @@ impl DataStore for RocksDBDataStore {
         let epoch_nseconds = system_time.subsec_nanos();
 
         // Add to sorted set (equivalent to Redis ZADD)
-        let nodes_key = format!("{}/{}_nodes:{}", hash_tag, namespace_id, mount_path);
+        let nodes_key = format!("{}/{}_nodes:{}", community, namespace_id, mount_path);
         self.db.put(nodes_key.as_bytes(), score.to_string().as_bytes())
             .map_err(|_| DataStoreError::OperationFailed)?;
 
@@ -110,18 +110,18 @@ impl DataStore for RocksDBDataStore {
         ];
 
         // Use hset_multiple instead of individual puts
-        let key = format!("{}{}", hash_tag, mount_path);
+        let key = format!("{}{}", community, mount_path);
         self.hset_multiple(&key, &hash_fields).await?;
 
         // Set path to id mapping
-        let path_to_id_key = format!("{}{}_path_to_id", hash_tag, path);
+        let path_to_id_key = format!("{}{}_path_to_id", community, path);
         self.db.put(
             format!("{}:{}", path_to_id_key, mount_path).as_bytes(),
             fileid_str.as_bytes()
         ).map_err(|_| DataStoreError::OperationFailed)?;
 
         // Set id to path mapping
-        let id_to_path_key = format!("{}{}_id_to_path", hash_tag, path);
+        let id_to_path_key = format!("{}{}_id_to_path", community, path);
         self.db.put(
             format!("{}:{}", id_to_path_key, fileid_str).as_bytes(),
             mount_path.as_bytes()
@@ -129,7 +129,7 @@ impl DataStore for RocksDBDataStore {
 
         if fileid == 1 {
             self.db.put(
-                format!("{}{}_next_fileid", hash_tag, path).as_bytes(),
+                format!("{}{}_next_fileid", community, path).as_bytes(),
                 b"1"
             ).map_err(|_| DataStoreError::OperationFailed)?;
         }
@@ -317,7 +317,7 @@ impl DataStore for RocksDBDataStore {
         let mut results = Vec::new();
         
         // The key format should match what we use in zadd
-        // In zadd we use: format!("{}/{}_nodes:{}", hash_tag, namespace_id, mount_path)
+        // In zadd we use: format!("{}/{}_nodes:{}", community, namespace_id, mount_path)
         let prefix = format!("{}", key);
 
         // Iterate over all entries with this prefix

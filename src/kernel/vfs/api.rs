@@ -232,8 +232,8 @@ pub trait NFSFileSystem: Sync {
     }
 
     async fn get_id_from_path(&self, path: &str, data_store: &dyn DataStore) -> Result<fileid3, nfsstat3> {
-        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
-        let key = format!("{}/{}_path_to_id", hash_tag, namespace_id);
+        let (namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
+        let key = format!("{}/{}_path_to_id", community, namespace_id);
     
         let id_str = data_store.hget(&key, path)
             .await
