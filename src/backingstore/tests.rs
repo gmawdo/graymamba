@@ -4,6 +4,8 @@ use crate::backingstore::rocksdb_data_store::RocksDBDataStore;
 use tempfile::tempdir;
 use graymamba::sharesfs::SharesFS;
 
+const TEST_NAMESPACE_ID: &str = "orangery";
+
 async fn setup_redis() -> RedisDataStore {
     RedisDataStore::new().expect("Failed to create Redis store")
 }
@@ -15,18 +17,16 @@ async fn setup_rocksdb() -> RocksDBDataStore {
 
 #[tokio::test]
 async fn test_init_user_directory_structure() {
-    let test_namespace_id = "graymamba";
-    //let redis = setup_redis().await;
     let rocks = setup_rocksdb().await;
     let stores: Vec<(&str, &dyn DataStore)> = vec![/*("redis", &redis),*/ ("rocks", &rocks)];
 
     for (name, store) in stores {
-        SharesFS::set_namespace_id_and_hashtag(test_namespace_id).await;
+        SharesFS::set_namespace_id_and_hashtag(TEST_NAMESPACE_ID).await;
         // Test 1: Initialize root directory
         store.init_user_directory("/").await.expect(&format!("{} root init failed", name));
 
         // Test 2: Verify root directory structure
-        let root_key = &format!("{{{}}}:/", test_namespace_id);
+        let root_key = &format!("{{{}}}:/", TEST_NAMESPACE_ID);
         let root_metadata = store.hgetall(root_key).await
             .expect(&format!("{} failed to get root metadata", name));
         
@@ -36,7 +36,7 @@ async fn test_init_user_directory_structure() {
             "{} root missing ftype", name);
 
         // Test 3: Check nodes structure
-        let nodes_key = "{graymamba}:/graymamba_nodes";
+        let nodes_key = &format!("{{{}}}:/{}_nodes", TEST_NAMESPACE_ID, TEST_NAMESPACE_ID);
         let nodes = store.zrange_withscores(nodes_key, 0, -1).await
             .expect(&format!("{} failed to get nodes", name));
         
@@ -48,7 +48,7 @@ async fn test_init_user_directory_structure() {
             .expect(&format!("{} subdir init failed", name));
 
         // Test 5: Verify subdirectory structure
-        let subdir_key = "{graymamba}:/test";
+        let subdir_key =  &format!("{{{}}}:/test", TEST_NAMESPACE_ID);
         let subdir_metadata = store.hgetall(subdir_key).await
             .expect(&format!("{} failed to get subdir metadata", name));
         
@@ -56,14 +56,14 @@ async fn test_init_user_directory_structure() {
             "{} subdir missing fileid", name);
 
         // Test 6: Check path_to_id mapping
-        let path_to_id_key = "{graymamba}:/graymamba_path_to_id";
+        let path_to_id_key = &format!("{{{}}}:/{}_path_to_id", TEST_NAMESPACE_ID, TEST_NAMESPACE_ID);
         let path_id = store.hget(path_to_id_key, "/test").await
             .expect(&format!("{} failed to get path_to_id", name));
         
         assert!(!path_id.is_empty(), "{} path_to_id should exist", name);
 
         // Test 7: Check id_to_path mapping
-        let id_to_path_key = "{graymamba}:/graymamba_id_to_path";
+        let id_to_path_key = &format!("{{{}}}:/{}_id_to_path", TEST_NAMESPACE_ID, TEST_NAMESPACE_ID);
         let id = store.hget(path_to_id_key, "/test").await
             .expect(&format!("{} failed to get id", name));
         let path = store.hget(id_to_path_key, &id).await
@@ -72,7 +72,7 @@ async fn test_init_user_directory_structure() {
         assert_eq!(path, "/test", "{} path mismatch in id_to_path", name);
 
         // Test 8: Verify next_fileid
-        let next_fileid_key = "{graymamba}:/graymamba_next_fileid";
+        let next_fileid_key = &format!("{{{}}}:/{}_next_fileid", TEST_NAMESPACE_ID, TEST_NAMESPACE_ID);
         let next_fileid = store.get(next_fileid_key).await
             .expect(&format!("{} failed to get next_fileid", name));
         
@@ -90,12 +90,12 @@ async fn test_directory_idempotency() {
         // Test 1: Initialize directory twice
         store.init_user_directory("/test2").await
             .expect(&format!("{} first init failed", name));
-        let first_id = store.hget("{graymamba}:/test2", "fileid").await
+        let first_id = store.hget(&format!("{{{}}}:/test2", TEST_NAMESPACE_ID), "fileid").await
             .expect(&format!("{} failed to get first fileid", name));
         
         store.init_user_directory("/test2").await
             .expect(&format!("{} second init failed", name));
-        let second_id = store.hget("{graymamba}:/test2", "fileid").await
+        let second_id = store.hget(&format!("{{{}}}:/test2", TEST_NAMESPACE_ID), "fileid").await
             .expect(&format!("{} failed to get second fileid", name));
         
         assert_eq!(first_id, second_id, 
