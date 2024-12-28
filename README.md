@@ -1,9 +1,15 @@
 # A Highly Secure Provenance Tracking Filesystem
 
-A secure filesystem that tracks the provenance of files and directories. Entirely written in Rust for memory safety and performance.
-Built with an NFS protocol layer loosely based on NFSServe, promoting ease of integration into existing systems and workflows.
-
-Can be utilised in both local and distributed environments, with the ability to scale out to multiple nodes. Also deployable to small Linux based IoT devices for secure capture and data transmission.
+- A secure filesystem that intrinsically tracks the provenance of files and directories.
+- Entirely written in Rust for memory safety and performance.
+- Built on an NFS protocol layer and very loosely seeded with [NFSServe](https://github.com/NetApp/nfsserve), promoting ease of integration into existing systems and workflows. We restructured the NFSServe core under our src/kernel.
+- Can be utilised in both local and distributed environments, with the ability to scale out to multiple nodes.
+- Deployable to Mac and Linux devices (Windows if you must)
+- Useful for secure capture and data transmission in the IoT space.
+- Useful for secure collaboration and data sharing in sensitive environments.
+- Can be used as a secure data store for AI models and data.
+- Can be used to underpin many aspects of a "Secure by Design" approach.
+- Can be backed by a variety of data stores, including RocksDB, Redis, and we'd like to add Cassandra in the future. We are really interested in the ability to use a distributed database for the backing store.
 
 ## Overview
 
