@@ -26,7 +26,7 @@ impl SharesFS {
         offset: u64,
         data: &[u8]
     ) -> Result<fattr3, nfsstat3> {
-        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+        let (_namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
         let path = self.get_path_from_id(id).await?;
 
         debug!("write: {:?}", path);
@@ -49,10 +49,10 @@ impl SharesFS {
         
         let total_size = channel.total_size();
         debug!("total_size: {:?}", total_size);
-        debug!("hash_tag: {:?}", hash_tag);
+        debug!("community: {:?}", community);
         debug!("path: {:?}", path);
         self.data_store.hset_multiple(
-            &format!("{}{}", hash_tag, path),
+            &format!("{}{}", community, path),
             &[
                 ("size",&total_size.to_string())
             ]
@@ -101,7 +101,7 @@ impl SharesFS {
 
         let _permit = self.commit_semaphore.acquire().await.map_err(|_| DataStoreError::OperationFailed);
 
-        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+        let (_namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
 
 
         let channel = {
@@ -136,10 +136,10 @@ impl SharesFS {
         match self.secret_sharing.disassemble(&base64_contents).await {
             Ok(shares) => {
                 // Attempt to write the shares to the data store
-                debug!("Writing shares to data store under key: {:?}", format!("{}{}", hash_tag, path));
+                debug!("Writing shares to data store under key: {:?}", format!("{}{}", community, path));
                 match self
                     .data_store
-                    .hset(&format!("{}{}", hash_tag, path), "data", &shares)
+                    .hset(&format!("{}{}", community, path), "data", &shares)
                     .await
                 {
                     Ok(_) => {
@@ -199,11 +199,11 @@ impl SharesFS {
         let system_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let epoch_seconds = system_time.as_secs();
         let epoch_nseconds = system_time.subsec_nanos();
-        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+        let (_namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
 
         debug!("Updating file metadata for path: {:?}", path);
 
-        let update_result = self.data_store.hset_multiple(&format!("{}{}", hash_tag, path),
+        let update_result = self.data_store.hset_multiple(&format!("{}{}", community, path),
             &[
                 ("change_time_secs", &epoch_seconds.to_string()),
                 ("change_time_nsecs", &epoch_nseconds.to_string()),
@@ -227,7 +227,7 @@ impl SharesFS {
 
         debug!("Checking if last write for id: {:?}", id);
 
-        let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+        let (_namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
 
         let path_result = self.get_path_from_id(id).await;
         let path: String = match path_result {
@@ -235,7 +235,7 @@ impl SharesFS {
             Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error
         };
 
-        let current_size_result = self.data_store.hget(&format!("{}{}", hash_tag, path), "size").await;
+        let current_size_result = self.data_store.hget(&format!("{}{}", community, path), "size").await;
         let current_size: u64 = match current_size_result {
             Ok(k) => k.parse::<u64>().map_err(|_| nfsstat3::NFS3ERR_IO)?,
             Err(_) => return Err(nfsstat3::NFS3ERR_IO),  // Replace with appropriate nfsstat3 error

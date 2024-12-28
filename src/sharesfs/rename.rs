@@ -10,17 +10,17 @@ use tracing::debug;
 use lazy_static::lazy_static;
 lazy_static! {
     pub static ref NAMESPACE_ID: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
-    pub static ref HASH_TAG: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
+    pub static ref COMMUNITY: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
 }
 
 impl SharesFS {
 
     pub async fn rename_helper(&self, from_dirid: fileid3, from_filename: &filename3, to_dirid: fileid3, to_filename: &filename3) -> Result<(), nfsstat3> {
         debug!("rename {:?} {:?} {:?} {:?}", from_dirid, from_filename, to_dirid, to_filename);
-        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+        let (namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
         
         let from_path: String = self.data_store.hget(
-            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
+            &format!("{}/{}_id_to_path", community, namespace_id),
             &from_dirid.to_string()
         ).await
             .map_err(|_| nfsstat3::NFS3ERR_IO)?;
@@ -37,7 +37,7 @@ impl SharesFS {
 
         // Check if the source file exists in the share store
         let from_exists: bool = match self.data_store.zscore(
-            &format!("{}/{}_nodes", hash_tag, namespace_id),
+            &format!("{}/{}_nodes", community, namespace_id),
             &new_from_path
         ).await {
             Ok(Some(_)) => true,
@@ -53,7 +53,7 @@ impl SharesFS {
         }
 
         let to_path: String = self.data_store.hget(
-            &format!("{}/{}_id_to_path", hash_tag, namespace_id),
+            &format!("{}/{}_id_to_path", community, namespace_id),
             &to_dirid.to_string()
         ).await
             .map_err(|_| nfsstat3::NFS3ERR_IO)?;

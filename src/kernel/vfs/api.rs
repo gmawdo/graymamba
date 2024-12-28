@@ -7,6 +7,8 @@ use std::time::SystemTime;
 
 use crate::backingstore::data_store::DataStore;
 
+use graymamba::sharesfs::SharesFS;
+use tracing::debug;
 #[derive(Default, Debug)]
 pub struct DirEntry {
     pub fileid: fileid3,
@@ -230,9 +232,8 @@ pub trait NFSFileSystem: Sync {
     }
 
     async fn get_id_from_path(&self, path: &str, data_store: &dyn DataStore) -> Result<fileid3, nfsstat3> {
-        let namespace_id = "graymamba".to_string();
-        let hash_tag = format!("{{{}}}", namespace_id);
-        let key = format!("{}:/{}_path_to_id", hash_tag, namespace_id);
+        let (namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
+        let key = format!("{}/{}_path_to_id", community, namespace_id);
     
         let id_str = data_store.hget(&key, path)
             .await

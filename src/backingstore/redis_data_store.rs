@@ -14,6 +14,8 @@ use r2d2_redis_cluster2::{r2d2, RedisClusterConnectionManager};
 use tracing::warn;
 use crate::backingstore::data_store::KeyType;
 
+use graymamba::sharesfs::SharesFS;
+
 pub fn get_redis_cluster_pool() -> Result<Pool<RedisClusterConnectionManager>, Box<dyn StdError>> {
     RedisClusterPool::get_redis_cluster_pool()
 }
@@ -190,9 +192,9 @@ impl DataStore for RedisDataStore {
 
     async fn init_user_directory(&self, mount_path: &str) -> Result<(), DataStoreError> {
         let mut conn = self.pool.get().map_err(|_| DataStoreError::ConnectionError)?;
-        let hash_tag = "{graymamba}";
-        let path = format!("/{}", "graymamba");
-        let key = format!("{}:{}", hash_tag, mount_path);
+        let (namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
+        let path = format!("/{}", namespace_id);
+        let key = format!("{}{}", community, mount_path);
         let exists_response: bool = conn.exists(&key).map_err(|_| DataStoreError::OperationFailed)?;
     
         if exists_response {
@@ -204,11 +206,11 @@ impl DataStore for RedisDataStore {
         let permissions = 777;
         let score = if mount_path == "/" { 1.0 } else { 2.0 };
     
-        let nodes = format!("{}:/{}_nodes", hash_tag, "graymamba");
+        let nodes = format!("{}/{}_nodes", community, namespace_id);
         let key_exists: bool = conn.exists(&nodes).map_err(|_| DataStoreError::OperationFailed)?;
     
         let fileid: u64 = if key_exists {
-            conn.incr(format!("{}:/{}_next_fileid", hash_tag, "graymamba"), 1)
+            conn.incr(format!("{}/{}_next_fileid", community, namespace_id), 1)
                 .map_err(|_| DataStoreError::OperationFailed)?
         } else {
             1
@@ -220,7 +222,7 @@ impl DataStore for RedisDataStore {
     
         // Instead of using pipeline, execute commands individually
         let _: () = conn.zadd(
-            format!("{}:/{}_nodes", hash_tag, "graymamba"),
+            format!("{}/{}_nodes", community, namespace_id),
             mount_path,
             score
         ).map_err(|_| DataStoreError::OperationFailed)?;
@@ -249,27 +251,27 @@ impl DataStore for RedisDataStore {
 
         // In the init_user_directory function, modify the hset_multiple call:
         let _: () = conn.hset_multiple(
-            format!("{}:{}", hash_tag, mount_path),
+            format!("{}{}", community, mount_path),
             &hash_fields
         ).map_err(|_| DataStoreError::OperationFailed)?;
     
         // Set path to id mapping
         let _: () = conn.hset(
-            format!("{}:{}_path_to_id", hash_tag, path),
+            format!("{}{}_path_to_id", community, path),
             mount_path,
             fileid
         ).map_err(|_| DataStoreError::OperationFailed)?;
     
         // Set id to path mapping
         let _: () = conn.hset(
-            format!("{}:{}_id_to_path", hash_tag, path),
+            format!("{}{}_id_to_path", community, path),
             fileid.to_string(),
             mount_path
         ).map_err(|_| DataStoreError::OperationFailed)?;
     
         if fileid == 1 {
             let _: () = conn.set(
-                format!("{}:{}_next_fileid", hash_tag, path),
+                format!("{}{}_next_fileid", community, path),
                 1
             ).map_err(|_| DataStoreError::OperationFailed)?;
         }

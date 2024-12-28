@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use graymamba::kernel::protocol::tcp::{NFSTcp, NFSTcpListener};
-use graymamba::sharesfs::{NAMESPACE_ID, HASH_TAG};
 use graymamba::sharesfs::SharesFS;
 
 #[cfg(feature = "irrefutable_audit")]
@@ -17,15 +16,6 @@ use std::io::Write;
 use tracing_subscriber::EnvFilter;
 
 const HOSTPORT: u32 = 2049;
-
-async fn set_namespace_id_and_hashtag() {
-    let mut namespace_id = NAMESPACE_ID.write().unwrap();
-    *namespace_id = "graymamba".to_string();
-
-    let mut hash_tag = HASH_TAG.write().unwrap();
-    hash_tag.clear(); // Clear the previous content
-    hash_tag.push_str(&format!("{{{}}}:", namespace_id));
-}
 
 #[tokio::main]
 async fn main() {
@@ -75,13 +65,12 @@ async fn main() {
         println!(" - irrefutable_audit");
     }
 
-    set_namespace_id_and_hashtag().await;
+    SharesFS::set_namespace_id_and_community(settings.get_str("storage.namespace_id").unwrap().as_str(), settings.get_str("storage.community").unwrap().as_str()).await;
     
     //use graymamba::backingstore::redis_data_store::RedisDataStore;
     //let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
     use graymamba::backingstore::rocksdb_data_store::RocksDBDataStore;
-    //let data_store = Arc::new(RocksDBDataStore::new("../RocksDBs/graymamba").expect("Failed to create a data store"));
     let data_store = Arc::new(RocksDBDataStore::new(
         settings.get_str("storage.rocksdb_path")
             .expect("Failed to get rocksdb_path from settings")

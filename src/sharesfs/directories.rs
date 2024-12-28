@@ -18,17 +18,17 @@ use std::os::unix::ffi::OsStrExt;
 use tracing::debug;
 impl SharesFS {
 pub async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Result<(), nfsstat3> { 
-    let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+    let (namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
     //Rename the metadata hashkey
     let _ = self.data_store.rename(
-        &format!("{}{}", hash_tag, from_path),
-        &format!("{}{}", hash_tag, to_path)
+        &format!("{}{}", community, from_path),
+        &format!("{}{}", community, to_path)
     ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
     //Rename entries in hashset
     debug!("rename_directory_file {:?} {:?}", from_path, to_path);
 
     // Create a pattern to match all keys under the old path
-    let pattern = format!("{}{}{}", hash_tag, from_path, "/*");
+    let pattern = format!("{}{}{}", community, from_path, "/*");
     
     // RETRIEVEall keys matching the pattern
     debug!("Retrieve all keys matching the pattern {:?}", pattern);
@@ -52,7 +52,7 @@ pub async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Res
         .map_err(|_| nfsstat3::NFS3ERR_IO);
     } 
     //Rename entries in sorted set (_nodes)
-    let key = format!("{}/{}_nodes", hash_tag, namespace_id);
+    let key = format!("{}/{}_nodes", community, namespace_id);
 
     // RETRIEVE all members of the sorted set with their scores
     debug!("Retrieve all members of the sorted set with their scores {:?}", key);
@@ -130,8 +130,8 @@ pub async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Res
         }
     }
     //Rename entries in path_to_id and id_to_path hash
-    let path_to_id_key = format!("{}/{}_path_to_id", hash_tag, namespace_id);
-    let id_to_path_key = format!("{}/{}_id_to_path", hash_tag, namespace_id);
+    let path_to_id_key = format!("{}/{}_path_to_id", community, namespace_id);
+    let id_to_path_key = format!("{}/{}_id_to_path", community, namespace_id);
 
     // Retrieve all the members of path_to_id hash
     debug!("Retrieve all the members of path_to_id hash for key {:?}", path_to_id_key);
@@ -208,7 +208,7 @@ pub async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Res
                 return Err(nfsstat3::NFS3ERR_IO);
             }
 
-            let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, to_path),
+            let _ = self.data_store.hset_multiple(&format!("{}{}", community, to_path),
                 &[
                     ("change_time_secs", &epoch_seconds.to_string()),
                     ("change_time_nsecs", &epoch_nseconds.to_string()),
@@ -267,7 +267,7 @@ pub async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Res
                     return Err(nfsstat3::NFS3ERR_IO);  // Replace with appropriate nfsstat3 error
                 }
 
-                let _ = self.data_store.hset_multiple(&format!("{}{}", hash_tag, new_directory_path),
+                let _ = self.data_store.hset_multiple(&format!("{}{}", community, new_directory_path),
                     &[
                         ("change_time_secs", &epoch_seconds.to_string()),
                         ("change_time_nsecs", &epoch_nseconds.to_string()),
@@ -287,16 +287,16 @@ pub async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Res
 
 pub async fn remove_directory_file(&self, path: &str) -> Result<(), nfsstat3> {
             
-    let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+    let (namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
     let pattern = format!("{}/*", path);
-    let sorted_set_key = format!("{}/{}_nodes", hash_tag, namespace_id);
+    let sorted_set_key = format!("{}/{}_nodes", community, namespace_id);
     let match_found = self.get_member_keys(&pattern, &sorted_set_key).await?;
     if match_found {
         return Err(nfsstat3::NFS3ERR_NOTEMPTY);
     }
     debug!("remove_directory_file {:?}", path);
     let dir_id = self.data_store.hget(
-        &format!("{}/{}_path_to_id", hash_tag, namespace_id),
+        &format!("{}/{}_path_to_id", community, namespace_id),
         path
     ).await;
     
@@ -306,29 +306,29 @@ pub async fn remove_directory_file(&self, path: &str) -> Result<(), nfsstat3> {
     };
     // Remove the directory         
     // Remove the node from the sorted set
-    debug!("Remove the node from the sorted set {:?}", format!("{}/{}_nodes", hash_tag, namespace_id));
+    debug!("Remove the node from the sorted set {:?}", format!("{}/{}_nodes", community, namespace_id));
     let _ = self.data_store.zrem(
-        &format!("{}/{}_nodes", hash_tag, namespace_id),
+        &format!("{}/{}_nodes", community, namespace_id),
         path
     ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
             
     // Delete the metadata hash associated with the node
-    debug!("Delete the metadata hash associated with the node {:?}", format!("{}{}", hash_tag, path));
-    let _ = self.data_store.delete(&format!("{}{}", hash_tag, path))
+    debug!("Delete the metadata hash associated with the node {:?}", format!("{}{}", community, path));
+    let _ = self.data_store.delete(&format!("{}{}", community, path))
         .await
         .map_err(|_| nfsstat3::NFS3ERR_IO);
          
     // Remove the directory from the path-to-id mapping
-    debug!("Remove the directory from the path-to-id mapping {:?}", format!("{}/{}_path_to_id", hash_tag, namespace_id));
+    debug!("Remove the directory from the path-to-id mapping {:?}", format!("{}/{}_path_to_id", community, namespace_id));
     let _ = self.data_store.hdel(
-        &format!("{}/{}_path_to_id", hash_tag, namespace_id),
+        &format!("{}/{}_path_to_id", community, namespace_id),
         path
     ).await.map_err(|_| nfsstat3::NFS3ERR_IO);
     
     // Remove the directory from the id-to-path mapping
-    debug!("Remove the directory from the id-to-path mapping {:?}", format!("{}/{}_id_to_path", hash_tag, namespace_id));
+    debug!("Remove the directory from the id-to-path mapping {:?}", format!("{}/{}_id_to_path", community, namespace_id));
     let _ = self.data_store.hdel(
-        &format!("{}/{}_id_to_path", hash_tag, namespace_id),
+        &format!("{}/{}_id_to_path", community, namespace_id),
         &value
     ).await.map_err(|_| nfsstat3::NFS3ERR_IO);             
      
@@ -337,8 +337,8 @@ pub async fn remove_directory_file(&self, path: &str) -> Result<(), nfsstat3> {
 }
 
     pub async fn handle_mkdir(&self, dirid: fileid3, dirname: &filename3) -> Result<(fileid3, fattr3), nfsstat3> {
-        let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
-        let key1 = format!("{}/{}_id_to_path", hash_tag, namespace_id);
+        let (namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
+        let key1 = format!("{}/{}_id_to_path", community, namespace_id);
 
         // Get parent directory path from the share store
         let parent_path: String = self.data_store.hget(
@@ -361,11 +361,11 @@ pub async fn remove_directory_file(&self, path: &str) -> Result<(), nfsstat3> {
 
         debug!("mkdir: {:?}", new_dir_path);
 
-        // let key2 = format!("{}/{}_path_to_id", hash_tag, namespace_id);
+        // let key2 = format!("{}/{}_path_to_id", community, namespace_id);
 
         // Check if directory already exists
         let exists: bool = match self.data_store.zscore(
-            &format!("{}/{}_nodes", hash_tag, namespace_id),
+            &format!("{}/{}_nodes", community, namespace_id),
             &new_dir_path
         ).await {
             Ok(Some(_)) => true,
@@ -381,7 +381,7 @@ pub async fn remove_directory_file(&self, path: &str) -> Result<(), nfsstat3> {
         }
 
         // Create new directory ID
-        let key = format!("{}/{}_next_fileid", hash_tag, namespace_id);
+        let key = format!("{}/{}_next_fileid", community, namespace_id);
     
         let new_dir_id: fileid3 = match self.data_store.incr(&key).await {
             Ok(id) => {

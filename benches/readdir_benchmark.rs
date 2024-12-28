@@ -16,11 +16,11 @@ lazy_static! {
 
 async fn setup_test_data(fs: &SharesFS, size: usize) -> Result<(), nfsstat3> {
     let root_id = 1u64;
-    let (_namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+    let (_namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
     
     // Create root directory with metadata
     fs.create_test_entry(0, "/", root_id).await?;
-    fs.data_store.hset_multiple(&format!("{}/", hash_tag), &[
+    fs.data_store.hset_multiple(&format!("{}/", community), &[
         ("type", "2"), ("mode", "0755"), ("nlink", "2"), ("uid", "0"), ("gid", "0"),
         ("size", "4096"), ("fileid", &root_id.to_string()), ("used", "4096"), ("rdev", "0"),
         ("access_time_secs", "0"), ("access_time_nsecs", "0"), ("modification_time_secs", "0"),
@@ -30,7 +30,7 @@ async fn setup_test_data(fs: &SharesFS, size: usize) -> Result<(), nfsstat3> {
     // Create test directory with metadata
     let test_dir_id = 2u64;
     fs.create_test_entry(root_id, "/test_dir", test_dir_id).await?;
-    fs.data_store.hset_multiple(&format!("{}/test_dir", hash_tag), &[
+    fs.data_store.hset_multiple(&format!("{}/test_dir", community), &[
         ("type", "2"), ("mode", "0755"), ("nlink", "2"), ("uid", "0"), ("gid", "0"),
         ("size", "4096"), ("fileid", &test_dir_id.to_string()), ("used", "4096"), ("rdev", "0"),
         ("access_time_secs", "0"), ("access_time_nsecs", "0"), ("modification_time_secs", "0"),
@@ -42,7 +42,7 @@ async fn setup_test_data(fs: &SharesFS, size: usize) -> Result<(), nfsstat3> {
         let file_id = (i + 3) as u64;
         let path = format!("/test_dir/file_{}", i);
         fs.create_test_entry(test_dir_id, &path, file_id).await?;
-        fs.data_store.hset_multiple(&format!("{}{}", hash_tag, path), &[
+        fs.data_store.hset_multiple(&format!("{}{}", community, path), &[
             ("type", "1"), ("mode", "0644"), ("nlink", "1"), ("uid", "0"), ("gid", "0"),
             ("size", "0"), ("fileid", &file_id.to_string()), ("used", "0"), ("rdev", "0"),
             ("access_time_secs", "0"), ("access_time_nsecs", "0"), ("modification_time_secs", "0"),
@@ -54,18 +54,18 @@ async fn setup_test_data(fs: &SharesFS, size: usize) -> Result<(), nfsstat3> {
 
 #[allow(dead_code)]
 async fn print_fs_structure(fs: &SharesFS) -> Result<(), nfsstat3> {
-    let (namespace_id, hash_tag) = SharesFS::get_namespace_id_and_hash_tag().await;
+    let (namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
     
     println!("\nFilesystem Structure:");
     println!("--------------------");
     
     // Get all nodes from the data store
-    let nodes_key = format!("{}/{}_nodes", hash_tag, namespace_id);
+    let nodes_key = format!("{}/{}_nodes", community, namespace_id);
     let _nodes = fs.data_store.zscan_match(&nodes_key, "").await
         .map_err(|_| nfsstat3::NFS3ERR_IO)?;
     
     // Get all path mappings
-    let path_key = format!("{}/{}_id_to_path", hash_tag, namespace_id);
+    let path_key = format!("{}/{}_id_to_path", community, namespace_id);
     let mappings = fs.data_store.hgetall(&path_key).await
         .map_err(|_| nfsstat3::NFS3ERR_IO)?;
     
