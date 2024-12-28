@@ -46,6 +46,60 @@ RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice
 - `qrocks`: A tool for querying the RocksDB database as there seems not to be one in wide circulation
 - `data-room`: An experimental tool for providing a data sandbox for file sharing and collaboration in sensitive environments.
 
+
+## Logging and Tracing
+
+The project uses a sophisticated logging system based on `tracing` and `tracing_subscriber` that provides structured, contextual logging with runtime configuration.
+
+### Configuration
+- **Primary**: `config/settings.toml` for base configuration
+- **Secondary**: Environment variables for runtime overrides
+- **Default Level**: "warn" if not explicitly configured
+
+### Example Configuration
+
+toml
+[logging]
+level = "info" # Base logging level
+module_filter = [
+    "graymamba::sharesfs::channel_buffer=debug",
+    "graymamba::sharesfs::writing=debug",
+    "graymamba::sharesfs::directories=debug",
+    "graymamba::sharesfs::rename=debug",
+    #"graymamba::kernel=debug",
+    "graymamba::kernel::vfs::api=debug",
+    #"data_room=debug",
+    "graymamba::backingstore::rocksdb_data_store=debug"
+    ]
+
+### Features
+- **Structured Logging**: Maintains context across async boundaries
+- **Zero-Cost Abstractions**: Disabled log levels have no runtime overhead
+- **Flexible Output**: 
+  - Log level
+  - Source file and line numbers
+  - Compact formatting
+  - Writes to stderr for container compatibility
+- **Runtime Filtering**: Adjust log levels without recompilation
+- **Module-Level Control**: Fine-grained logging for different components
+
+### Usage in Code
+rust
+// Examples of usage in our code
+tracing::info!("Operation started");
+tracing::debug!("Detailed info: {:?}", data);
+tracing::error!("Error occurred: {}", error);
+
+
+### Architecture
+Uses the Observer pattern through subscribers and layers:
+1. Application code emits events
+2. Events pass through configurable filters
+3. Subscribers process and format events
+4. Output is written to configured destination (stderr)
+
+This approach provides robust logging suitable for both development and production environments, with the flexibility to adapt to different deployment scenarios.
+
 ## Useful references
 
 ### Configure a Redis Cluster:
