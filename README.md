@@ -2,6 +2,7 @@
 
 - A secure filesystem that intrinsically tracks the provenance of files and directories.
 - Entirely written in Rust for memory safety and performance.
+- Supporting "Secure by Design" approach as articulated by gov [CISA Secure by Design](https://www.cisa.gov/securebydesign) and with reference to aspects of the SSDF by [NIST SP 800-218](https://csrc.nist.gov/publications/detail/sp/800-218/final) extending to principles of "capabilities" and memory safety as per [Cheri](https://cheri-alliance.org)
 - Built on an NFS protocol layer and very loosely seeded with [NFSServe](https://github.com/NetApp/nfsserve), promoting ease of integration into existing systems and workflows. We restructured the NFSServe core under our src/kernel.
 - Can be utilised in both local and distributed environments, with the ability to scale out to multiple nodes.
 - Deployable to Mac and Linux devices (Windows if you must)
