@@ -65,13 +65,14 @@ pub struct SharesFS {
 }
 
 impl SharesFS {
-    pub async fn set_namespace_id_and_hashtag(namespace: &str) {
+    pub async fn set_namespace_id_and_community(namespace: &str, pcommunity: &str) {
         let mut namespace_id = NAMESPACE_ID.write().unwrap();
         *namespace_id = namespace.to_string();
 
         let mut community = COMMUNITY.write().unwrap();
         community.clear(); // Clear the previous content
-        community.push_str(&format!("{{{}}}:", namespace_id));
+        community.push_str(&format!("{{{}}}:", pcommunity.to_string()));
+        println!("community: {:?}", community);
     }
     
     pub async fn get_namespace_id_and_community() -> (String, String) {

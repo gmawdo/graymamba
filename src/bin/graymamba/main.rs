@@ -65,7 +65,7 @@ async fn main() {
         println!(" - irrefutable_audit");
     }
 
-    SharesFS::set_namespace_id_and_hashtag(settings.get_str("storage.namespace_id").unwrap().as_str()).await;
+    SharesFS::set_namespace_id_and_community(settings.get_str("storage.namespace_id").unwrap().as_str(), settings.get_str("storage.community").unwrap().as_str()).await;
     
     //use graymamba::backingstore::redis_data_store::RedisDataStore;
     //let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));

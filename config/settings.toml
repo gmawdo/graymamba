@@ -40,7 +40,7 @@ module_filter = [
 [storage]
 rocksdb_path = "../RocksDBs/graymamba"
 auditdb_path = "../RocksDBs/audit_merkle_db"
-namespace_id = "graymamba"
-
+namespace_id = "aqautics"
+community = "zoo"
 [nfs]
 data_room_address = "127.0.0.1:2049"
