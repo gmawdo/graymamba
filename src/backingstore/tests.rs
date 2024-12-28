@@ -2,6 +2,7 @@ use crate::backingstore::data_store::DataStore;
 use crate::backingstore::redis_data_store::RedisDataStore;
 use crate::backingstore::rocksdb_data_store::RocksDBDataStore;
 use tempfile::tempdir;
+use graymamba::sharesfs::SharesFS;
 
 async fn setup_redis() -> RedisDataStore {
     RedisDataStore::new().expect("Failed to create Redis store")
@@ -14,16 +15,18 @@ async fn setup_rocksdb() -> RocksDBDataStore {
 
 #[tokio::test]
 async fn test_init_user_directory_structure() {
+    let test_namespace_id = "graymamba";
     //let redis = setup_redis().await;
     let rocks = setup_rocksdb().await;
     let stores: Vec<(&str, &dyn DataStore)> = vec![/*("redis", &redis),*/ ("rocks", &rocks)];
 
     for (name, store) in stores {
+        SharesFS::set_namespace_id_and_hashtag(test_namespace_id).await;
         // Test 1: Initialize root directory
         store.init_user_directory("/").await.expect(&format!("{} root init failed", name));
 
         // Test 2: Verify root directory structure
-        let root_key = "{graymamba}:/";
+        let root_key = &format!("{{{}}}:/", test_namespace_id);
         let root_metadata = store.hgetall(root_key).await
             .expect(&format!("{} failed to get root metadata", name));
         
