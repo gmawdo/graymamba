@@ -20,8 +20,8 @@
 
 ### Features (determines what is built into the binary)
 
-- Mandatory Backing Store, choose one of [ `rocksdb` | `redis` ]: Enables RocksDB or Redis as backing store for data shares (one of the two options must be chosen)
-- Mandatory irrefutable_audit, choose one of [ `merkle_audit` | `az_audit` ]: Enables irrefutable audit logs for files and directories. Merkle audit writes to a merkle tree in a RocksDB, AZ_Audit writes to ALeph Zero custom blockchain.
+- Mandatory Backing Store, choose one of [ `rocksdb_store` | `redis_store` ]: Enables RocksDB or Redis as backing store for data shares (one of the two options must be chosen)
+- Mandatory irrefutable_audit, choose one of [ `merkle_audit` | `az_audit` ]: Enables irrefutable audit logs for files and directories. Merkle audit writes to a merkle tree in a RocksDB, AZ audit writes to Aleph Zero custom blockchain.
 - Optional `compressed_store`: Enables compressed shares (if not specified then works uncompresed with reduced performance but greater traceability
 
 RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice, then it will need to be installed and running on the machine.
@@ -30,8 +30,8 @@ RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice
 
  - `To run or test the filesystem`: 🚀
 
-       cargo build --bin graymamba --features="merkle_audit,compressed_store,rocksdb" --release
-       cargo run --bin graymamba --features="merkle_audit,compressed_store,rocksdb" --release
+       cargo build --bin graymamba --features="merkle_audit,compressed_store,rocksdb_store" --release
+       cargo run --bin graymamba --features="merkle_audit,compressed_store,rocksdb_store" --release
        cargo test --features merkle_audit -- --nocapture
    
  - `To build and run the audit_reader, qrocks, and data-room` (see below for more details on these binaries): 🚀

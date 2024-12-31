@@ -111,6 +111,8 @@ strict = []
 compressed_store = []
 merkle_audit = []
 az_audit = []
+redis_store = []
+rocksdb_store = []
 
 [[bin]]
 name = "graymamba"

@@ -63,16 +63,28 @@ async fn main() {
     println!("Enabled features:");
 
     SharesFS::set_namespace_id_and_community(settings.get_str("storage.namespace_id").unwrap().as_str(), settings.get_str("storage.community").unwrap().as_str()).await;
-    
-    //use graymamba::backingstore::redis_data_store::RedisDataStore;
-    //let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
-    use graymamba::backingstore::rocksdb_data_store::RocksDBDataStore;
-    let data_store = Arc::new(RocksDBDataStore::new(
-        settings.get_str("storage.rocksdb_path")
-            .expect("Failed to get rocksdb_path from settings")
-            .as_str()
-    ).expect("Failed to create a data store"));
+    let data_store = {
+        #[cfg(feature = "redis_store")]
+        {
+            use graymamba::backingstore::redis_data_store::RedisDataStore;
+            Arc::new(RedisDataStore::new()
+                .expect("Failed to create Redis data store"))
+        }
+
+        #[cfg(feature = "rocksdb_store")]
+        {
+            use graymamba::backingstore::rocksdb_data_store::RocksDBDataStore;
+            Arc::new(RocksDBDataStore::new(
+                settings.get_str("storage.rocksdb_path")
+                    .expect("Failed to get rocksdb_path from settings")
+                    .as_str()
+            ).expect("Failed to create RocksDB data store"))
+        }
+
+        #[cfg(not(any(feature = "redis_store", feature = "rocksdb_store")))]
+        compile_error!("Either 'redis_store' or 'rocksdb_store' feature must be enabled");
+    };
     
 
     let audit_system: Arc<dyn IrrefutableAudit> = {
