@@ -108,8 +108,9 @@ intaglio = { version = "1.6", optional = true }
 [features]
 strict = []
 #traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
-irrefutable_audit = []
 compressed_store = []
+merkle_audit = []
+az_audit = []
 
 [[bin]]
 name = "graymamba"

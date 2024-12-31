@@ -21,7 +21,7 @@
 ### Features (determines what is built into the binary)
 
 - Mandatory Backing Store, choose one of [ `rocksdb` | `redis` ]: Enables RocksDB or Redis as backing store for data shares (one of the two options must be chosen)
-- Optional `irrefutable_audit`: Enables irrefutable audit logs for files and directories. (if not specified then no audit logs are created)
+- Mandatory irrefutable_audit, choose one of [ `merkle_audit` | `az_audit` ]: Enables irrefutable audit logs for files and directories. Merkle audit writes to a merkle tree in a RocksDB, AZ_Audit writes to ALeph Zero custom blockchain.
 - Optional `compressed_store`: Enables compressed shares (if not specified then works uncompresed with reduced performance but greater traceability
 
 RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice, then it will need to be installed and running on the machine.
@@ -30,23 +30,23 @@ RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice
 
  - `To run or test the filesystem`: 🚀
 
-       cargo build --bin graymamba --features="irrefutable_audit,compressed_store,rocksdb" --release
-       cargo run --bin graymamba --features="irrefutable_audit,compressed_store,rocksdb" --release
-       cargo test --features irrefutable_audit -- --nocapture
+       cargo build --bin graymamba --features="merkle_audit,compressed_store,rocksdb" --release
+       cargo run --bin graymamba --features="merkle_audit,compressed_store,rocksdb" --release
+       cargo test --features merkle_audit -- --nocapture
    
  - `To build and run the audit_reader, qrocks, and data-room` (see below for more details on these binaries): 🚀
 
-       cargo run --bin audit_reader --features="irrefutable_audit" --release
-       cargo run --bin qrocks --features="irrefutable_audit" --release
-       cargo run --bin data-room --features="irrefutable_audit" --release
+       cargo run --bin audit_reader --release (this is only for use with the merkle audit option currently)
+       cargo run --bin qrocks --release
+       cargo run --bin data-room --release
 
  - `To run the Linter` : 🚀
    
-       cargo clippy --features="irrefutable_audit,compressed_store"
+       cargo clippy --features="merkle_audit,compressed_store"
 
 - `To run bench marking` : 🚀
    
-       cargo bench --features="irrefutable_audit,compressed_store"
+       cargo bench --features="merkle_audit,compressed_store"
 
 
 ## Explanation of the project's binaries and their purpose
