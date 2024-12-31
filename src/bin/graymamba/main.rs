@@ -2,12 +2,12 @@ use std::sync::Arc;
 use graymamba::kernel::protocol::tcp::{NFSTcp, NFSTcpListener};
 use graymamba::sharesfs::SharesFS;
 
-#[cfg(feature = "irrefutable_audit")]
+use graymamba::audit_adapters::irrefutable_audit::IrrefutableAudit;
+#[cfg(feature = "merkle_audit")]
 use graymamba::audit_adapters::merkle_audit::MerkleBasedAuditSystem;
-//use graymamba::audit_adapters::audit_system::AuditSystem; //simple template example
-//use graymamba::audit_adapters::substrate_audit::SubstrateAuditSystem; //code rescued with aleph-zero prototype but not compiled and tested
-#[cfg(feature = "irrefutable_audit")]
-use graymamba::audit_adapters::irrefutable_audit::IrrefutableAudit; 
+
+#[cfg(feature = "az_audit")]
+use graymamba::audit_adapters::substrate_audit::SubstrateAuditSystem;
 
 use config::{Config, File as ConfigFile};
 
@@ -61,38 +61,64 @@ async fn main() {
 
     // Print enabled features
     println!("Enabled features:");
-    if cfg!(feature = "irrefutable_audit") {
-        println!(" - irrefutable_audit");
-    }
 
     SharesFS::set_namespace_id_and_community(settings.get_str("storage.namespace_id").unwrap().as_str(), settings.get_str("storage.community").unwrap().as_str()).await;
-    
-    //use graymamba::backingstore::redis_data_store::RedisDataStore;
-    //let data_store = Arc::new(RedisDataStore::new().expect("Failed to create a data store"));
 
-    use graymamba::backingstore::rocksdb_data_store::RocksDBDataStore;
-    let data_store = Arc::new(RocksDBDataStore::new(
-        settings.get_str("storage.rocksdb_path")
-            .expect("Failed to get rocksdb_path from settings")
-            .as_str()
-    ).expect("Failed to create a data store"));
-    
-
-    #[cfg(feature = "irrefutable_audit")]
-    let audit_system =    match MerkleBasedAuditSystem::new().await {
-        Ok(audit) => {
-            println!("✅ Irrefutable audit initialisation successful");
-            Some(Arc::new(audit) as Arc<dyn IrrefutableAudit>)
-        },
-
-        Err(e) => {
-            eprintln!("❌ Fatal Error: {}", e);
-            std::process::exit(1);
+    let data_store = {
+        #[cfg(feature = "redis_store")]
+        {
+            use graymamba::backingstore::redis_data_store::RedisDataStore;
+            Arc::new(RedisDataStore::new()
+                .expect("Failed to create Redis data store"))
         }
-    };
 
-    #[cfg(not(feature = "irrefutable_audit"))]
-    let audit_system = None;
+        #[cfg(feature = "rocksdb_store")]
+        {
+            use graymamba::backingstore::rocksdb_data_store::RocksDBDataStore;
+            Arc::new(RocksDBDataStore::new(
+                settings.get_str("storage.rocksdb_path")
+                    .expect("Failed to get rocksdb_path from settings")
+                    .as_str()
+            ).expect("Failed to create RocksDB data store"))
+        }
+
+        #[cfg(not(any(feature = "redis_store", feature = "rocksdb_store")))]
+        compile_error!("Either 'redis_store' or 'rocksdb_store' feature must be enabled");
+    };
+    
+
+    let audit_system: Arc<dyn IrrefutableAudit> = {
+        #[cfg(feature = "merkle_audit")]
+        {
+            match MerkleBasedAuditSystem::new().await {
+                Ok(audit) => {
+                    println!("✅ Merkle-based audit initialization successful");
+                    Arc::new(audit)
+                },
+                Err(e) => {
+                    eprintln!("❌ Fatal Error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        
+        #[cfg(feature = "az_audit")]
+        {
+            match SubstrateAuditSystem::new().await {
+                Ok(audit) => {
+                    println!("✅ Aleph Zero audit initialization successful");
+                    Arc::new(audit)
+                },
+                Err(e) => {
+                    eprintln!("❌ Fatal Error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        
+        #[cfg(not(any(feature = "merkle_audit", feature = "az_audit")))]
+        compile_error!("Either 'merkle_audit' or 'az_audit' feature must be enabled");
+    };
 
     let shares_fs = SharesFS::new(data_store, audit_system.clone());
     let shares_fs_clone = shares_fs.clone();
@@ -122,10 +148,7 @@ async fn main() {
     }
 
     // Perform cleanup
-    #[cfg(feature = "irrefutable_audit")]
-    if let Some(audit) = audit_system {
-        std::io::stdout().flush().unwrap();
-        audit.shutdown().unwrap();
-    }
+    std::io::stdout().flush().unwrap();
+    audit_system.shutdown().unwrap();
 }
 

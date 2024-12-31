@@ -3,10 +3,10 @@ use tokio::time::Instant;
 use tracing::{debug, warn};
 
 use crate::kernel::api::nfs::{fattr3, fileid3, nfsstat3};
-#[cfg(feature = "irrefutable_audit")]
+
 use crate::audit_adapters::irrefutable_audit::AuditEvent;
-#[cfg(feature = "irrefutable_audit")]
 use crate::audit_adapters::irrefutable_audit::event_types::DISASSEMBLED;
+
 use crate::graymamba::file_metadata::FileMetadata;
 use super::{SharesFS, ActiveWrite};
 
@@ -78,17 +78,15 @@ impl SharesFS {
             user = parts[1];
         }
 
-        if let Some(irrefutable_audit) = &self.irrefutable_audit {
-            debug!("Triggering disassembled event");
-            let event = AuditEvent {
-                creation_time: creation_time.clone(),
-                event_type: DISASSEMBLED.to_string(),
-                file_path: path.clone(),
-                event_key: user.to_string(),
-            };
-            if let Err(e) = irrefutable_audit.trigger_event(event).await {
-                warn!("Failed to trigger audit event: {}", e);
-            }
+        debug!("Triggering disassembled event");
+        let event = AuditEvent {
+            creation_time: creation_time.clone(),
+            event_type: DISASSEMBLED.to_string(),
+            file_path: path.clone(),
+            event_key: user.to_string(),
+        };
+        if let Err(e) = self.irrefutable_audit.trigger_event(event).await {
+            warn!("Failed to trigger audit event: {}", e);
         }
     
         let metadata = self.get_metadata_from_id(id).await?;

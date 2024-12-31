@@ -8,7 +8,7 @@ use std::time::SystemTime;
 use crate::backingstore::data_store::DataStore;
 
 use graymamba::sharesfs::SharesFS;
-use tracing::debug;
+
 #[derive(Default, Debug)]
 pub struct DirEntry {
     pub fileid: fileid3,

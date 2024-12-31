@@ -14,5 +14,5 @@ pub mod secret_sharing;
 pub mod backingstore;
 
 pub mod nfsclient;
-#[cfg(feature = "irrefutable_audit")]
+
 pub mod audit_adapters;

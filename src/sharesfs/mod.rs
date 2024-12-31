@@ -49,15 +49,13 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::secret_sharing::SecretSharingService;
 
-#[cfg(feature = "irrefutable_audit")]
 use crate::audit_adapters::irrefutable_audit::{AuditEvent, IrrefutableAudit};
-#[cfg(feature = "irrefutable_audit")]
 use crate::audit_adapters::irrefutable_audit::event_types::{REASSEMBLED};
 
 #[derive(Clone)]
 pub struct SharesFS {
     pub data_store: Arc<dyn DataStore>,
-    pub irrefutable_audit: Option<Arc<dyn IrrefutableAudit>>, // Add NFSModule wrapped in Arc
+    pub irrefutable_audit: Arc<dyn IrrefutableAudit>, // Add NFSModule wrapped in Arc
     pub active_writes: Arc<Mutex<HashMap<fileid3, ActiveWrite>>>,
     pub commit_semaphore: Arc<Semaphore>,
     pub secret_sharing: Arc<SecretSharingService>,
@@ -109,7 +107,7 @@ impl SharesFS {
         Ok(())
     }
 
-    pub fn new(data_store: Arc<dyn DataStore>, irrefutable_audit: Option<Arc<dyn IrrefutableAudit>>) -> SharesFS {
+    pub fn new(data_store: Arc<dyn DataStore>, irrefutable_audit: Arc<dyn IrrefutableAudit>) -> SharesFS {
         let active_writes = Arc::new(Mutex::new(HashMap::new()));
         let commit_semaphore = Arc::new(Semaphore::new(10));
         let secret_sharing = Arc::new(SecretSharingService::new().expect("Failed to initialize SecretSharingService"));
@@ -567,16 +565,15 @@ impl NFSFileSystem for SharesFS {
             user = parts[1];
         }
     
-        if let Some(irrefutable_audit) = &self.irrefutable_audit {
-            let event = AuditEvent {
-                creation_time: creation_time.clone(),
-                event_type: REASSEMBLED.to_string(),
-                file_path: path.clone(),
-                event_key: user.to_string(),
-            };
-            if let Err(e) = irrefutable_audit.trigger_event(event).await {
-                warn!("Failed to trigger audit event: {}", e);
-            }
+        debug!("Triggering disassembled event");
+        let event = AuditEvent {
+            creation_time: creation_time.clone(),
+            event_type: REASSEMBLED.to_string(),
+            file_path: path.clone(),
+            event_key: user.to_string(),
+        };
+        if let Err(e) = self.irrefutable_audit.trigger_event(event).await {
+            warn!("Failed to trigger audit event: {}", e);
         }
     
         Ok((data_slice.to_vec(), eof))

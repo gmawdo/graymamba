@@ -25,7 +25,6 @@ use std::collections::HashMap;
 
 use config::{Config, File as ConfigFile};
 
-#[cfg(feature = "irrefutable_audit")]
 use graymamba::audit_adapters::merkle_tree::MerkleNode;
 use graymamba::audit_adapters::irrefutable_audit::AuditEvent;
 
