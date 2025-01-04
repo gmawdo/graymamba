@@ -10,7 +10,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
-use crate::kernel::metrics::*;
+#[cfg(feature = "metrics")]
+use graymamba::kernel::metrics::*;
 
 /// A NFS Tcp Connection Handler
 pub struct NFSTcpListener<T: NFSFileSystem + Send + Sync + 'static> {
@@ -197,9 +198,11 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
         loop {
             let (socket, addr) = self.listener.accept().await?;
             
-            // Increment connection metrics
-            ACTIVE_CONNECTIONS.inc();
-            TOTAL_CONNECTIONS.inc();
+            #[cfg(feature = "metrics")]
+            {
+                ACTIVE_CONNECTIONS.inc();
+                TOTAL_CONNECTIONS.inc();
+            }
             
             info!("Accepting socket from {:?}", addr);
             
@@ -215,7 +218,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
             
             tokio::spawn(async move {
                 let result = process_socket(socket, context).await;
-                // Decrement active connections when done
+                #[cfg(feature = "metrics")]
                 ACTIVE_CONNECTIONS.dec();
                 result
             });

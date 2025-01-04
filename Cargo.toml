@@ -105,9 +105,8 @@ url = "2.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter","std","tracing-log"] }
 intaglio = { version = "1.6", optional = true }
 
-prometheus = "0.13"
-
-hyper = { version = "0.14", features = ["full"] }
+prometheus = { version = "0.13", optional = true }
+hyper = { version = "0.14", features = ["full"], optional = true }
 tokio-util = { version = "0.7", features = ["full"] }
 http-body-util = "0.1"
 
@@ -120,6 +119,7 @@ merkle_audit = []
 az_audit = []
 redis_store = []
 rocksdb_store = []
+metrics = ["prometheus", "hyper"]
 
 [[bin]]
 name = "graymamba"

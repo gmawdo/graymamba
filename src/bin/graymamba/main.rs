@@ -14,8 +14,11 @@ use config::{Config, File as ConfigFile};
 use tokio::signal;
 use std::io::Write;
 use tracing_subscriber::EnvFilter;
+#[cfg(feature = "metrics")]
 use hyper::{Body, Response, Server, Request, Method, StatusCode};
+#[cfg(feature = "metrics")]
 use hyper::service::{make_service_fn, service_fn};
+#[cfg(feature = "metrics")]
 use prometheus::{Encoder, TextEncoder};
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -25,6 +28,7 @@ use tracing::{info, error};
 
 const HOSTPORT: u32 = 2049;
 
+#[cfg(feature = "metrics")]
 async fn metrics_handler(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     info!("Received metrics request: {} {}", req.method(), req.uri().path());
     
@@ -56,6 +60,30 @@ async fn metrics_handler(req: Request<Body>) -> Result<Response<Body>, Infallibl
                 .unwrap())
         }
     }
+}
+
+#[cfg(feature = "metrics")]
+async fn start_metrics_server() -> tokio::task::JoinHandle<()> {
+    use hyper::{Body, Request, Response, Server};
+    use hyper::service::{make_service_fn, service_fn};
+    use std::convert::Infallible;
+    use std::net::SocketAddr;
+
+    let metrics_addr = SocketAddr::from(([0, 0, 0, 0], 9091));
+    println!("Starting metrics server on {}", metrics_addr);
+    
+    let metrics_service = make_service_fn(|_conn| async {
+        Ok::<_, Infallible>(service_fn(metrics_handler))
+    });
+
+    let metrics_server = Server::bind(&metrics_addr).serve(metrics_service);
+    tokio::spawn(async move {
+        info!("Metrics server is now listening on http://{}", metrics_addr);
+        if let Err(e) = metrics_server.await {
+            error!("Metrics server error: {}", e);
+        }
+        info!("Metrics server stopped");
+    })
 }
 
 #[tokio::main]
@@ -170,25 +198,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("🚀 graymamba launched");
     
-    // Initialize metrics before starting the server
-    metrics::init();
-    
-    // Start metrics server
-    let metrics_addr = SocketAddr::from(([0, 0, 0, 0], 9091));
-    println!("Starting metrics server on {}", metrics_addr);
-    
-    let metrics_service = make_service_fn(|_conn| async {
-        Ok::<_, Infallible>(service_fn(metrics_handler))
-    });
-
-    let metrics_server = Server::bind(&metrics_addr).serve(metrics_service);
-    let metrics_handle = tokio::spawn(async move {
-        info!("Metrics server is now listening on http://{}", metrics_addr);
-        if let Err(e) = metrics_server.await {
-            error!("Metrics server error: {}", e);
-        }
-        info!("Metrics server stopped");
-    });
+    #[cfg(feature = "metrics")]
+    let metrics_handle = {
+        metrics::init();
+        start_metrics_server().await
+    };
 
     // Start NFS server
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), shares_fs)
@@ -208,8 +222,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             audit_system.shutdown().unwrap();
             
             // Abort both server tasks
-            metrics_handle.abort();
             nfs_handle.abort();
+            #[cfg(feature = "metrics")]
+            metrics_handle.abort();
             
             std::io::stdout().flush().unwrap();
         }
