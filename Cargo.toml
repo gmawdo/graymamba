@@ -105,9 +105,16 @@ url = "2.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter","std","tracing-log"] }
 intaglio = { version = "1.6", optional = true }
 
+prometheus = "0.13"
+
+hyper = { version = "0.14", features = ["full"] }
+tokio-util = { version = "0.7", features = ["full"] }
+http-body-util = "0.1"
+
 [features]
 strict = []
 #traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
+default = ["merkle_audit","rocksdb_store","compressed_store"]  
 compressed_store = []
 merkle_audit = []
 az_audit = []

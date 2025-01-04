@@ -14,11 +14,53 @@ use config::{Config, File as ConfigFile};
 use tokio::signal;
 use std::io::Write;
 use tracing_subscriber::EnvFilter;
+use hyper::{Body, Response, Server, Request, Method, StatusCode};
+use hyper::service::{make_service_fn, service_fn};
+use prometheus::{Encoder, TextEncoder};
+use std::convert::Infallible;
+use std::net::SocketAddr;
+
+use graymamba::kernel::metrics;
+use tracing::{info, error};
 
 const HOSTPORT: u32 = 2049;
 
+async fn metrics_handler(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    info!("Received metrics request: {} {}", req.method(), req.uri().path());
+    
+    match (req.method(), req.uri().path()) {
+        (&Method::GET, "/metrics") => {
+            let encoder = TextEncoder::new();
+            let mut buffer = vec![];
+            let metric_families = metrics::REGISTRY.gather();
+            info!("Number of metric families: {}", metric_families.len());
+            encoder.encode(&metric_families, &mut buffer).unwrap();
+            
+            Ok(Response::builder()
+                .header("Content-Type", encoder.format_type())
+                .body(Body::from(buffer))
+                .unwrap())
+        }
+        (&Method::GET, "/health") => {
+            info!("Health check requested");
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .body(Body::from("OK"))
+                .unwrap())
+        }
+        _ => {
+            info!("Not found: {} {}", req.method(), req.uri().path());
+            Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("Not Found"))
+                .unwrap())
+        }
+    }
+}
+
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize logging first
     // Load settings but skip logging config since we've already set it up
     let mut settings = Config::default();
     settings
@@ -127,19 +169,49 @@ async fn main() {
     });
 
     println!("🚀 graymamba launched");
+    
+    // Initialize metrics before starting the server
+    metrics::init();
+    
+    // Start metrics server
+    let metrics_addr = SocketAddr::from(([0, 0, 0, 0], 9091));
+    println!("Starting metrics server on {}", metrics_addr);
+    
+    let metrics_service = make_service_fn(|_conn| async {
+        Ok::<_, Infallible>(service_fn(metrics_handler))
+    });
+
+    let metrics_server = Server::bind(&metrics_addr).serve(metrics_service);
+    let metrics_handle = tokio::spawn(async move {
+        info!("Metrics server is now listening on http://{}", metrics_addr);
+        if let Err(e) = metrics_server.await {
+            error!("Metrics server error: {}", e);
+        }
+        info!("Metrics server stopped");
+    });
+
+    // Start NFS server
     let listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}"), shares_fs)
         .await
         .unwrap();
-    // Start the listener in a separate task
-    let _listener_handle = tokio::spawn(async move {
+    
+    let nfs_handle = tokio::spawn(async move {
         listener.handle_forever().await
     });
 
-    // Wait for ctrl+c
+    // Wait for shutdown signal
     match signal::ctrl_c().await {
         Ok(()) => {
             println!("Received shutdown signal");
-            std::io::stdout().flush().unwrap();  // Ensure output is displayed
+            
+            // Cleanup
+            audit_system.shutdown().unwrap();
+            
+            // Abort both server tasks
+            metrics_handle.abort();
+            nfs_handle.abort();
+            
+            std::io::stdout().flush().unwrap();
         }
         Err(err) => {
             eprintln!("Error handling ctrl-c: {}", err);
@@ -147,8 +219,6 @@ async fn main() {
         }
     }
 
-    // Perform cleanup
-    std::io::stdout().flush().unwrap();
-    audit_system.shutdown().unwrap();
+    Ok(())
 }
 
