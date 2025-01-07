@@ -1,29 +1,27 @@
 use crate::audit_adapters::irrefutable_audit::{IrrefutableAudit, AuditEvent, AuditError};
 use async_trait::async_trait;
 use std::error::Error;
-
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread;
+use std::sync::Arc;
+use tokio::sync::mpsc::{self as tokio_mpsc};
 
 use config::{Config, File};
 use subxt::backend::legacy::LegacyRpcMethods;
 use subxt::backend::rpc::RpcClient;
-//use subxt::utils::AccountId32;
 use subxt::OnlineClient;
 use subxt::PolkadotConfig;
 use subxt_signer::sr25519::dev;
 use subxt_signer::sr25519::Keypair;
-use tokio::runtime::Runtime;
 
 #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
 pub mod pallet_template {}
 
+use tracing::debug;
+
+#[derive(Clone)]
 pub struct SubstrateBasedAudit {
     api: OnlineClient<PolkadotConfig>,
-    //account_id: AccountId32,
     signer: Keypair,
-    tx_sender: Sender<AuditEvent>,
-    //rpc: LegacyRpcMethods<PolkadotConfig>,
+    tx_sender: tokio_mpsc::Sender<AuditEvent>,
 }
 
 
@@ -72,7 +70,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
         //let account_id: AccountId32 = dev::alice().public_key().into();
         let signer = dev::alice();
         
-        let (tx_sender, rx) = mpsc::channel();
+        let (tx_sender, rx) = tokio_mpsc::channel(100);
         
         let audit = SubstrateBasedAudit {
             api,
@@ -81,31 +79,30 @@ impl IrrefutableAudit for SubstrateBasedAudit {
         };
         
         // Spawn the event handler
-        Self::spawn_event_handler(rx)?;
+        Self::spawn_event_handler(Arc::new(audit.clone()), rx)?;
         
         Ok(audit)
     }
 
-    fn get_sender(&self) -> &Sender<AuditEvent> {
+    fn get_sender(&self) -> &tokio_mpsc::Sender<AuditEvent> {
         &self.tx_sender
     }
 
-    fn spawn_event_handler(receiver: Receiver<AuditEvent>) -> Result<(), Box<dyn Error>> {
-        thread::spawn(move || {
-            let rt = Runtime::new().unwrap();
-            rt.block_on(async move {
-                while let Ok(event) = receiver.recv() {
-                    // Just process the event - no new connection needed
-                    debug!("Processing event: {:?}", event);
-                    // TODO: Add actual event processing logic here
-                }
-            });
+    fn spawn_event_handler(
+        audit: Arc<dyn IrrefutableAudit>,
+        mut receiver: tokio_mpsc::Receiver<AuditEvent>
+    ) -> Result<(), Box<dyn Error>> {
+        tokio::spawn(async move {
+            while let Some(event) = receiver.recv().await {
+                debug!("Processing event: {:?}", event);
+                // TODO: Add actual event processing logic here
+            }
         });
         Ok(())
     }
 
     async fn process_event(&self, event: AuditEvent) -> Result<(), Box<dyn Error>> {
-        debug("Processing event: {:?}", event);
+        debug!("Processing event: {:?}", event);
 
         let event_type_bytes = event.event_type.clone().into_bytes();
         let creation_time = event.creation_time.into_bytes();

@@ -64,19 +64,19 @@ config = "0.11"
 chrono = "0.4"
 
 # required for Polkadot substrate, Aleph Zero blockchain integration
-#subxt = { version = "0.37.0", optional = true }
-#subxt-signer = { version = "0.37.0", optional = true }
+subxt = { version = "0.37.0", optional = true }
+subxt-signer = { version = "0.37.0", optional = true }
 # Substrate specific
-#frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true  }
-#frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true  }
-#pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true }
-#pallet-identity = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true }
-#pallet-staking = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true }
+frame-support = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true  }
+frame-system = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true  }
+pallet-balances = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true }
+pallet-identity = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true }
+pallet-staking = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master", optional = true }
 
-#sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
-#sp-keyring = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
-#sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
-#sp-weights = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
+sp-core = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
+sp-keyring = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
+sp-runtime = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
+sp-weights = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "master" , optional = true}
 
 sha2 = "0.10"
 parking_lot = "0.12"
@@ -113,10 +113,22 @@ http-body-util = "0.1"
 [features]
 strict = []
 #traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
-default = ["merkle_audit","rocksdb_store","compressed_store"]  
+#default = ["merkle_audit","rocksdb_store","compressed_store"]  
 compressed_store = []
 merkle_audit = []
-az_audit = []
+az_audit = [
+    "subxt",
+    "subxt-signer",
+    "frame-support",
+    "frame-system",
+    "pallet-balances",
+    "pallet-identity",
+    "pallet-staking",
+    "sp-core",
+    "sp-keyring",
+    "sp-runtime",
+    "sp-weights"
+]
 redis_store = []
 rocksdb_store = []
 metrics = ["prometheus", "hyper"]
