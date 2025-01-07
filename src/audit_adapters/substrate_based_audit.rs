@@ -65,7 +65,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
             ))?;
 
         let _rpc = LegacyRpcMethods::<PolkadotConfig>::new(rpc_client);
-        println!("✅ Connection with Substrate Node established.");
+        println!("✅ Connection with Substrate/AZ Node established.");
 
         //let account_id: AccountId32 = dev::alice().public_key().into();
         let signer = dev::alice();
@@ -95,7 +95,10 @@ impl IrrefutableAudit for SubstrateBasedAudit {
         tokio::spawn(async move {
             while let Some(event) = receiver.recv().await {
                 debug!("Processing event: {:?}", event);
-                // TODO: Add actual event processing logic here
+                
+                if let Err(e) = audit.process_event(event).await {
+                    eprintln!("Error processing event: {}", e);
+                }
             }
         });
         Ok(())
@@ -115,24 +118,88 @@ impl IrrefutableAudit for SubstrateBasedAudit {
                     .template_module()
                     .disassembled(event_type_bytes, creation_time, file_path, event_key);
                 
-                self.api.tx()
+                let tx_hash = self.api.tx()
                     .sign_and_submit_default(&tx, &self.signer)
                     .await
                     .map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
                 
-                println!("Disassembled event processed.");
+                println!("🔗 Transaction submitted to blockchain");
+                println!("📝 Transaction hash: {}", tx_hash);
+
+                // Subscribe only to blocks containing our transaction
+                let mut blocks = self.api.blocks().subscribe_finalized().await
+                    .map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
+
+                let mut found = false;
+                while let Some(block) = blocks.next().await {
+                    if found {
+                        break;
+                    }
+                    
+                    let block = block.map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
+                    
+                    // Check if our transaction is in this block
+                    if let Some(events) = block.events().await.ok() {
+                        for event in events.iter() {
+                            if let Ok(event) = event {
+                                match event.phase() {
+                                    subxt::events::Phase::ApplyExtrinsic(_) => {  // This is an extrinsic
+                                        found = true;
+                                        println!("✅ Transaction included in block: {}", block.hash());
+                                        break;
+                                    },
+                                    _ => continue,  // Skip other phases
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                debug!("Disassembled event processed.");
             }
             "reassembled" => {
                 let tx = pallet_template::tx()
                     .template_module()
                     .reassembled(event_type_bytes, creation_time, file_path, event_key);
                 
-                self.api.tx()
+                let tx_hash = self.api.tx()
                     .sign_and_submit_default(&tx, &self.signer)
                     .await
                     .map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
                 
-                println!("Reassembled event processed.");
+                println!("🔗 Transaction submitted to blockchain");
+                println!("📝 Transaction hash: {}", tx_hash);
+
+                // Subscribe only to blocks containing our transaction
+                let mut blocks = self.api.blocks().subscribe_finalized().await
+                    .map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
+
+                let mut found = false;
+                while let Some(block) = blocks.next().await {
+                    if found {
+                        break;
+                    }
+                    
+                    let block = block.map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
+                    
+                    // Check if our transaction is in this block
+                    if let Some(events) = block.events().await.ok() {
+                        for event in events.iter() {
+                            if let Ok(event) = event {
+                                match event.phase() {
+                                    subxt::events::Phase::ApplyExtrinsic(_) => {  // This is an extrinsic
+                                        found = true;
+                                        println!("✅ Transaction included in block: {}", block.hash());
+                                        break;
+                                    },
+                                    _ => continue,  // Skip other phases
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                debug!("Reassembled event processed.");
             }
             _ => return Err(Box::new(AuditError::EventProcessingError(
                 "Unknown event type".to_string()
@@ -141,9 +208,20 @@ impl IrrefutableAudit for SubstrateBasedAudit {
         Ok(())
     }
 
+
     fn shutdown(&self) -> Result<(), Box<dyn Error>> {
-        // Drop sender to signal handler thread to stop
-        // Additional cleanup if needed
+        // Close the channel by dropping the sender
+        let _ = self.tx_sender.send(AuditEvent {
+            event_type: "shutdown".to_string(),
+            creation_time: "".to_string(),
+            file_path: "".to_string(),
+            event_key: "".to_string(),
+        });
+        
+        // Give a short grace period for pending events to complete
+        tokio::time::sleep(tokio::time::Duration::from_secs(1));
+        
+        println!("Substrate/AZ audit system shutdown complete");
         Ok(())
     }
 }
