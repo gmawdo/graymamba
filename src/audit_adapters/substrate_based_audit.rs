@@ -69,6 +69,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
 
         //let account_id: AccountId32 = dev::alice().public_key().into();
         let signer = dev::alice();
+        println!("🔑 Using account: {}", hex::encode(signer.public_key().0));
         
         let (tx_sender, rx) = tokio_mpsc::channel(100);
         
@@ -125,6 +126,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
                 
                 println!("🔗 Transaction submitted to blockchain");
                 println!("📝 Transaction hash: {}", tx_hash);
+                println!("👤 Sender: {}", hex::encode(self.signer.public_key().0));
 
                 // Subscribe only to blocks containing our transaction
                 let mut blocks = self.api.blocks().subscribe_finalized().await
@@ -137,18 +139,23 @@ impl IrrefutableAudit for SubstrateBasedAudit {
                     }
                     
                     let block = block.map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
+                    println!("Checking block: {} (hash: {})", block.number(), block.hash());
                     
                     // Check if our transaction is in this block
                     if let Some(events) = block.events().await.ok() {
                         for event in events.iter() {
                             if let Ok(event) = event {
                                 match event.phase() {
-                                    subxt::events::Phase::ApplyExtrinsic(_) => {  // This is an extrinsic
+                                    subxt::events::Phase::ApplyExtrinsic(idx) => {
+                                        println!("Found extrinsic {} in block {}", idx, block.hash());
+                                        println!("Event name: {:?}", event.variant_name());
+                                        println!("Event fields: {:?}", event.field_values());
                                         found = true;
                                         println!("✅ Transaction included in block: {}", block.hash());
+                                        println!("✅ Block number: {}", block.number());
                                         break;
                                     },
-                                    _ => continue,  // Skip other phases
+                                    _ => continue,
                                 }
                             }
                         }
@@ -169,6 +176,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
                 
                 println!("🔗 Transaction submitted to blockchain");
                 println!("📝 Transaction hash: {}", tx_hash);
+                println!("👤 Sender: {}", hex::encode(self.signer.public_key().0));
 
                 // Subscribe only to blocks containing our transaction
                 let mut blocks = self.api.blocks().subscribe_finalized().await
@@ -181,18 +189,23 @@ impl IrrefutableAudit for SubstrateBasedAudit {
                     }
                     
                     let block = block.map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
+                    println!("Checking block: {} (hash: {})", block.number(), block.hash());
                     
                     // Check if our transaction is in this block
                     if let Some(events) = block.events().await.ok() {
                         for event in events.iter() {
                             if let Ok(event) = event {
                                 match event.phase() {
-                                    subxt::events::Phase::ApplyExtrinsic(_) => {  // This is an extrinsic
+                                    subxt::events::Phase::ApplyExtrinsic(idx) => {
+                                        println!("Found extrinsic {} in block {}", idx, block.hash());
+                                        println!("Event name: {:?}", event.variant_name());
+                                        println!("Event fields: {:?}", event.field_values());
                                         found = true;
                                         println!("✅ Transaction included in block: {}", block.hash());
+                                        println!("✅ Block number: {}", block.number());
                                         break;
                                     },
-                                    _ => continue,  // Skip other phases
+                                    _ => continue,
                                 }
                             }
                         }
