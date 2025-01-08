@@ -20,11 +20,13 @@ use hyper::{Body, Response, Server, Request, Method, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 #[cfg(feature = "metrics")]
 use prometheus::{Encoder, TextEncoder};
-use std::convert::Infallible;
-use std::net::SocketAddr;
+//use std::convert::Infallible;
+//use std::net::SocketAddr;
 
+#[cfg(feature = "metrics")]
 use graymamba::kernel::metrics;
-use tracing::{info, error};
+
+//use tracing::{info, error};
 
 const HOSTPORT: u32 = 2049;
 

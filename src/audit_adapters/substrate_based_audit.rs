@@ -11,7 +11,7 @@ use subxt::OnlineClient;
 use subxt::PolkadotConfig;
 use subxt_signer::sr25519::dev;
 use subxt_signer::sr25519::Keypair;
-use subxt::ext::codec::Decode;
+//use subxt::ext::codec::Decode;
 
 #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
 pub mod pallet_template {}
@@ -210,7 +210,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
                                                 
                                                 for field in fields {
                                                     // Extract field name
-                                                    if let Some(name_end) = field.find("\", ") {
+                                                    if let Some(_name_end) = field.find("\", ") {
                                                         let name = field
                                                             .trim_start_matches('(')
                                                             .trim_start_matches('"')
@@ -222,7 +222,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
                                                         // If this is the event field, parse its inner structure
                                                         if name == "event" {
                                                             if let Some(event_start) = field.find("Named([") {
-                                                                let event_content = &field[event_start..];
+                                                                let _event_content = &field[event_start..];
                                                                 //debug!("   • Event content: {}", event_content);
                                                             }
                                                         }
@@ -258,7 +258,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
         });
         
         // Give a short grace period for pending events to complete
-        tokio::time::sleep(tokio::time::Duration::from_secs(1));
+        let _ = tokio::time::sleep(tokio::time::Duration::from_secs(1));
         
         println!("Substrate/AZ audit system shutdown complete");
         Ok(())

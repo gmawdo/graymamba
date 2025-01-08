@@ -205,6 +205,7 @@ impl SocketMessageHandler {
         FRAGMENTS_PROCESSED.inc();
         
         if is_last {
+            #[cfg(feature = "metrics")]
             let fragment_size = self.cur_fragment.len();
             #[cfg(feature = "metrics")]
             BYTES_RECEIVED.inc_by(fragment_size as u64);
