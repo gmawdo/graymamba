@@ -7,7 +7,7 @@ use graymamba::audit_adapters::irrefutable_audit::IrrefutableAudit;
 use graymamba::audit_adapters::merkle_audit::MerkleBasedAuditSystem;
 
 #[cfg(feature = "az_audit")]
-use graymamba::audit_adapters::substrate_audit::SubstrateAuditSystem;
+use graymamba::audit_adapters::substrate_based_audit::SubstrateBasedAudit;
 
 use config::{Config, File as ConfigFile};
 
@@ -174,7 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         #[cfg(feature = "az_audit")]
         {
-            match SubstrateAuditSystem::new().await {
+            match SubstrateBasedAudit::new().await {
                 Ok(audit) => {
                     println!("✅ Aleph Zero audit initialization successful");
                     Arc::new(audit)

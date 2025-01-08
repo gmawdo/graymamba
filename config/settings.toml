@@ -34,7 +34,8 @@ module_filter = [
     "graymamba=info",
     "graymamba::kernel::vfs::api=debug",
     #"data_room=debug",
-    "graymamba::backingstore::rocksdb_data_store=debug"
+    "graymamba::backingstore::rocksdb_data_store=debug",
+    "graymamba::audit_adapters::substrate_based_audit=debug"
     ]
 
 [storage]
