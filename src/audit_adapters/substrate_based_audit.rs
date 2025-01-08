@@ -11,6 +11,7 @@ use subxt::OnlineClient;
 use subxt::PolkadotConfig;
 use subxt_signer::sr25519::dev;
 use subxt_signer::sr25519::Keypair;
+use subxt::ext::codec::Decode;
 
 #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
 pub mod pallet_template {}
@@ -69,7 +70,7 @@ impl IrrefutableAudit for SubstrateBasedAudit {
 
         //let account_id: AccountId32 = dev::alice().public_key().into();
         let signer = dev::alice();
-        println!("🔑 Using account: {}", hex::encode(signer.public_key().0));
+        println!("🔑 Using account Alice: {}", hex::encode(signer.public_key().0));
         
         let (tx_sender, rx) = tokio_mpsc::channel(100);
         
@@ -78,6 +79,9 @@ impl IrrefutableAudit for SubstrateBasedAudit {
             signer,
             tx_sender,
         };
+        
+        // Verify metadata
+        audit.verify_metadata().await?;
         
         // Spawn the event handler
         Self::spawn_event_handler(Arc::new(audit.clone()), rx)?;
@@ -106,12 +110,24 @@ impl IrrefutableAudit for SubstrateBasedAudit {
     }
 
     async fn process_event(&self, event: AuditEvent) -> Result<(), Box<dyn Error>> {
-        debug!("Processing event: {:?}", event);
+        let event_type_bytes = event.event_type.as_bytes().to_vec();
+        let creation_time = event.creation_time.to_string().as_bytes().to_vec();
+        let file_path = event.file_path.as_bytes().to_vec();
+        let event_key = event.event_key.as_bytes().to_vec();
 
-        let event_type_bytes = event.event_type.clone().into_bytes();
-        let creation_time = event.creation_time.into_bytes();
-        let file_path = event.file_path.into_bytes();
-        let event_key = event.event_key.into_bytes();
+        // Validate input lengths before sending
+        self.validate_input_lengths(
+            &event_type_bytes,
+            &creation_time,
+            &file_path,
+            &event_key,
+        )?;
+
+        debug!("📤 Sending event to blockchain:");
+        debug!("   Type: {} ({} bytes)", event.event_type, event_type_bytes.len());
+        debug!("   Time: {} ({} bytes)", event.creation_time, creation_time.len());
+        debug!("   Path: {} ({} bytes)", event.file_path, file_path.len());
+        debug!("   Key: {} ({} bytes)", event.event_key, event_key.len());
 
         match event.event_type.as_str() {
             "disassembled" => {
@@ -124,38 +140,27 @@ impl IrrefutableAudit for SubstrateBasedAudit {
                     .await
                     .map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
                 
-                println!("🔗 Transaction submitted to blockchain");
-                println!("📝 Transaction hash: {}", tx_hash);
-                println!("👤 Sender: {}", hex::encode(self.signer.public_key().0));
+                debug!("🔗 Transaction submitted to blockchain");
+                debug!("📝 Transaction hash: {}", tx_hash);
+                debug!("👤 Sender: {}", hex::encode(self.signer.public_key().0));
 
-                // Subscribe only to blocks containing our transaction
-                let mut blocks = self.api.blocks().subscribe_finalized().await
-                    .map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
-
-                let mut found = false;
-                while let Some(block) = blocks.next().await {
-                    if found {
-                        break;
-                    }
+                // Subscribe to events using the events subscription
+                let mut sub = self.api.blocks().subscribe_finalized().await?;
+                
+                while let Some(block) = sub.next().await {
+                    let block = block?;
+                    debug!("🔍 Block #{}", block.header().number);
                     
-                    let block = block.map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
-                    println!("Checking block: {} (hash: {})", block.number(), block.hash());
-                    
-                    // Check if our transaction is in this block
-                    if let Some(events) = block.events().await.ok() {
+                    // Get events for this block
+                    if let Ok(events) = block.events().await {
                         for event in events.iter() {
                             if let Ok(event) = event {
-                                match event.phase() {
-                                    subxt::events::Phase::ApplyExtrinsic(idx) => {
-                                        println!("Found extrinsic {} in block {}", idx, block.hash());
-                                        println!("Event name: {:?}", event.variant_name());
-                                        println!("Event fields: {:?}", event.field_values());
-                                        found = true;
-                                        println!("✅ Transaction included in block: {}", block.hash());
-                                        println!("✅ Block number: {}", block.number());
-                                        break;
-                                    },
-                                    _ => continue,
+                                if event.pallet_name() == "TemplateModule" {
+                                    debug!("   ✨ Found pallet event!");
+                                    debug!("   • Name: {}", event.variant_name());
+                                    debug!("   • Phase: {:?}", event.phase());
+                                    
+                                    return Ok(());  // Exit after finding our event
                                 }
                             }
                         }
@@ -174,38 +179,59 @@ impl IrrefutableAudit for SubstrateBasedAudit {
                     .await
                     .map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
                 
-                println!("🔗 Transaction submitted to blockchain");
-                println!("📝 Transaction hash: {}", tx_hash);
-                println!("👤 Sender: {}", hex::encode(self.signer.public_key().0));
+                debug!("🔗 Transaction submitted to blockchain");
+                debug!("📝 Transaction hash: {}", tx_hash);
+                debug!("👤 Sender: {}", hex::encode(self.signer.public_key().0));
 
-                // Subscribe only to blocks containing our transaction
-                let mut blocks = self.api.blocks().subscribe_finalized().await
-                    .map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
-
-                let mut found = false;
-                while let Some(block) = blocks.next().await {
-                    if found {
-                        break;
-                    }
+                // Subscribe to events using the events subscription
+                let mut sub = self.api.blocks().subscribe_finalized().await?;
+                
+                while let Some(block) = sub.next().await {
+                    let block = block?;
+                    debug!("🔍 Block #{}", block.header().number);
                     
-                    let block = block.map_err(|e| Box::new(AuditError::TransactionError(e.to_string())))?;
-                    println!("Checking block: {} (hash: {})", block.number(), block.hash());
-                    
-                    // Check if our transaction is in this block
-                    if let Some(events) = block.events().await.ok() {
+                    // Get events for this block
+                    if let Ok(events) = block.events().await {
                         for event in events.iter() {
                             if let Ok(event) = event {
-                                match event.phase() {
-                                    subxt::events::Phase::ApplyExtrinsic(idx) => {
-                                        println!("Found extrinsic {} in block {}", idx, block.hash());
-                                        println!("Event name: {:?}", event.variant_name());
-                                        println!("Event fields: {:?}", event.field_values());
-                                        found = true;
-                                        println!("✅ Transaction included in block: {}", block.hash());
-                                        println!("✅ Block number: {}", block.number());
-                                        break;
-                                    },
-                                    _ => continue,
+                                if event.pallet_name() == "TemplateModule" {
+                                    debug!("   ✨ Found pallet event!");
+                                    debug!("   • Name: {}", event.variant_name());
+                                    debug!("   • Phase: {:?}", event.phase());
+                                    
+                                    if let Ok(fields) = event.field_values() {
+                                        let fields_str = format!("{:?}", fields);
+
+                                        // The structure is Named([...])
+                                        if let Some(content) = fields_str.strip_prefix("Named([") {
+                                            if let Some(inner) = content.strip_suffix("])") {
+                                                // Split on "), (" to get each field
+                                                let fields: Vec<&str> = inner.split("), (").collect();
+                                                
+                                                for field in fields {
+                                                    // Extract field name
+                                                    if let Some(name_end) = field.find("\", ") {
+                                                        let name = field
+                                                            .trim_start_matches('(')
+                                                            .trim_start_matches('"')
+                                                            .split('"')
+                                                            .next()
+                                                            .unwrap_or("");
+                                                        debug!("   • Field: {}", name);
+                                                        
+                                                        // If this is the event field, parse its inner structure
+                                                        if name == "event" {
+                                                            if let Some(event_start) = field.find("Named([") {
+                                                                let event_content = &field[event_start..];
+                                                                //debug!("   • Event content: {}", event_content);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    return Ok(());  // Exit after finding our event
                                 }
                             }
                         }
@@ -236,6 +262,58 @@ impl IrrefutableAudit for SubstrateBasedAudit {
         
         println!("Substrate/AZ audit system shutdown complete");
         Ok(())
+    }
+}
+
+impl SubstrateBasedAudit {
+    fn validate_input_lengths(
+        &self,
+        event_type: &[u8],
+        creation_time: &[u8],
+        file_path: &[u8],
+        event_key: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
+        if event_type.len() > 64 {
+            return Err("Event type exceeds 64 bytes".into());
+        }
+        if creation_time.len() > 64 {
+            return Err("Creation time exceeds 64 bytes".into());
+        }
+        if file_path.len() > 256 {
+            return Err("File path exceeds 256 bytes".into());
+        }
+        if event_key.len() > 128 {
+            return Err("Event key exceeds 128 bytes".into());
+        }
+        Ok(())
+    }
+
+    async fn verify_metadata(&self) -> Result<(), Box<dyn Error>> {
+        debug!("\n🔍 Verifying Metadata:");
+        
+        // Get metadata from the API
+        let metadata = self.api.metadata();
+        
+        // Look for our pallet
+        if let Some(pallet) = metadata.pallet_by_name("TemplateModule") {
+            debug!("✅ Found pallet: {}", pallet.name());
+            
+            // Check calls
+            debug!("\nCalls:");
+            for call in pallet.call_variants().unwrap_or_default() {
+                debug!("   • {}", call.name);
+            }
+            
+            // Check events
+            debug!("\nEvents:");
+            for event in pallet.event_variants().unwrap_or_default() {
+                debug!("   • {}", event.name);
+            }
+            
+            Ok(())
+        } else {
+            Err("Pallet 'TemplateModule' not found in metadata!".into())
+        }
     }
 }
 
