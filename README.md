@@ -33,6 +33,8 @@ RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice
        cargo build --bin graymamba --features="merkle_audit,compressed_store,rocksdb_store" --release
        cargo run --bin graymamba --features="merkle_audit,compressed_store,rocksdb_store" --release
        cargo test --features merkle_audit -- --nocapture
+
+      --features="merkle_audit,compressed_store,rocksdb_store" is the default feature set
    
  - `To build and run the audit_reader, qrocks, and data-room` (see below for more details on these binaries): 🚀
 
@@ -47,6 +49,12 @@ RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice
 - `To run bench marking` : 🚀
    
        cargo bench --features="merkle_audit,compressed_store"
+
+- `To enable metrics` : 🚀
+   
+       cargo run --bin graymamba --features="metrics"
+        metrics server runs on localhost:9091, configure the Prometheus server to scrape metrics from this address
+      
 
 
 ## Explanation of the project's binaries and their purpose

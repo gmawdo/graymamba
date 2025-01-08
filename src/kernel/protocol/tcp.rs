@@ -10,6 +10,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
+#[cfg(feature = "metrics")]
+use graymamba::kernel::metrics::*;
 
 /// A NFS Tcp Connection Handler
 pub struct NFSTcpListener<T: NFSFileSystem + Send + Sync + 'static> {
@@ -194,7 +196,16 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
     /// Loops forever and never returns handling all incoming connections.
     async fn handle_forever(&self) -> io::Result<()> {
         loop {
-            let (socket, _) = self.listener.accept().await?;
+            let (socket, addr) = self.listener.accept().await?;
+            
+            #[cfg(feature = "metrics")]
+            {
+                ACTIVE_CONNECTIONS.inc();
+                TOTAL_CONNECTIONS.inc();
+            }
+            
+            info!("Accepting socket from {:?}", addr);
+            
             let context = RPCContext {
                 local_port: self.port,
                 client_addr: socket.peer_addr().unwrap().to_string(),
@@ -202,9 +213,14 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
                 vfs: self.arcfs.clone(),
                 mount_signal: self.mount_signal.clone(),
             };
+            
             info!("Accepting socket {:?} {:?}", socket, context);
+            
             tokio::spawn(async move {
-                let _ = process_socket(socket, context).await;
+                let result = process_socket(socket, context).await;
+                #[cfg(feature = "metrics")]
+                ACTIVE_CONNECTIONS.dec();
+                result
             });
         }
     }

@@ -21,6 +21,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;
 use tokio::sync::mpsc;
 use tracing::debug;
+#[cfg(feature = "metrics")]
+use graymamba::kernel::metrics::*;
 // Information from RFC 5531
 // https://datatracker.ietf.org/doc/html/rfc5531
 
@@ -199,8 +201,14 @@ impl SocketMessageHandler {
                 return Err(e);
             }
         };
-
+        #[cfg(feature = "metrics")]
+        FRAGMENTS_PROCESSED.inc();
+        
         if is_last {
+            let fragment_size = self.cur_fragment.len();
+            #[cfg(feature = "metrics")]
+            BYTES_RECEIVED.inc_by(fragment_size as u64);
+            
             debug!("Processing last fragment, current buffer size: {}", self.cur_fragment.len());
             let fragment = std::mem::take(&mut self.cur_fragment);
             let context = self.context.clone();
