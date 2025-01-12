@@ -24,6 +24,7 @@ pub struct PoseidonHasher {
     mds_matrix: [[Fr; WIDTH]; WIDTH],
 }
 
+// Regular hashing implementation
 impl PoseidonHasher {
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let round_constants = Self::generate_round_constants();
@@ -55,171 +56,6 @@ impl PoseidonHasher {
         
         self.permute(&mut state);
         self.field_element_to_bytes(&state[0])
-    }
-
-    pub fn hash_leaf_gadget(
-        &self,
-        cs: ConstraintSystemRef<Fr>,
-        input: &FpVar<Fr>
-    ) -> Result<FpVar<Fr>, SynthesisError> {
-        // Initialize state variables
-        let mut state_vars = vec![FpVar::<Fr>::zero(); WIDTH];
-        state_vars[0] = input.clone();
-
-        // Apply the Poseidon permutation
-        // First half of full rounds
-        for r in 0..FULL_ROUNDS/2 {
-            self.full_round_gadget(&mut state_vars, r, &cs)?;
-        }
-        
-        // Partial rounds
-        for r in 0..PARTIAL_ROUNDS {
-            self.partial_round_gadget(&mut state_vars, FULL_ROUNDS/2 + r, &cs)?;
-        }
-        
-        // Second half of full rounds
-        for r in 0..FULL_ROUNDS/2 {
-            self.full_round_gadget(&mut state_vars, FULL_ROUNDS/2 + PARTIAL_ROUNDS + r, &cs)?;
-        }
-
-        Ok(state_vars[0].clone())
-    }
-
-    pub fn hash_nodes_gadget(
-        &self,
-        cs: ConstraintSystemRef<Fr>,
-        left: &FpVar<Fr>,
-        right: &FpVar<Fr>
-    ) -> Result<FpVar<Fr>, SynthesisError> {
-        // Initialize state with input nodes
-        let mut state_vars = vec![FpVar::<Fr>::zero(); WIDTH];
-        state_vars[0] = left.clone();
-        state_vars[1] = right.clone();
-        
-        // Apply the Poseidon permutation
-        // First half of full rounds
-        for r in 0..FULL_ROUNDS/2 {
-            self.full_round_gadget(&mut state_vars, r, &cs)?;
-        }
-        
-        // Partial rounds
-        for r in 0..PARTIAL_ROUNDS {
-            self.partial_round_gadget(&mut state_vars, FULL_ROUNDS/2 + r, &cs)?;
-        }
-        
-        // Second half of full rounds
-        for r in 0..FULL_ROUNDS/2 {
-            self.full_round_gadget(&mut state_vars, FULL_ROUNDS/2 + PARTIAL_ROUNDS + r, &cs)?;
-        }
-
-        // Return first element as hash output
-        Ok(state_vars[0].clone())
-    }
-
-    fn full_round_gadget(
-        &self,
-        state: &mut [FpVar<Fr>],
-        round: usize,
-        cs: &ConstraintSystemRef<Fr>
-    ) -> Result<(), SynthesisError> {
-
-        // Add round constants
-        for (i, state_i) in state.iter_mut().enumerate() {
-            let constant = FpVar::<Fr>::new_constant(cs.clone(), self.round_constants[round][i])?;
-            let current_state = state_i.clone();
-            *state_i = current_state.add(&constant);
-        }
-        
-        // Apply S-box (x^5) to all elements
-        for state_i in state.iter_mut() {
-            let current_state = state_i.clone();
-            *state_i = current_state.pow_by_constant([5u64])?;
-        }
-        
-        // Apply MDS matrix
-        let old_state = state.to_vec();
-        for (i, state_i) in state.iter_mut().enumerate() {
-            *state_i = FpVar::<Fr>::zero();
-            for (j, old_state_j) in old_state.iter().enumerate() {
-                let mds_element = FpVar::<Fr>::new_constant(cs.clone(), self.mds_matrix[i][j])?;
-                let product = old_state_j.clone().mul(&mds_element);
-                let current_sum = state_i.clone();
-                *state_i = current_sum.add(&product);
-            }
-        }
-        
-        Ok(())
-    }
-
-    fn partial_round_gadget(
-        &self,
-        state: &mut [FpVar<Fr>],
-        round: usize,
-        cs: &ConstraintSystemRef<Fr>
-    ) -> Result<(), SynthesisError> {
-        // Add round constants
-        for (i, state_i) in state.iter_mut().enumerate() {
-            let constant = FpVar::<Fr>::new_constant(cs.clone(), self.round_constants[round][i])?;
-            let current_state = state_i.clone();
-            *state_i = current_state.add(&constant);
-        }
-        
-        // Apply S-box only to first element
-        let current_state = state[0].clone();
-        state[0] = current_state.pow_by_constant([5u64])?;
-        
-        // Apply MDS matrix
-        let old_state = state.to_vec();
-        for (i, state_i) in state.iter_mut().enumerate() {
-            *state_i = FpVar::<Fr>::zero();
-            for (j, old_state_j) in old_state.iter().enumerate() {
-                let mds_element = FpVar::<Fr>::new_constant(cs.clone(), self.mds_matrix[i][j])?;
-                let product = old_state_j.clone().mul(&mds_element);
-                let current_sum = state_i.clone();
-                *state_i = current_sum.add(&product);
-            }
-        }
-        
-        Ok(())
-    }
-
-    // The following functions in PoseidonHasher are internal implementation details that support the two public functions above:
-    // permute()
-    // full_round()
-    // partial_round()
-    // bytes_to_field_element()
-    // field_element_to_bytes()
-    // generate_round_constants()
-    // generate_mds_matrix()
-
-    fn generate_round_constants() -> Vec<[Fr; WIDTH]> {
-        // For testing, generate some simple constants
-        // In production, these should be cryptographically secure constants
-        let mut constants = Vec::new();
-        for i in 0..(FULL_ROUNDS + PARTIAL_ROUNDS) {
-            let mut round = [Fr::zero(); WIDTH];
-            for (j, round_j) in round.iter_mut().enumerate() {
-                // Generate a deterministic but "random-looking" field element
-                let seed = (i * WIDTH + j) as u64;
-                *round_j = Fr::from(seed);
-            }
-            constants.push(round);
-        }
-        constants
-    }
-
-    fn generate_mds_matrix() -> [[Fr; WIDTH]; WIDTH] {
-        // For testing, generate a simple MDS matrix
-        // In production, this should be a proper MDS matrix
-        let mut matrix = [[Fr::zero(); WIDTH]; WIDTH];
-        for (i, row) in matrix.iter_mut().enumerate() {
-            for (j, element) in row.iter_mut().enumerate() {
-                // Generate a deterministic but "random-looking" field element
-                let seed = (i * WIDTH + j) as u64;
-                *element = Fr::from(seed + 1);
-            }
-        }
-        matrix
     }
 
     fn permute(&self, state: &mut [Fr; WIDTH]) {
@@ -288,5 +124,154 @@ impl PoseidonHasher {
         element.serialize_compressed(&mut buf)
             .expect("Serialization should not fail");
         buf
+    }
+
+    fn generate_round_constants() -> Vec<[Fr; WIDTH]> {
+        // For testing, generate some simple constants
+        // In production, these should be cryptographically secure constants
+        let mut constants = Vec::new();
+        for i in 0..(FULL_ROUNDS + PARTIAL_ROUNDS) {
+            let mut round = [Fr::zero(); WIDTH];
+            for (j, round_j) in round.iter_mut().enumerate() {
+                // Generate a deterministic but "random-looking" field element
+                let seed = (i * WIDTH + j) as u64;
+                *round_j = Fr::from(seed);
+            }
+            constants.push(round);
+        }
+        constants
+    }
+
+    fn generate_mds_matrix() -> [[Fr; WIDTH]; WIDTH] {
+        // For testing, generate a simple MDS matrix
+        // In production, this should be a proper MDS matrix
+        let mut matrix = [[Fr::zero(); WIDTH]; WIDTH];
+        for (i, row) in matrix.iter_mut().enumerate() {
+            for (j, element) in row.iter_mut().enumerate() {
+                // Generate a deterministic but "random-looking" field element
+                let seed = (i * WIDTH + j) as u64;
+                *element = Fr::from(seed + 1);
+            }
+        }
+        matrix
+    }
+}
+
+// R1CS gadget implementation
+impl PoseidonHasher {
+    pub fn hash_leaf_gadget(
+        &self,
+        cs: ConstraintSystemRef<Fr>,
+        input: &FpVar<Fr>
+    ) -> Result<FpVar<Fr>, SynthesisError> {
+        let mut state_vars = vec![FpVar::<Fr>::zero(); WIDTH];
+        state_vars[0] = input.clone();
+
+        // Apply the Poseidon permutation
+        for r in 0..FULL_ROUNDS/2 {
+            self.full_round_gadget(&mut state_vars, r, &cs)?;
+        }
+        
+        for r in 0..PARTIAL_ROUNDS {
+            self.partial_round_gadget(&mut state_vars, FULL_ROUNDS/2 + r, &cs)?;
+        }
+        
+        for r in 0..FULL_ROUNDS/2 {
+            self.full_round_gadget(&mut state_vars, FULL_ROUNDS/2 + PARTIAL_ROUNDS + r, &cs)?;
+        }
+
+        Ok(state_vars[0].clone())
+    }
+
+    pub fn hash_nodes_gadget(
+        &self,
+        cs: ConstraintSystemRef<Fr>,
+        left: &FpVar<Fr>,
+        right: &FpVar<Fr>
+    ) -> Result<FpVar<Fr>, SynthesisError> {
+        let mut state_vars = vec![FpVar::<Fr>::zero(); WIDTH];
+        state_vars[0] = left.clone();
+        state_vars[1] = right.clone();
+        
+        // Apply the Poseidon permutation
+        for r in 0..FULL_ROUNDS/2 {
+            self.full_round_gadget(&mut state_vars, r, &cs)?;
+        }
+        
+        for r in 0..PARTIAL_ROUNDS {
+            self.partial_round_gadget(&mut state_vars, FULL_ROUNDS/2 + r, &cs)?;
+        }
+        
+        for r in 0..FULL_ROUNDS/2 {
+            self.full_round_gadget(&mut state_vars, FULL_ROUNDS/2 + PARTIAL_ROUNDS + r, &cs)?;
+        }
+
+        Ok(state_vars[0].clone())
+    }
+
+    fn full_round_gadget(
+        &self,
+        state: &mut [FpVar<Fr>],
+        round: usize,
+        cs: &ConstraintSystemRef<Fr>
+    ) -> Result<(), SynthesisError> {
+        // Add round constants
+        for (i, state_i) in state.iter_mut().enumerate() {
+            let constant = FpVar::<Fr>::new_constant(cs.clone(), self.round_constants[round][i])?;
+            let current_state = state_i.clone();
+            *state_i = current_state.add(&constant);
+        }
+        
+        // Apply S-box (x^5) to all elements
+        for state_i in state.iter_mut() {
+            let current_state = state_i.clone();
+            *state_i = current_state.pow_by_constant([5u64])?;
+        }
+        
+        // Apply MDS matrix
+        let old_state = state.to_vec();
+        for (i, state_i) in state.iter_mut().enumerate() {
+            *state_i = FpVar::<Fr>::zero();
+            for (j, old_state_j) in old_state.iter().enumerate() {
+                let mds_element = FpVar::<Fr>::new_constant(cs.clone(), self.mds_matrix[i][j])?;
+                let product = old_state_j.clone().mul(&mds_element);
+                let current_sum = state_i.clone();
+                *state_i = current_sum.add(&product);
+            }
+        }
+        
+        Ok(())
+    }
+
+    fn partial_round_gadget(
+        &self,
+        state: &mut [FpVar<Fr>],
+        round: usize,
+        cs: &ConstraintSystemRef<Fr>
+    ) -> Result<(), SynthesisError> {
+        // Add round constants
+        for (i, state_i) in state.iter_mut().enumerate() {
+            let constant = FpVar::<Fr>::new_constant(cs.clone(), self.round_constants[round][i])?;
+            let current_state = state_i.clone();
+            *state_i = current_state.add(&constant);
+        }
+        
+        // Apply S-box only to first element
+        let current_state = state[0].clone();
+        state[0] = current_state.pow_by_constant([5u64])?;
+        
+        // Apply MDS matrix
+        let old_state = state.to_vec();
+        for (i, state_i) in state.iter_mut().enumerate() {
+            *state_i = FpVar::<Fr>::zero();
+            for (j, old_state_j) in old_state.iter().enumerate() {
+                let mds_element = FpVar::<Fr>::new_constant(cs.clone(), self.mds_matrix[i][j])?;
+                let product = old_state_j.clone().mul(&mds_element);
+                let current_sum = state_i.clone();
+                *state_i = current_sum.add(&product);
+            }
+        }
+        
+        Ok(())
     }
 } 
