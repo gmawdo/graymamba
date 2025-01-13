@@ -13,7 +13,7 @@ use iced::{
     Shadow,
     window,
     Size,
-    keyboard::{self, Key, Modifiers},
+    keyboard::self,
     Subscription,
 };
 use iced::widget::svg::Svg;
@@ -48,6 +48,7 @@ struct AuditViewer {
     verified_events: HashMap<String, bool>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum Message {
     Refresh,
