@@ -15,7 +15,7 @@ It leverages blockchain and zero-knowledge proofs (ZKP) to ensure security and t
 - Can be used as a secure data store for AI models and data.
 - Can be used to underpin many aspects of a "Secure by Design" approach.
 - Can be backed by a variety of data stores, including RocksDB, Redis, and we'd like to add Cassandra in the future. We are really interested in the ability to use a distributed database for the backing store.
-- Used in conjunction with [Eclipse-Theia](https://github.com/eclipse-theia/theia) and Kubernetes to provide a secure traceable IDE at scale for [Codasip's](https://codasip.com) cloud based RISC-V chip design toolchain.
+- For a specific chip design use case with the US Department of Defense, the system was integrated with Eclipse-Theia and Kubernetes to deliver a secure, traceable IDE at scale. This was part of Codasip’s cloud-based RISC-V chip design toolchain.
 - Now also tested with vscode server based IDE leveraging Kubernetes resource management from the Theia project.
 
 ## Overview
