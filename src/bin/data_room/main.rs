@@ -23,7 +23,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use graymamba::nfsclient::{
-    self,
     mount::{self, MountReply},
     null,
     readdirplus::{self, ReaddirplusReply},
@@ -60,6 +59,7 @@ struct DataRoom {
     runtime_handle: tokio::runtime::Handle,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct FileEntry {
     name: String,
@@ -68,6 +68,7 @@ struct FileEntry {
     file_id: u64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum Message {
     ShowLogin,
@@ -512,6 +513,7 @@ impl Application for DataRoom {
 }
 
 impl DataRoom {
+    #[allow(dead_code)]
     fn view_main_content(&self) -> Element<Message> {
         let files_panel = Container::new(
             Column::new()
@@ -668,7 +670,7 @@ impl DataRoom {
             dir_file_handles: Vec::new(),
         })
     }
-
+    #[allow(dead_code)]
     async fn load_directory(&mut self) -> Result<(), Box<dyn Error>> {
         if let Some(session) = &mut self.nfs_session {
             let readdirplus_call = readdirplus::build_readdirplus_call(
