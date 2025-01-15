@@ -1,4 +1,8 @@
-# A Highly Secure Provenance Tracking Filesystem
+# A Highly Secure Provenance Tracking Filesystem with immutable decentralized traceability
+
+A pluggable NFS that integrates seamlessly into design environments—or any machine, including PCs, IoT devices, and cars. This system provides an immutable, trackable audit that remains tamper-proof, even under a system admin attack.
+
+It leverages blockchain and zero-knowledge proofs (ZKP) to ensure security and transparency. Complementary to Git, it excels in traceability, offering capabilities that go beyond what Git alone can provide.
 
 - A secure filesystem that intrinsically tracks the provenance of files and directories.
 - Entirely written in Rust for memory safety and performance.
