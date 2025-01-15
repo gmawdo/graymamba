@@ -154,8 +154,8 @@ This approach provides robust logging suitable for both development and producti
 
 ### Configure Blockchain Node: (if using Polkadot/Aleph Zero for irrfutable audit)
       Set up a Polkadot/Aleph Zero node following below steps
-      $ git clone https://github.com/datasignals/aleph-node-pinkscorpion.git (based on aleph-zero fork)
-      $ cd aleph-node-pinkscorpion
+      $ git clone https://github.com/gmawdo/grayscorpion (based on an aleph-zero fork)
+      $ cd grayscorpion
       $ cargo build —release
       $ scripts/run_nodes.sh
 
