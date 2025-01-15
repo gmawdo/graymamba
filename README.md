@@ -38,7 +38,7 @@ RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice
    
  - `To build and run the audit_reader, qrocks, and data-room` (see below for more details on these binaries): 🚀
 
-       cargo run --bin audit_reader --release (this is only for use with the merkle audit option currently)
+       cargo run --bin audit_reader --features="merkle_audit" --release (this is only for use with the merkle audit option currently)
        cargo run --bin qrocks --release
        cargo run --bin data-room --release
 
