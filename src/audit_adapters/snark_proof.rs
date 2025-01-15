@@ -92,21 +92,17 @@ impl EventCommitmentCircuit {
     ) -> Result<FpVar<Fr>, SynthesisError> {
         let mut current_hash = leaf_hash.clone();
 
-        // Process each level of the Merkle path
         for (sibling_hash, is_left) in merkle_path {
-            let sibling_var = FpVar::<Fr>::new_witness(cs.clone(), || {
-                Ok(self.hasher.bytes_to_field_element(sibling_hash))
-            })?;
-
-            use ark_r1cs_std::boolean::Boolean;
-            let is_left_var = Boolean::new_witness(cs.clone(), || Ok(*is_left))?;
-
-            // Use Boolean::select to enforce the constraint
-            let left = Boolean::select(&is_left_var, &sibling_var, &current_hash)?;
-            let right = Boolean::select(&is_left_var, &current_hash, &sibling_var)?;
-
-            // Use our PoseidonHasher's hash_nodes_gadget
-            current_hash = self.hasher.hash_nodes_gadget(cs.clone(), &left, &right)?;
+            // Create sibling variable
+            let sibling_element = self.hasher.bytes_to_field_element(sibling_hash);
+            let sibling_var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(sibling_element))?;
+            
+            // Compute new hash
+            current_hash = if *is_left {
+                self.hasher.hash_nodes_gadget(cs.clone(), &sibling_var, &current_hash)?
+            } else {
+                self.hasher.hash_nodes_gadget(cs.clone(), &current_hash, &sibling_var)?
+            };
         }
 
         Ok(current_hash)
@@ -208,17 +204,16 @@ impl SimpleMerkleCircuit {
         let mut current_hash = leaf_hash.clone();
 
         for (sibling_hash, is_left) in merkle_path {
-            let sibling_var = FpVar::<Fr>::new_witness(cs.clone(), || {
-                Ok(self.hasher.bytes_to_field_element(sibling_hash))
-            })?;
-
-            use ark_r1cs_std::boolean::Boolean;
-            let is_left_var = Boolean::new_witness(cs.clone(), || Ok(*is_left))?;
-
-            let left = Boolean::select(&is_left_var, &sibling_var, &current_hash)?;
-            let right = Boolean::select(&is_left_var, &current_hash, &sibling_var)?;
-
-            current_hash = self.hasher.hash_nodes_gadget(cs.clone(), &left, &right)?;
+            // Create sibling variable
+            let sibling_element = self.hasher.bytes_to_field_element(sibling_hash);
+            let sibling_var = FpVar::<Fr>::new_witness(cs.clone(), || Ok(sibling_element))?;
+            
+            // Compute new hash
+            current_hash = if *is_left {
+                self.hasher.hash_nodes_gadget(cs.clone(), &sibling_var, &current_hash)?
+            } else {
+                self.hasher.hash_nodes_gadget(cs.clone(), &current_hash, &sibling_var)?
+            };
         }
 
         Ok(current_hash)
