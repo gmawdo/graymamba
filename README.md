@@ -152,7 +152,7 @@ This approach provides robust logging suitable for both development and producti
                   
 
 
-### Configure Blockchain Node: (if using Polkadot/Aleph Zero for irrfutable audit)
+### Configure Blockchain Node: (if using Polkadot/Aleph Zero for irrefutable audit rather than the inbuilt merkle audit)
       Set up a Polkadot/Aleph Zero node following below steps
       $ git clone https://github.com/gmawdo/grayscorpion (based on an aleph-zero fork)
       $ cd grayscorpion
