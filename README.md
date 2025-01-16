@@ -1,4 +1,8 @@
-# A Highly Secure Provenance Tracking Filesystem
+# A Highly Secure Provenance Tracking Filesystem with immutable decentralized traceability
+
+A pluggable NFS that integrates seamlessly into design environments—or any machine, including PCs, IoT devices, and cars. This system provides an immutable, trackable audit that remains tamper-proof, even under a system admin attack.
+
+It leverages blockchain and zero-knowledge proofs (ZKP) to ensure security and transparency. Complementary to Git, it excels in traceability, offering capabilities that go beyond what Git alone can provide.
 
 - A secure filesystem that intrinsically tracks the provenance of files and directories.
 - Entirely written in Rust for memory safety and performance.
@@ -11,7 +15,7 @@
 - Can be used as a secure data store for AI models and data.
 - Can be used to underpin many aspects of a "Secure by Design" approach.
 - Can be backed by a variety of data stores, including RocksDB, Redis, and we'd like to add Cassandra in the future. We are really interested in the ability to use a distributed database for the backing store.
-- Used in conjunction with [Eclipse-Theia](https://github.com/eclipse-theia/theia) and Kubernetes to provide a secure traceable IDE at scale for [Codasip's](https://codasip.com) cloud based RISC-V chip design toolchain.
+- For a specific chip design use case with the US Department of Defense, the system was integrated with Eclipse-Theia and Kubernetes to deliver a secure, traceable IDE at scale. This was part of Codasip’s cloud-based RISC-V chip design toolchain.
 - Now also tested with vscode server based IDE leveraging Kubernetes resource management from the Theia project.
 
 ## Overview
@@ -148,10 +152,10 @@ This approach provides robust logging suitable for both development and producti
                   
 
 
-### Configure Blockchain Node: (if using Polkadot/Aleph Zero for irrfutable audit)
+### Configure Blockchain Node: (if using Polkadot/Aleph Zero for irrefutable audit rather than the inbuilt merkle audit)
       Set up a Polkadot/Aleph Zero node following below steps
-      $ git clone https://github.com/datasignals/aleph-node-pinkscorpion.git (based on aleph-zero fork)
-      $ cd aleph-node-pinkscorpion
+      $ git clone https://github.com/gmawdo/grayscorpion (based on an aleph-zero fork)
+      $ cd grayscorpion
       $ cargo build —release
       $ scripts/run_nodes.sh
 
