@@ -137,7 +137,13 @@ impl PoseidonHasher {
     }
 }
 
-// R1CS gadget implementation
+// R1CS gadget implementation used by the simple_merkle_circuit_test because
+// Arkworks will not automatically handle custom hash functions like Poseidon
+// unless we define how they should be represented in R1CS.
+// So we created these gadget functions that encapsulate the logic of the Poseidon hash
+// and ensure that the necessary constraints are produced in R1CS.
+// R1CS is an essential crib that allows the logic to map onto a set of polynominals forming a superpolynomial
+//super polynomial is the one that forms the commitment
 impl PoseidonHasher {
     pub fn hash_leaf_gadget(
         &self,
