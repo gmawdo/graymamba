@@ -15,6 +15,21 @@ async fn setup_rocksdb() -> RocksDBDataStore {
     RocksDBDataStore::new(temp_dir.path().to_str().unwrap()).expect("Failed to create RocksDB store")
 }
 
+fn check_redis_running() -> bool {
+    // Attempt to connect to Redis and return true if successful
+    let client = redis::Client::open("redis://127.0.0.1:6380"); //one of our expected cluster nodes
+    match client {
+        Ok(c) => {
+            let con = c.get_connection();
+            match con {
+                Ok(_) => true,
+                Err(_) => false,
+            }
+        }
+        Err(_) => false,
+    }
+}
+
 #[tokio::test]
 async fn test_init_user_directory_structure() {
     let rocks = setup_rocksdb().await;
@@ -82,6 +97,12 @@ async fn test_init_user_directory_structure() {
 
 #[tokio::test]
 async fn test_directory_idempotency() {
+
+    if !check_redis_running() {
+        println!("Skipping test_redis_functionality: Redis server is not running.");
+        return; // Skip the test
+    }
+
     let redis = setup_redis().await;
     let rocks = setup_rocksdb().await;
     let stores: Vec<(&str, &dyn DataStore)> = vec![("redis", &redis), ("rocks", &rocks)];
@@ -105,6 +126,11 @@ async fn test_directory_idempotency() {
 
 #[tokio::test]
 async fn test_sorted_set_operations() {
+    if !check_redis_running() {
+        println!("Skipping test_redis_functionality: Redis server is not running.");
+        return; // Skip the test
+    }
+
     let redis = setup_redis().await;
     let rocks = setup_rocksdb().await;
     let stores: Vec<(&str, &dyn DataStore)> = vec![("redis", &redis), ("rocks", &rocks)];
