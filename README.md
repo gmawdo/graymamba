@@ -25,7 +25,7 @@ It leverages blockchain and zero-knowledge proofs (ZKP) to ensure security and t
 ### Features (determines what is built into the binary)
 
 - Mandatory Backing Store, choose one of [ `rocksdb_store` | `redis_store` ]: Enables RocksDB or Redis as backing store for data shares (one of the two options must be chosen)
-- Mandatory irrefutable_audit, choose one of [ `merkle_audit` | `az_audit` ]: Enables irrefutable audit logs for files and directories. Merkle audit writes to a merkle tree in a RocksDB, AZ audit writes to Aleph Zero custom blockchain.
+- Mandatory irrefutable_audit, choose one of [ `merkle_audit` | `az_audit` ]: Enables irrefutable audit logs for files and directories. Merkle audit writes to a merkle tree in a RocksDB, AZ audit writes to Aleph Zero custom blockchain. Custom blockchain rather than a smart contract based solution leads to lower gas fees, but requires hosting own nodes.
 - Optional `compressed_store`: Enables compressed shares (if not specified then works uncompresed with reduced performance but greater traceability
 
 RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice, then it will need to be installed and running on the machine.
@@ -65,7 +65,7 @@ RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice
 - `graymamba`: The filesystem itself, which can be mounted as an NFS server. The `main man`.
 - `audit_reader`: Reads the audit logs and allows exploration, verification and proof generation.
 - `qrocks`: A tool for querying the RocksDB database as there seems not to be one in wide circulation
-- `data-room`: An experimental tool for providing a data sandbox for file sharing and collaboration in sensitive environments.
+- `data-room`: An experimental tool for providing a data sandbox for file sharing and collaboration in sensitive environments. An alternate but similar use case to the trackable cloud based vscode server IDE. We will add a section on how to use docker to run a vscode server and mount the graymamba filesystem into it as part of a docker network.
 
 
 ## Logging and Tracing
@@ -93,7 +93,7 @@ module_filter = [
     "graymamba::backingstore::rocksdb_data_store=debug"
     ]
 
-### Features
+### Features of the build and runtimes (a lot made possible due to Rust magic 😄)
 - **Structured Logging**: Maintains context across async boundaries
 - **Zero-Cost Abstractions**: Disabled log levels have no runtime overhead
 - **Flexible Output**: 
@@ -107,9 +107,10 @@ module_filter = [
 ### Usage in Code
 rust
 // Examples of usage in our code
-tracing::info!("Operation started");
-tracing::debug!("Detailed info: {:?}", data);
-tracing::error!("Error occurred: {}", error);
+- tracing::info!("Operation started");
+- tracing::debug!("Detailed info: {:?}", data);
+- tracing::error!("Error occurred: {}", error);
+- modularization of the codebase naturally leads to a much greater granularity of logging system, essentially to see the trees!
 
 
 ### Architecture
