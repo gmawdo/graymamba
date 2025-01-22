@@ -59,7 +59,25 @@ RocksDB is built-in to the filesystem if chosen. If Redis is the store of choice
        cargo run --bin graymamba --features="metrics"
         metrics server runs on localhost:9091, configure the Prometheus server to scrape metrics from this address
       
+## Cross compiling for x86_64-unknown-linux-gnu on Silicon Mac
+### Brew
+```
+brew install gcc
+brew install SergioBenitez/osxct/x86_64-unknown-linux-gnu
+brew install zstd
+```
+### Compile all the binaries
+```
+export CC_x86_64_unknown_linux_gnu=/opt/homebrew/bin/x86_64-unknown-linux-gnu-gcc
+export CXX_x86_64_unknown_linux_gnu=/opt/homebrew/bin/x86_64-unknown-linux-gnu-g++
+TARGET_CC=x86_64-unknown-linux-gnu cargo build --features="merkle_audit,compressed_store,rocksdb_store" --release --target x86_64-unknown-linux-gnu
+```
 
+### Ensure project level .cargo/config.toml is correct
+```
+[target.x86_64-unknown-linux-gnu]
+linker = "/opt/homebrew/bin/x86_64-unknown-linux-gnu-gcc"
+```
 
 ## Explanation of the project's binaries and their purpose
 - `graymamba`: The filesystem itself, which can be mounted as an NFS server. The `main man`.
