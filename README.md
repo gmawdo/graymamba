@@ -67,6 +67,7 @@ brew install SergioBenitez/osxct/x86_64-unknown-linux-gnu
 brew install zstd
 ```
 ### Compile all the binaries
+You will also need to ensure you have the linux target defined: rustup target add x86_64-unknown-linux-gnu
 ```
 export CC_x86_64_unknown_linux_gnu=/opt/homebrew/bin/x86_64-unknown-linux-gnu-gcc
 export CXX_x86_64_unknown_linux_gnu=/opt/homebrew/bin/x86_64-unknown-linux-gnu-g++
