@@ -28,4 +28,4 @@ RUN chmod +x /usr/local/bin/graymamba
 EXPOSE 2049
 
 # Set the entry point to launch the NFS server
-ENTRYPOINT ["/usr/local/bin/graymamba", "/mnt/nfs"]
+ENTRYPOINT ["/usr/local/bin/graymamba"]
