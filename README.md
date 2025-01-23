@@ -80,11 +80,55 @@ TARGET_CC=x86_64-unknown-linux-gnu cargo build --features="merkle_audit,compress
 linker = "/opt/homebrew/bin/x86_64-unknown-linux-gnu-gcc"
 ```
 
+### Build the docker image for amd64
+This uses the project's Dockerfile and pulls in pre-builtbinaries for the linux/amd64 platform. See cross compiling above.
+```
+docker buildx build --platform linux/amd64 -t graymamba:v1.0.0 .
+```
+
+### Running from linux (debian) containers
+As a quick start to test on the mac and connect to the NFS docker container from Finder
+```
+docker network create graymamba-network
+docker run -d -v /Users/mawdo/GRAY/graymamba/config:/config -p 2049:2049 --rm --network graymamba-network --platform linux/amd64 --entrypoint=/bin/bash graymamba:v1.0.1
+```
+
+### Running a docker network with a vscode server and the graymamba filesystem mounted
+A general docker network runtime config comprises
+-  a docker compose script
+-  a container running the graymamba NFS with internal merkle audit and rocksdb backing store
+-  a container running a client, here a vscode server with the graymamba filesystem mounted
+
+```
+version: '3.8'
+
+services:
+  graymamba:
+    image: graymamba:v1.0.1
+    container_name: graymamba
+    ports:
+      - "2049:2049"  # Expose NFS port
+    networks:
+      - graymamba-network
+
+  client:
+    image: vscodeide:v1.0.0
+    depends_on:
+      - graymamba
+    networks:
+      - graymamba-network
+    command: >
+      sh -c "mount -o nolock graymamba:/dolphin\'s\ drive /mnt && tail -f /dev/null"
+networks:
+  graymamba-network:
+    driver: bridge
+```
+
 ## Explanation of the project's binaries and their purpose
 - `graymamba`: The filesystem itself, which can be mounted as an NFS server. The `main man`.
 - `audit_reader`: Reads the audit logs and allows exploration, verification and proof generation.
 - `qrocks`: A tool for querying the RocksDB database as there seems not to be one in wide circulation
-- `data-room`: An experimental tool for providing a data sandbox for file sharing and collaboration in sensitive environments. An alternate but similar use case to the trackable cloud based vscode server IDE. We will add a section on how to use docker to run a vscode server and mount the graymamba filesystem into it as part of a docker network.
+- `data-room`: An experimental tool for providing a data sandbox for file sharing and collaboration in sensitive environments. An alternate but similar use case to the trackable cloud based vscode server IDE. See above.
 
 
 ## Logging and Tracing
