@@ -88,9 +88,11 @@ docker buildx build --platform linux/amd64 -t graymamba:v1.0.0 .
 
 ### Running from linux (debian) containers
 As a quick start to test on the mac and connect to the NFS docker container from Finder
+It assumes a TESTDATA directory on your mac (the host machine) with config and RocksDBs sub directories.
+That way your filesystem data is persistent and can be shared between test runs.
 ```
 docker network create graymamba-network
-docker run -d -v /Users/mawdo/GRAY/graymamba/config:/config -p 2049:2049 --rm --network graymamba-network --platform linux/amd64 --entrypoint=/bin/bash graymamba:v1.0.1
+docker run -d -v /Users/mymac/GRAY/TESTDATA/config:/config -v /Users/mymac/GRAY/TESTDATA/RocksDBs:/RocksDBs  -p 2049:2049 --rm --network graymamba-network --platform linux/amd64 --entrypoint=/bin/bash graymamba:v1.0.1
 ```
 
 ### Running a docker network with a vscode server and the graymamba filesystem mounted
