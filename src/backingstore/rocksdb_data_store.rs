@@ -31,10 +31,27 @@ struct AttributeFields {
 
 impl RocksDBDataStore {
     pub fn new(path: &str) -> Result<Self, DataStoreError> {
+        debug!("Attempting to open RocksDB at path: {}", path);
+
+        // Set up options for RocksDB
         let mut opts = Options::default();
         opts.create_if_missing(true);
-        let db = DB::open(&opts, path).map_err(|_| DataStoreError::ConnectionError)?;
-        Ok(RocksDBDataStore { db })
+        opts.set_max_open_files(100); // Example option, adjust as needed
+        opts.set_write_buffer_size(64 * 1024 * 1024); // 64 MB, adjust as needed
+
+        // Attempt to open the database
+        let db_result = DB::open(&opts, path);
+        
+        match db_result {
+            Ok(db) => {
+                debug!("Successfully opened RocksDB at path: {}", path);
+                Ok(RocksDBDataStore { db })
+            }
+            Err(e) => {
+                debug!("Failed to open RocksDB at path: {}. Error: {:?}", path, e);
+                Err(DataStoreError::ConnectionError)
+            }
+        }
     }
 }
 
