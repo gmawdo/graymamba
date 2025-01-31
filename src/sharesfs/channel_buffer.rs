@@ -66,10 +66,6 @@ impl ChannelBuffer {
     }
 
     pub async fn write(&self, offset: u64, data: &[u8]) {
-        // Log the current time, thread ID, offset, and data size
-        let thread_id = std::thread::current().id();
-        println!("Thread {:?} - write: offset = {:?}, data size = {:?}", thread_id, offset, data.len());
-
         let mut buffer = self.buffer.write().await; // Acquire write lock
 
         // Insert the new data into the buffer
@@ -97,7 +93,6 @@ impl ChannelBuffer {
 
         // Iterate over the entries in the order they were inserted
         for (&offset, chunk) in buffer.iter() {
-            println!("offset: {:?}, chunk: {:?}", offset, chunk);
             
             // Substitute the chunk at its corresponding offset
             let start = offset as usize;
