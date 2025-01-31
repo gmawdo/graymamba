@@ -111,6 +111,7 @@ tokio-util = { version = "0.7", features = ["full"] }
 http-body-util = "0.1"
 
 rand = "0.8"
+indexmap = "1.9.3"
 
 [features]
 strict = []

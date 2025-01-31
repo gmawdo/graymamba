@@ -2,8 +2,8 @@ use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
 use bytes::{BytesMut, Bytes};
 use std::sync::Arc;
-use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use indexmap::IndexMap;
 
 use tracing::debug;
 pub struct ActiveWrite {
@@ -20,7 +20,7 @@ impl ActiveWrite {
     }
 }
 pub struct ChannelBuffer {
-    buffer: RwLock<BTreeMap<u64, Bytes>>,
+    buffer: RwLock<IndexMap<u64, Bytes>>,
     total_size: AtomicU64,
     last_write: RwLock<Instant>,
     is_complete: AtomicBool,
@@ -29,7 +29,7 @@ pub struct ChannelBuffer {
 impl ChannelBuffer {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            buffer: RwLock::new(BTreeMap::new()),
+            buffer: RwLock::new(IndexMap::new()),
             total_size: AtomicU64::new(0),
             last_write: RwLock::new(Instant::now()),
             is_complete: AtomicBool::new(false),
@@ -66,9 +66,13 @@ impl ChannelBuffer {
     }
 
     pub async fn write(&self, offset: u64, data: &[u8]) {
-        debug!("write: {:?}", offset);
+        // Log the current time, thread ID, offset, and data size
+        let thread_id = std::thread::current().id();
+        println!("Thread {:?} - write: offset = {:?}, data size = {:?}", thread_id, offset, data.len());
+
         let mut buffer = self.buffer.write().await; // Acquire write lock
 
+        // Insert the new data into the buffer
         buffer.insert(offset, Bytes::copy_from_slice(data));
 
         // Update total size if this write extends it
@@ -85,21 +89,30 @@ impl ChannelBuffer {
     pub async fn read_all(&self) -> Bytes {
         debug!("read_all");
         let buffer = self.buffer.read().await;
-        let mut result = BytesMut::with_capacity(self.total_size.load(Ordering::SeqCst) as usize);
         
-        let mut expected_offset = 0;
-        for (&offset, chunk) in buffer.iter() {
-            // Print the key (offset) and value (chunk) being processed
-            println!("Processing offset: {}, chunk: {:?}", offset, chunk); //this revealed an ordering issue
+        // Get the total size and initialize a buffer filled with zero bytes
+        let total_size = self.total_size.load(Ordering::SeqCst) as usize;
+        let mut result = BytesMut::with_capacity(total_size);
+        result.resize(total_size, 0); // Fill with zero bytes
 
-            if offset != expected_offset {
-                result.resize(offset as usize, 0);
+        // Iterate over the entries in the order they were inserted
+        for (&offset, chunk) in buffer.iter() {
+            println!("offset: {:?}, chunk: {:?}", offset, chunk);
+            
+            // Substitute the chunk at its corresponding offset
+            let start = offset as usize;
+            let end = start + chunk.len();
+            
+            // Ensure we don't go out of bounds
+            if end <= total_size {
+                result[start..end].copy_from_slice(chunk);
+            } else {
+                // Handle the case where the chunk extends beyond the total size
+                println!("Warning: Chunk at offset {} exceeds total size.", offset);
             }
-            result.extend_from_slice(chunk);
-            expected_offset = offset + chunk.len() as u64;
         }
 
-        result.freeze()
+        result.freeze() // Convert to an immutable Bytes object
     }
 
     pub fn total_size(&self) -> u64 {
@@ -304,13 +317,13 @@ mod tests {
 
                 // Write the block to the channel buffer
                 channel.write(offset.try_into().unwrap(), &block).await;
-                println!("Expected data: {:?}", String::from_utf8_lossy(&expected_data).replace("\0", "-"));
             }
 
             // Read back the data
             let result = channel.read_all().await;
 
             // Print actual results for debugging
+            println!("Expected data: {:?}", String::from_utf8_lossy(&expected_data).replace("\0", "-"));
             println!("Actual result: {:?}", String::from_utf8_lossy(&result).replace("\0", "-"));
 
             // Verify that the data matches the expected output
