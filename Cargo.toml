@@ -110,6 +110,9 @@ hyper = { version = "0.14", features = ["full"], optional = true }
 tokio-util = { version = "0.7", features = ["full"] }
 http-body-util = "0.1"
 
+rand = "0.8"
+indexmap = "1.9.3"
+
 [features]
 strict = []
 #traceability = ["tracing-subscriber", "tokio/rt-multi-thread", "intaglio"]
