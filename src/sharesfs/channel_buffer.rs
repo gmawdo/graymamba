@@ -3,7 +3,6 @@ use tokio::time::{Duration, Instant};
 use bytes::{BytesMut, Bytes};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use indexmap::IndexMap;
 
 use tracing::debug;
 pub struct ActiveWrite {
@@ -20,7 +19,7 @@ impl ActiveWrite {
     }
 }
 pub struct ChannelBuffer {
-    buffer: RwLock<IndexMap<u64, Bytes>>,
+    buffer: RwLock<Vec<(u64, Vec<u8>)>>,
     total_size: AtomicU64,
     last_write: RwLock<Instant>,
     is_complete: AtomicBool,
@@ -29,7 +28,7 @@ pub struct ChannelBuffer {
 impl ChannelBuffer {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            buffer: RwLock::new(IndexMap::new()),
+            buffer: RwLock::new(Vec::new()),
             total_size: AtomicU64::new(0),
             last_write: RwLock::new(Instant::now()),
             is_complete: AtomicBool::new(false),
@@ -48,14 +47,14 @@ impl ChannelBuffer {
         // Find all chunks that overlap with the requested range
         let mut current_offset = offset;
         while current_offset < end_offset {
-            if let Some(bytes) = buffer.get(&current_offset) {
-                let available_bytes = bytes.len() as u64;
+            if let Some(bytes) = buffer.iter().find(|&(o, _)| o == &current_offset) {
+                let available_bytes = bytes.1.len() as u64;
                 let bytes_to_copy = std::cmp::min(
                     available_bytes,
                     end_offset - current_offset
                 ) as usize;
                 
-                result.extend_from_slice(&bytes[..bytes_to_copy]);
+                result.extend_from_slice(&bytes.1[..bytes_to_copy]);
                 current_offset += bytes_to_copy as u64;
             } else {
                 break;
@@ -68,10 +67,10 @@ impl ChannelBuffer {
     pub async fn write(&self, offset: u64, data: &[u8]) {
         let mut buffer = self.buffer.write().await; // Acquire write lock
 
-        // Insert the new data into the buffer
-        buffer.insert(offset, Bytes::copy_from_slice(data));
+        // Store the new entry in the order it arrives
+        buffer.push((offset, data.to_vec())); // Store offset and data as a tuple
 
-        // Update total size if this write extends it
+        // Update total size if necessary
         let end_offset = offset + data.len() as u64;
         let current_size = self.total_size.load(Ordering::SeqCst);
         if end_offset > current_size {
@@ -92,10 +91,11 @@ impl ChannelBuffer {
         result.resize(total_size, 0); // Fill with zero bytes
 
         // Iterate over the entries in the order they were inserted
-        for (&offset, chunk) in buffer.iter() {
+        for &(offset, ref chunk) in buffer.iter() {
+            debug!("offset: {:?}, chunk: {:?}", offset, chunk.len());
             
             // Substitute the chunk at its corresponding offset
-            let start = offset as usize;
+            let start = offset as usize; // Convert offset to usize for indexing
             let end = start + chunk.len();
             
             // Ensure we don't go out of bounds
