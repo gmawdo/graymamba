@@ -940,6 +940,18 @@ impl NFSFileSystem for SharesFS {
         Ok(ftype) => {
             if ftype == "0" || ftype == "1" || ftype == "2" {
                 self.remove_directory_file(&new_dir_path).await?;
+                
+                // Trigger audit event for deletion
+                let (_namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
+                let event = AuditEvent {
+                    creation_time: Local::now().format("%b %d %H:%M:%S.%f %Y").to_string(),
+                    event_type: "DELETED".to_string(),
+                    file_path: new_dir_path.clone(),
+                    event_key: community,
+                };
+                if let Err(e) = self.irrefutable_audit.trigger_event(event).await {
+                    warn!("Failed to trigger audit event: {}", e);
+                }
             } else {
                 return Err(nfsstat3::NFS3ERR_IO);
             }
