@@ -557,7 +557,7 @@ impl NFSFileSystem for SharesFS {
         let eof = end >= current_data.len();
     
         let local_date_time: DateTime<Local> = Local::now();
-        let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
+        let creation_time = local_date_time.format("%b %d %H:%M:%S.%f %Y").to_string();
     
         let mut user = "";
         let parts: Vec<&str> = path.split('/').collect();
@@ -565,7 +565,7 @@ impl NFSFileSystem for SharesFS {
             user = parts[1];
         }
     
-        debug!("Triggering disassembled event");
+        debug!("Triggering reassembly event");
         let event = AuditEvent {
             creation_time: creation_time.clone(),
             event_type: REASSEMBLED.to_string(),

@@ -499,7 +499,7 @@ impl AuditViewer {
                 let event: AuditEvent = bincode::deserialize(&event_data)?;
                 let timestamp = DateTime::<Utc>::from_timestamp_micros(node.timestamp)
                     .unwrap()
-                    .format("%Y-%m-%d %H:%M:%S UTC")
+                    .format("%Y-%m-%d %H:%M:%S.%3f UTC")
                     .to_string();
                 
                 let hash_preview = hex::encode(&node.hash[..4]);
@@ -617,7 +617,7 @@ impl AuditViewer {
             let event: AuditEvent = bincode::deserialize(event_data)?;
             let timestamp = DateTime::<Utc>::from_timestamp_micros(node.timestamp)
                 .unwrap()
-                .format("%Y-%m-%d %H:%M:%S UTC")
+                .format("%Y-%m-%d %H:%M:%S.%3f UTC")
                 .to_string();
             
             let hash_preview = hex::encode(&node.hash[..4]);

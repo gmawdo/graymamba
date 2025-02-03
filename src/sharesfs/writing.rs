@@ -70,7 +70,7 @@ impl SharesFS {
         }
 
         let local_date_time: DateTime<Local> = Local::now();
-        let creation_time = local_date_time.format("%b %d %H:%M:%S %Y").to_string();
+        let creation_time = local_date_time.format("%b %d %H:%M:%S.%f %Y").to_string();
     
         let mut user = "";
         let parts: Vec<&str> = path.split('/').collect();
