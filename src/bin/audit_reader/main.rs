@@ -4,9 +4,8 @@
 // Validate the audit trail
 
 use iced::{
-    widget::{Column, Container, Text, Scrollable, container, Button, Row},
+    widget::{Column, Container, Text, Scrollable, container, Button, Row, TextInput},
     Element, Length, Application, Settings, Color, Alignment,
-    alignment,
     theme::{self, Theme},
     Command,
     Border,
@@ -46,6 +45,7 @@ struct AuditViewer {
     selected_event: Option<String>,
     font_size: f32,
     verified_events: HashMap<String, bool>,
+    db_path_input: String,
 }
 
 #[allow(dead_code)]
@@ -59,6 +59,8 @@ enum Message {
     SelectEvent(String),
     FontSizeChanged(f32),
     EventVerified(String, bool),
+    SetDBPath(String),
+    OpenDB,
 }
 
 impl Application for AuditViewer {
@@ -83,6 +85,7 @@ impl Application for AuditViewer {
             selected_event: None,
             font_size: 12.0,
             verified_events: HashMap::new(),
+            db_path_input: String::from("../RocksDBs/audit_merkle_db"),
         };
         
         if let Err(e) = viewer.load_audit_data() {
@@ -155,6 +158,14 @@ impl Application for AuditViewer {
             Message::FontSizeChanged(delta) => {
                 self.font_size = (self.font_size + delta).max(8.0);
             }
+            Message::SetDBPath(path) => {
+                self.db_path_input = path;
+            }
+            Message::OpenDB => {
+                if let Err(e) = self.load_audit_data() {
+                    self.error_message = Some(e.to_string());
+                }
+            }
         }
         Command::none()
     }
@@ -194,18 +205,19 @@ impl Application for AuditViewer {
             .align_items(Alignment::Center)
             .push(Text::new("Audit Log Explorer").size(self.font_size * 2.0))
             .push(
-                Container::new(
-                    Row::new()
-                        .spacing(8)
-                        .push(
-                            Button::new(Text::new("Refresh").size(self.font_size))
-                                .padding([4, 8])
-                                .on_press(Message::Refresh)
-                                .style(theme::Button::Secondary)
-                        )
+                TextInput::new(
+                    "Enter DB path...",
+                    &self.db_path_input,
                 )
-                .width(Length::Fill)
-                .align_x(alignment::Horizontal::Right)
+                .size(self.font_size)
+                .padding(8)
+                .on_input(Message::SetDBPath),
+            )
+            .push(
+                Button::new(Text::new("Refresh").size(self.font_size))
+                    .padding([4, 8])
+                    .on_press(Message::OpenDB)
+                    .style(theme::Button::Secondary),
             );
 
         // Current Events Panel
@@ -468,7 +480,8 @@ impl AuditViewer {
         let cfs = vec!["current_tree", "historical_roots", "event_data", "time_indices"];
         let db = DB::open_cf_for_read_only(
             &opts,
-            settings.get_str("storage.auditdb_path").expect("Failed to get auditdb_path from settings").as_str() ,
+            //settings.get_str("storage.auditdb_path").expect("Failed to get auditdb_path from settings").as_str() ,
+            &self.db_path_input,
             &cfs,
             false)?;
 
@@ -567,7 +580,8 @@ impl AuditViewer {
         let cfs = vec!["current_tree", "historical_roots", "event_data", "time_indices"];
         let db = DB::open_cf_for_read_only(
             &opts,
-            settings.get_str("storage.auditdb_path").expect("Failed to get auditdb_path from settings").as_str() ,
+            //settings.get_str("storage.auditdb_path").expect("Failed to get auditdb_path from settings").as_str() ,
+            &self.db_path_input,
              &cfs, false)?;
 
         let cf_historical = db.cf_handle("historical_roots")
@@ -692,7 +706,7 @@ impl AuditViewer {
         
         let cfs = vec!["current_tree", "historical_roots", "event_data", "time_indices"];
         Ok(DB::open_cf_for_read_only(&opts,
-            settings.get_str("storage.auditdb_path").expect("Failed to get auditdb_path from settings").as_str() ,
+            &self.db_path_input,
          &cfs, false)?)
     }
     #[allow(dead_code)]
