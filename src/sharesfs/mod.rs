@@ -668,6 +668,19 @@ impl NFSFileSystem for SharesFS {
         .collect();
 
         let cnt = entries.len();
+
+        // Trigger audit event for directory read
+        let (_namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
+        let event = AuditEvent {
+            creation_time: Local::now().format("%b %d %H:%M:%S.%f %Y").to_string(),
+            event_type: "DIRECTORY_READ".to_string(),
+            file_path: path.clone(),
+            event_key: community,
+        };
+        if let Err(e) = self.irrefutable_audit.trigger_event(event).await {
+            warn!("Failed to trigger audit event: {}", e);
+        }
+
         Ok(ReadDirResult {
             entries,
             end: cnt < max_entries,

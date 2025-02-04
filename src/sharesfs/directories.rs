@@ -4,6 +4,7 @@ use crate::kernel::api::nfs::nfsstat3;
 
 use super::SharesFS;
 
+use chrono::Local;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -13,9 +14,9 @@ use crate::kernel::api::nfs::fattr3;
 use graymamba::file_metadata::FileMetadata;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
+use crate::audit_adapters::irrefutable_audit::AuditEvent;
 
-
-use tracing::debug;
+use tracing::{debug, warn};
 impl SharesFS {
 pub async fn rename_directory_file(&self, from_path: &str, to_path: &str) -> Result<(), nfsstat3> { 
     let (namespace_id, community) = SharesFS::get_namespace_id_and_community().await;
@@ -395,6 +396,18 @@ pub async fn remove_directory_file(&self, path: &str) -> Result<(), nfsstat3> {
         };
 
         let _ = self.create_node("0", new_dir_id, &new_dir_path).await;
+
+        // Trigger audit event for directory creation
+        let event = AuditEvent {
+            creation_time: Local::now().format("%b %d %H:%M:%S.%f %Y").to_string(),
+            event_type: "DIRECTORY_CREATE".to_string(),
+            file_path: new_dir_path.clone(),
+            event_key: community,
+        };
+        if let Err(e) = self.irrefutable_audit.trigger_event(event).await {
+            warn!("Failed to trigger audit event: {}", e);
+        }
+
         let metadata = self.get_metadata_from_id(new_dir_id).await?;
         Ok((new_dir_id, FileMetadata::metadata_to_fattr3(new_dir_id, &metadata).await?))
         
